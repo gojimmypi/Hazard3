@@ -1,0 +1,10 @@
+#include "tb_cxxrtl_io.h"
+#include <user_settings.h>
+#include <wolfcrypt/test/test.h>
+
+
+int main() {
+	tb_puts("Hello world from Hazard3 + CXXRTL!\n");
+    wolfcrypt_test(NULL);
+	return 123;
+}
