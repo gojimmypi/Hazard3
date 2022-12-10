@@ -154,7 +154,7 @@ extern "C" {
 #define NO_CRYPT_TEST
 
 #undef  NO_CRYPT_BENCHMARK
-#define NO_CRYPT_BENCHMARK
+// #define NO_CRYPT_BENCHMARK
 
 #undef  WOLFCRYPT_ONLY
 #define WOLFCRYPT_ONLY
@@ -163,7 +163,7 @@ extern "C" {
 /* If defined, must include wolfcrypt/src/misc.c in build */
 /* Slower, but about 1k smaller */
 #undef  NO_INLINE
-//#define NO_INLINE
+#define NO_INLINE
 
 #undef  NO_FILESYSTEM
 #define NO_FILESYSTEM
