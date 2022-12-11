@@ -11,6 +11,10 @@ LDSCRIPT     ?= ../common/memmap.ld
 CROSS_PREFIX ?= riscv32-unknown-elf-
 TBDIR        ?= ../tb_cxxrtl
 INCDIR       ?= ../common
+# INCDIR       += /mnt/c/temp/testhaz/hazard3/test/sim/wolfssl_test/wolfssl/
+INCDIR       += ./
+# INCDIR       += /mnt/c/temp/testhaz/hazard3/test/sim/wolfssl_test/wolfssl/wolfcrypt
+# INCDIR       += /mnt/c/temp/testhaz/hazard3/test/sim/wolfssl_test/wolfssl/wolfcrypt/benchmark
 MAX_CYCLES   ?= 100000
 TMP_PREFIX   ?= tmp/
 
@@ -40,6 +44,9 @@ clean_tb: clean
 
 ###############################################################################
 
+%: %.c *.h
+	$(CC) -W -o $@ $< $(CFLAGS) $(LIBS)
+
 $(TMP_PREFIX)$(APP).bin: $(TMP_PREFIX)$(APP).elf
 	$(CROSS_PREFIX)objcopy -O binary $^ $@
 	$(CROSS_PREFIX)objdump -h $^ > $(TMP_PREFIX)$(APP).dis
@@ -47,4 +54,10 @@ $(TMP_PREFIX)$(APP).bin: $(TMP_PREFIX)$(APP).elf
 
 $(TMP_PREFIX)$(APP).elf: $(SRCS) $(wildcard %.h)
 	mkdir -p $(TMP_PREFIX)
-	$(CROSS_PREFIX)gcc $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR)) -o $@
+#	$(CROSS_PREFIX)gcc  -Wl,-z,norelro -ffunction-sections -fdata-sections $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR))  -o $@
+	$(CROSS_PREFIX)gcc -Os  -ffunction-sections -fdata-sections $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR))  -o $@  -Wl,--gc-sections
+	$(CROSS_PREFIX)size  $@
+	$(CROSS_PREFIX)strip  -s -R .comment -R .gnu.version $@
+	$(CROSS_PREFIX)strip  --strip-unneeded $@
+	$(CROSS_PREFIX)size  $@
+
