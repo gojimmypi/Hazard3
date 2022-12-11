@@ -1,4 +1,4 @@
-PROGRAM ?= wolfcrypt
+PROGRAM ?= wolfssl_test
 
 WOLFSSL_SRC_DIR := ./wolfssl
 
@@ -11,9 +11,10 @@ $(info WOLFSSL_SRC_DIR= $(WOLFSSL_SRC_DIR) )
 ## CCFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs -Os
 ##AFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs
 
-CCFLAGS = -march=rv32i -Os -g
+CCFLAGS = -march=rv32i -Os -g -s
 AFLAGS = -march=rv32i
-
+# CCFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs -Os -g
+# AFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs
 
 # This line must be added in your freedom-e-sdk/scripts/standalone.mk
 # RISCV_CFLAGS   += -I$(WOLFSSL_SRC_DIR) -I$(WOLFSSL_SRC_DIR)/IDE/ECLIPSE/SIFIVE -DWOLFSSL_USER_SETTINGS
@@ -22,13 +23,17 @@ AFLAGS = -march=rv32i
 
 WOLFSSL_CFLAGS += -I$(WOLFSSL_SRC_DIR) \
 				  -DWOLFSSL_USER_SETTINGS
-$(info WOLFSSL_CFLAGS= $(WOLFSSL_CFLAGS) )
 
-SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/src/*.c)
+# $(info WOLFSSL_CFLAGS= $(WOLFSSL_CFLAGS) )
+
+# SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/src/*.c)
 SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/wolfcrypt/src/*.c)
-SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/wolfcrypt/test/test.c)
-SRCS := $(filter-out %bio.c %misc.c %evp.c %pk.c %conf.c %x509.c %x509_str.c, $(SRCS))
+# SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/wolfcrypt/test/test.c)
+SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/wolfcrypt/benchmark/*.c)
+# SRCS += $(wildcard $(WOLFSSL_SRC_DIR)/wolfcrypt/benchmark/*.h)
+SRCS := $(filter-out %bio.c %evp.c %pk.c %conf.c %x509.c %x509_str.c, $(SRCS))
 
+# $(info SRCS)
 # SRC =$(SRC_FILES)
 #	 $(WOLFSSL_SRC_DIR)/wolfcrypt/test/test.c
 #	 $(WOLFSSL_SRC_DIR)/wolfcrypt/benchmark/benchmark.c
@@ -49,6 +54,6 @@ override CCFLAGS += $(OPT_CFLAGS) $(WOLFSSL_CFLAGS) \
 include ../common/src_only_app.mk
 
 # $(PROGRAM): $(SRC)
-# 	$(CC) $(CFLAGS) $(SRC) $(LDFLAGS) $(LDLIBS) -o $@
+#	$(CC) $(CFLAGS) $(SRC) $(LDFLAGS) $(LDLIBS) -o $@
 
 
