@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
 
     int rt;
     rt = benchmark_init();
-    bench_md5(0);
+    // bench_sha256(1);
     benchmark_free();
     return 0;
 }

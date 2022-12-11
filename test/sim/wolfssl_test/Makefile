@@ -11,7 +11,7 @@ $(info WOLFSSL_SRC_DIR= $(WOLFSSL_SRC_DIR) )
 ## CCFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs -Os
 ##AFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs
 
-CCFLAGS = -march=rv32i -Os -g -s
+CCFLAGS = -march=rv32i  -g
 AFLAGS = -march=rv32i
 # CCFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs -Os -g
 # AFLAGS = -march=rv32i_zicsr_zba_zbb_zbc_zbs
@@ -47,8 +47,8 @@ SRCS := $(filter-out %bio.c %evp.c %pk.c %conf.c %x509.c %x509_str.c, $(SRCS))
 # The __stack_size and __heap_size symbols are defined in the linker metal.default.ld
 # script in the freedom-e-sdk.
 override CCFLAGS += $(OPT_CFLAGS) $(WOLFSSL_CFLAGS) \
-                     -Xlinker --defsym=__stack_size=0x1200 \
-                     -Xlinker --defsym=__heap_size=0x800
+                     -Xlinker --defsym=__stack_size=0x2700 \
+                     -Xlinker --defsym=__heap_size=0x2700
 
 
 include ../common/src_only_app.mk
