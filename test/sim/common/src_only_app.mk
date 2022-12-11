@@ -55,9 +55,9 @@ $(TMP_PREFIX)$(APP).bin: $(TMP_PREFIX)$(APP).elf
 $(TMP_PREFIX)$(APP).elf: $(SRCS) $(wildcard %.h)
 	mkdir -p $(TMP_PREFIX)
 #	$(CROSS_PREFIX)gcc  -Wl,-z,norelro -ffunction-sections -fdata-sections $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR))  -o $@
-	$(CROSS_PREFIX)gcc -Os  -ffunction-sections -fdata-sections $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR))  -o $@  -Wl,--gc-sections
+	$(CROSS_PREFIX)gcc  -ffunction-sections -fdata-sections $(CCFLAGS) $(SRCS) -T $(LDSCRIPT) $(addprefix -I,$(INCDIR))  -o $@  -Wl,--gc-sections
 	$(CROSS_PREFIX)size  $@
-	$(CROSS_PREFIX)strip  -s -R .comment -R .gnu.version $@
-	$(CROSS_PREFIX)strip  --strip-unneeded $@
+#	$(CROSS_PREFIX)strip  -s -R .comment -R .gnu.version $@
+#	$(CROSS_PREFIX)strip  --strip-unneeded $@
 	$(CROSS_PREFIX)size  $@
 
