@@ -66,6 +66,8 @@ module hazard3_frontend #(
 	input  wire              cir_flush_behind,
 	// Required for regnum predecode when Zcmp is enabled:
 	input  wire [3:0]        df_uop_step_next,
+	// Required for regnum predecode when Zilsd is enabled:
+	input  wire              df_regpair_sel_next,
 
 	// Signal to power controller that power down is safe. (When going to
 	// sleep, first the pipeline is stalled, and then the power controller
@@ -718,6 +720,11 @@ wire [4:0] zcmp_sa01_r2s  = {|next_instr[4:3], ~|next_instr[4:3], next_instr[4:2
 wire [4:0] zcmp_mvsa01_rs1 = {4'h5, uop_ctr[0]};
 wire [4:0] zcmp_mva01s_rs1 = uop_ctr[0] ? zcmp_sa01_r2s : zcmp_sa01_r1s;
 
+// "coarse" because the mapping of pair (x0, x1) -> (x0, x0) is not yet applied
+wire [4:0] zilsd_rs2_coarse      = {       next_instr[24:21], df_regpair_sel_next ^ ~next_instr[15]};
+wire [4:0] zclsd_sd_rs2_coarse   = {2'b10, next_instr[4:3],   df_regpair_sel_next ^ ~next_instr[7] };
+wire [4:0] zclsd_sdsp_rs2_coarse = {       next_instr[11:8],  df_regpair_sel_next ^ 1'b1           };
+
 always @ (*) begin
 
 	casez ({next_instr_is_32bit, |EXTENSION_ZCMP, next_instr[15:0]})
@@ -733,11 +740,23 @@ always @ (*) begin
 	default:                            predecode_rs1_coarse = {2'b01, next_instr[9:7]};
 	endcase
 
-	casez ({next_instr_is_32bit, next_instr[1:0], next_instr[13]})
-	{1'b1, 2'bzz, 1'bz}: predecode_rs2_coarse = next_instr[24:20];
-	{1'b0, 2'b10, 1'b0}: predecode_rs2_coarse = next_instr[6:2];    // c.add, c.swsp
-	{1'b0, 2'b10, 1'b1}: predecode_rs2_coarse = zcmp_pushpop_rs2;   // cm.push
-	default:             predecode_rs2_coarse = {2'b01, next_instr[4:2]};
+	casez ({next_instr_is_32bit, |EXTENSION_ZCMP, |EXTENSION_ZILSD, |EXTENSION_ZCLSD, next_instr[15:0]})
+	{1'b1, 1'bz, 1'b1, 1'bz, 16'bz011zzzzz0z000zz}: predecode_rs2_coarse = zilsd_rs2_coarse;   // ld, sd (Zilsd)
+	{1'b1, 1'bz, 1'b0, 1'bz, 16'bz011zzzzz0z000zz}: predecode_rs2_coarse = next_instr[24:20];  // ld, sd (no Zilsd)
+
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bz1zzzzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  // remaining 32-bit
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzz0zzzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];  // (avoid case overlap)
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzzz0zzzzzzzzzzzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzzzzzzzzz1zzzzzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzzzzzzzzzzz1zzzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzzzzzzzzzzzz1zzz}: predecode_rs2_coarse = next_instr[24:20];
+	{1'b1, 1'bz, 1'bz, 1'bz, 16'bzzzzzzzzzzzzz1zz}: predecode_rs2_coarse = next_instr[24:20];
+
+	{1'b0, 1'bz, 1'bz, 1'b1, 16'bzz1zzzzzzzzzzz00}: predecode_rs2_coarse = zclsd_sd_rs2_coarse;
+	{1'b0, 1'bz, 1'bz, 1'bz, 16'bzz0zzzzzzzzzzz10}: predecode_rs2_coarse = next_instr[6:2];    // c.add, c.swsp
+	{1'b0, 1'b1, 1'bz, 1'bz, 16'bz01zzzzzzzzzzz10}: predecode_rs2_coarse = zcmp_pushpop_rs2;   // cm.push
+	{1'b0, 1'bz, 1'bz, 1'b1, 16'bz11zzzzzzzzzzz10}: predecode_rs2_coarse = zclsd_sdsp_rs2_coarse;
+	default:                                        predecode_rs2_coarse = {2'b01, next_instr[4:2]};
 	endcase
 
 	// The "fine" predecode targets those instructions which either:
@@ -760,12 +779,13 @@ always @ (*) begin
 	default: predecode_rs1_fine = predecode_rs1_coarse;
 	endcase
 
-	casez ({|EXTENSION_C, next_instr})
-	{1'b1, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
-	{1'b1, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
+	casez ({|EXTENSION_C, |EXTENSION_ZILSD, |EXTENSION_ZCLSD, next_instr})
+	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
+	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
+	{1'b1, 1'b1, 1'bz,           `RVOPC_SD    }: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[24:21]}};
+	{1'b1, 1'bz, 1'b1, 16'hzzzz, `RVOPC_C_SDSP}: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[11:8]}}};
 	default:                         predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
-
 
 end
 
