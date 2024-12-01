@@ -1063,6 +1063,7 @@ wire m_pwr_allow_clkgate;
 wire m_pwr_allow_power_down;
 wire m_pwr_allow_sleep_on_block;
 wire m_wfi_wakeup_req;
+wire m_clear_excl_on_trap_exit;
 
 hazard3_csr #(
 	.XLEN            (W_DATA),
@@ -1147,6 +1148,7 @@ hazard3_csr #(
 	.trig_event_trap_cause      (m_trig_event_trap_cause),
 
 	// Other CSR-specific signalling
+	.clear_excl_on_trap_exit    (m_clear_excl_on_trap_exit),
 	.trap_wfi                   (x_trap_wfi),
 	.instr_ret                  (x_instr_ret)
 );
@@ -1387,7 +1389,7 @@ end
 // Local monitor update.
 // - Set on a load-reserved with good response from global monitor
 // - Cleared by any store-conditional
-// - Cleared by non-debug-related trap entry/exit
+// - Cleared by non-debug-related trap exit
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1405,7 +1407,7 @@ always @ (posedge clk or negedge rst_n) begin
 				mw_local_exclusive_reserved <= bus_dph_exokay_d && !bus_dph_err_d;
 			end
 		end
-		if (m_trap_enter_vld && m_trap_enter_rdy && !(debug_mode || m_trap_is_debug_entry)) begin
+		if (m_clear_excl_on_trap_exit) begin
 			mw_local_exclusive_reserved <= 1'b0;
 		end
 	end

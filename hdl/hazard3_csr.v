@@ -127,6 +127,7 @@ module hazard3_csr #(
 	output wire [3:0]          trig_event_trap_cause,
 
 	// Other CSR-specific signalling
+	output wire                clear_excl_on_trap_exit,
 	output wire                trap_wfi,
 	input  wire                instr_ret
 );
@@ -178,6 +179,10 @@ wire debug_suppresses_trap_update = DEBUG_SUPPORT && (debug_mode || enter_debug_
 wire trapreg_update = trap_enter_vld && trap_enter_rdy && !debug_suppresses_trap_update;
 wire trapreg_update_enter = trapreg_update && except != EXCEPT_MRET && except != EXCEPT_REFETCH;
 wire trapreg_update_exit = trapreg_update && except == EXCEPT_MRET;
+
+// Local monitor flag cleared on trap exit (but not on debug-mode exit, to
+// permit stepping through LR/SC sequences):
+assign clear_excl_on_trap_exit = trapreg_update_exit;
 
 reg mstatus_mpie;
 reg mstatus_mie;
