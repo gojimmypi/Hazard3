@@ -9,10 +9,10 @@
 `default_nettype none
 
 module hazard3_regfile_1w2r #(
-	parameter RESET_REGS = 0,	// Unsupported for FAKE_DUALPORT
-	parameter N_REGS = 16,
+	parameter RESET_REGS = 0,
+	parameter N_REGS = 32,
 	parameter W_DATA = 32,
-	parameter W_ADDR = $clog2(W_DATA)	// should be localparam. ISIM...
+	parameter W_ADDR = $clog2(N_REGS) // Do not modify
 ) (
 	input wire clk,
 	input wire rst_n,
@@ -50,7 +50,7 @@ if (RESET_REGS) begin: real_dualport_reset
 		end
 	end
 end else begin: real_dualport_noreset
-	// This should be inference-compatible on FPGAs with dual-port BRAMs
+	// This should be inference-compatible on FPGAs with dual-port (or 1R1W) BRAMs
 	`ifdef YOSYS
 	`ifdef FPGA_ICE40
 	// We do not require write-to-read bypass logic on the BRAM
