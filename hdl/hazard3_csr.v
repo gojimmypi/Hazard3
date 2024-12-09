@@ -55,6 +55,7 @@ module hazard3_csr #(
 	input  wire               ren,
 	input  wire               ren_soon, // ren will be asserted once some stall condition clears
 	output wire               illegal,
+	output wire               write_is_fetch_ordered,
 
 	// Trap signalling
 	// *We* tell the core that we are taking a trap, and where to, based on:
@@ -120,7 +121,13 @@ module hazard3_csr #(
 	input  wire [W_DATA-1:0]   trig_cfg_rdata,
 	output wire                trig_m_en,
 
+	// Interrupt/exception trigger events
+	output wire                trig_event_interrupt,
+	output wire                trig_event_exception,
+	output wire [3:0]          trig_event_trap_cause,
+
 	// Other CSR-specific signalling
+	output wire                clear_excl_on_trap_exit,
 	output wire                trap_wfi,
 	input  wire                instr_ret
 );
@@ -170,8 +177,12 @@ wire ren_m_mode = ren && (m_mode || debug_mode);
 wire debug_suppresses_trap_update = DEBUG_SUPPORT && (debug_mode || enter_debug_mode);
 
 wire trapreg_update = trap_enter_vld && trap_enter_rdy && !debug_suppresses_trap_update;
-wire trapreg_update_enter = trapreg_update && except != EXCEPT_MRET;
+wire trapreg_update_enter = trapreg_update && except != EXCEPT_MRET && except != EXCEPT_REFETCH;
 wire trapreg_update_exit = trapreg_update && except == EXCEPT_MRET;
+
+// Local monitor flag cleared on trap exit (but not on debug-mode exit, to
+// permit stepping through LR/SC sequences):
+assign clear_excl_on_trap_exit = trapreg_update_exit;
 
 reg mstatus_mpie;
 reg mstatus_mie;
@@ -977,53 +988,41 @@ always @ (*) begin
 	// ------------------------------------------------------------------------
 	// Trigger Module CSRs
 
-	// If triggers aren't supported, we implement tselect as hardwired 0,
-	// tinfo as hardwired 1 (meaning type=0 always) and tdata as hardwired 0
-	// (meaning type=0). The debugger will see the first trigger as
-	// unimplemented, and immediately halt discovery.
+	// When debug support is enabled, we always have basic trigger support
+	// (instruction count, interrupt and exception). Breakpoints are optional.
 	TSELECT: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
 	TDATA1: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
 	TDATA2: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
+	end
+
+	TDATA3: if (DEBUG_SUPPORT) begin
+		// Unimplemented but must be accessible, so hardwired to 0.
+		decode_match = match_mrw;
+		rdata = 32'h00000000;
 	end
 
 	TINFO: if (DEBUG_SUPPORT) begin
 		// Note tinfo is a read-write CSR (writes don't trap) even though it
 		// is entirely read-only.
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000001;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
-	TCONTROL: if (DEBUG_SUPPORT && BREAKPOINT_TRIGGERS > 0) begin
+	TCONTROL: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
 		rdata = {
 			24'h0,
@@ -1122,6 +1121,15 @@ end
 
 assign illegal = (wen_soon || ren_soon) && !decode_match;
 
+// Trigger refetch of sequentially-next instructions on certain CSR updates:
+assign write_is_fetch_ordered = wen_raw && !debug_mode && (
+	(PMP_REGIONS   > 0 && addr >= PMPADDR0 && addr <= PMPADDR15) ||
+	(PMP_REGIONS   > 0 && addr >= PMPCFG0  && addr <= PMPCFG3  ) ||
+	(DEBUG_SUPPORT > 0 && addr == TDATA1                       ) ||
+	(DEBUG_SUPPORT > 0 && addr == TDATA2                       ) ||
+	(DEBUG_SUPPORT > 0 && addr == TCONTROL                     )
+);
+
 // ----------------------------------------------------------------------------
 // Debug run/halt
 
@@ -1134,6 +1142,12 @@ reg dbg_req_halt_on_reset_sticky;
 reg pending_dbg_resume_prev;
 
 wire pending_dbg_resume = (pending_dbg_resume_prev || dbg_req_resume_prev) && debug_mode;
+
+// Note exception entry is also considered a step -- in this case we are
+// supposed to take the trap and then break to debug mode before executing the
+// first trap instruction. *IRQ* entry does not occur when step is 1 (because
+// we hardwire dcsr.stepie to 0)
+wire step_event = instr_ret || (trap_enter_vld && trap_enter_rdy);
 
 // Halt request input register needs to always be clocked, because a WFI needs
 // to fall through if the debugger requests halt of a sleeping core.
@@ -1169,11 +1183,7 @@ always @ (posedge clk or negedge rst_n) begin
 
 		if (debug_mode) begin
 			step_halt_req <= 1'b0;
-		end else if (dcsr_step && (instr_ret || (trap_enter_vld && trap_enter_rdy))) begin
-			// Note exception entry is also considered a step -- in this case
-			// we are supposed to take the trap and then break to debug mode
-			// before executing the first trap instruction. *IRQ* entry does
-			// not occur when step is 1 (because we hardwire dcsr.stepie to 0)
+		end else if (dcsr_step && step_event) begin
 			step_halt_req <= 1'b1;
 		end
 
@@ -1299,9 +1309,13 @@ wire [3:0] mcause_irq_num =	irq_active ? standard_irq_num : 4'd0;
 
 wire [3:0] vector_sel =	!exception_req_any && irq_vector_enable ? mcause_irq_num : 4'd0;
 
+// Note in the refetch case we're relying on the aliasing of dpc and pc
+// (The intent is to fetch the sequentially-next instruction again)
 assign trap_addr =
-	except == EXCEPT_MRET ? mepc             :
-	pending_dbg_resume    ? debug_dpc_rdata  : mtvec | {26'h0, vector_sel, 2'h0};
+	except == EXCEPT_MRET    ? mepc            :
+	except == EXCEPT_REFETCH ? debug_dpc_rdata :
+	pending_dbg_resume       ? debug_dpc_rdata :
+	                           mtvec | {26'h0, vector_sel, 2'h0};
 
 // Check for exception-like or IRQ-like trap entry; any debug mode entry takes
 // priority over any regular trap.
@@ -1328,6 +1342,11 @@ assign trap_enter_soon = trap_enter_vld || (
 
 assign mcause_irq_next = !exception_req_any;
 assign mcause_code_next = exception_req_any ? except : mcause_irq_num;
+
+// Report trap entry to trigger unit
+assign trig_event_exception = |DEBUG_SUPPORT && trapreg_update_enter && !trap_is_irq;
+assign trig_event_interrupt = |DEBUG_SUPPORT && trapreg_update_enter &&  trap_is_irq;
+assign trig_event_trap_cause = {4{|DEBUG_SUPPORT}} & mcause_code_next;
 
 // ----------------------------------------------------------------------------
 // Privilege state outputs

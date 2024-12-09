@@ -229,15 +229,14 @@ wire [W_ADDR-1:0] branch_offs =
 	 d_instr_is_32bit && fd_cir_predbranch[1] && |BRANCH_PREDICTOR ? 32'h4 : d_imm_b;
 
 always @ (*) begin
-	casez ({|EXTENSION_A, |EXTENSION_ZIFENCEI, d_instr[6:2]})
-	{1'bz, 1'bz, 5'b11011}: d_addr_offs = d_imm_j      ; // JAL
-	{1'bz, 1'bz, 5'b11000}: d_addr_offs = branch_offs  ; // Branches
-	{1'bz, 1'bz, 5'b01000}: d_addr_offs = d_imm_s      ; // Store
-	{1'bz, 1'bz, 5'b11001}: d_addr_offs = d_imm_i      ; // JALR
-	{1'bz, 1'bz, 5'b00000}: d_addr_offs = d_imm_i      ; // Loads
-	{1'b1, 1'bz, 5'b01011}: d_addr_offs = 32'h0000_0000; // Atomics
-	{1'bz, 1'b1, 5'b00011}: d_addr_offs = 32'h0000_0004; // Zifencei
-	default:                d_addr_offs = 32'hxxxx_xxxx;
+	casez ({|EXTENSION_A, d_instr[6:2]})
+	{1'bz, 5'b11011}: d_addr_offs = d_imm_j      ; // JAL
+	{1'bz, 5'b11000}: d_addr_offs = branch_offs  ; // Branches
+	{1'bz, 5'b01000}: d_addr_offs = d_imm_s      ; // Store
+	{1'bz, 5'b11001}: d_addr_offs = d_imm_i      ; // JALR
+	{1'bz, 5'b00000}: d_addr_offs = d_imm_i      ; // Loads
+	{1'b1, 5'b01011}: d_addr_offs = 32'h0000_0000; // Atomics
+	default:          d_addr_offs = 32'hxxxx_xxxx;
 	endcase
 	if (partial_predicted_branch) begin
 		d_addr_offs = 32'h0000_0000;
@@ -265,7 +264,6 @@ reg                  raw_csr_wen;
 reg  [1:0]           raw_csr_wtype;
 reg                  raw_csr_w_imm;
 reg  [W_BCOND-1:0]   raw_branchcond;
-reg  [W_ADDR-1:0]    raw_addr_offs;
 reg                  raw_addr_is_regoffs;
 reg  [W_EXCEPT-1:0]  raw_except;
 reg                  raw_sleep_wfi;
@@ -435,7 +433,7 @@ always @ (*) begin
 	`RVOPC_CSRRCI:    if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = |raw_rs1; raw_csr_ren = 1'b1 ;   raw_csr_wtype = CSR_WTYPE_C; raw_csr_w_imm = 1'b1; end else begin d_invalid_32bit = 1'b1; end
 
 	`RVOPC_FENCE:     begin raw_rs2 = X0; end  // NOP, note rs1/rd are zero in instruction
-	`RVOPC_FENCE_I:   if (EXTENSION_ZIFENCEI)    begin raw_branchcond = debug_mode ? BCOND_NEVER : BCOND_ALWAYS; raw_fence_i = 1'b1;                                        end else begin d_invalid_32bit = 1'b1; end // note rs1/rs2/rd are zero in instruction
+	`RVOPC_FENCE_I:   if (EXTENSION_ZIFENCEI)    begin raw_except = debug_mode ? EXCEPT_NONE : EXCEPT_REFETCH; raw_fence_i = 1'b1;                                          end else begin d_invalid_32bit = 1'b1; end // note rs1/rs2/rd are zero in instruction
 	`RVOPC_ECALL:     if (HAVE_CSR)              begin raw_except = m_mode || !U_MODE ? EXCEPT_ECALL_M : EXCEPT_ECALL_U;  raw_rs2 = X0; raw_rs1 = X0; raw_rd = X0;          end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_EBREAK:    if (HAVE_CSR)              begin raw_except = EXCEPT_EBREAK; raw_rs2 = X0; raw_rs1 = X0; raw_rd = X0;                                                 end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_MRET:      if (HAVE_CSR && m_mode)    begin raw_except = EXCEPT_MRET;   raw_rs2 = X0; raw_rs1 = X0; raw_rd = X0;                                                 end else begin d_invalid_32bit = 1'b1; end
@@ -484,8 +482,6 @@ always @ (*) begin
 		d_sleep_wfi       = 1'b0;
 		d_sleep_block     = 1'b0;
 		d_sleep_unblock   = 1'b0;
-		// Ensure address bus is 0 in reset if register file is resettable:
-		d_addr_is_regoffs = 1'b1;
 
 		if (EXTENSION_M)
 			d_aluop = ALUOP_ADD;

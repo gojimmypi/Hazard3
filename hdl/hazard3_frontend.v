@@ -50,12 +50,14 @@ module hazard3_frontend #(
 	// Note reg/wire distinction
 	// => decode is providing live feedback on the CIR it is decoding,
 	//    which we fetched previously
-	output reg  [31:0]       cir,
-	output reg  [1:0]        cir_vld,        // number of valid halfwords in CIR
-	input  wire [1:0]        cir_use,        // number of halfwords D intends to consume
-	                                         // *may* be a function of hready
-	output wire [1:0]        cir_err,        // Bus error on upper/lower halfword of CIR.
-	output wire [1:0]        cir_predbranch, // Set for last halfword of a predicted-taken branch
+	output wire [31:0]       cir,
+	output reg  [1:0]        cir_vld,          // number of valid halfwords in CIR
+	input  wire [1:0]        cir_use,          // number of halfwords D intends to consume
+	                                           // *may* be a function of hready
+	output wire [1:0]        cir_err,          // Bus error on upper/lower halfword of CIR.
+	output wire [1:0]        cir_predbranch,   // Set for last halfword of a predicted-taken branch
+	output wire              cir_break_any,    // Set for exact match of a breakpoint address on CIR LSB
+	output wire              cir_break_d_mode, // As above but specifically break to debug mode
 
 	// "flush_behind": do not flush the oldest instruction when accepting a
 	//  jump request (but still flush younger instructions). Sometimes a
@@ -90,7 +92,19 @@ module hazard3_frontend #(
 	input  wire              debug_mode,
 	input  wire [W_DATA-1:0] dbg_instr_data,
 	input  wire              dbg_instr_data_vld,
-	output wire              dbg_instr_data_rdy
+	output wire              dbg_instr_data_rdy,
+
+	// PMP query->kill interface for X permission checks
+	output wire [W_ADDR-1:0] pmp_i_addr,
+	output wire              pmp_i_m_mode,
+	input  wire              pmp_i_kill,
+
+	// Trigger unit query->break interface for breakpoints
+	output wire [W_ADDR-1:0] trigger_addr,
+	output wire              trigger_m_mode,
+	input  wire [1:0]        trigger_break_any,
+	input  wire [1:0]        trigger_break_d_mode
+
 );
 
 `include "rv_opcodes.vh"
@@ -106,20 +120,34 @@ localparam FIFO_DEPTH = 2;
 wire jump_now = jump_target_vld && jump_target_rdy;
 reg [1:0] mem_data_hwvld;
 
+// PMP X faults are checked in parallel with the fetch (fine if executable
+// memory is read-idempotent) and failures are promoted to bus errors:
+wire pmp_kill_fetch_dph;
+wire mem_or_pmp_err = mem_data_err || pmp_kill_fetch_dph;
+
+// Similarly, breakpoint matches are checked during fetch data phase. These
+// are called mem_xxx because they are the breakpoint metadata for the data
+// coming back from memory in this dphase.
+wire [1:0] mem_break_any;
+wire [1:0] mem_break_d_mode;
+
 // Mark data as containing a predicted-taken branch instruction so that
 // mispredicts can be recovered -- need to track both halfwords so that we
 // can mark the entire instruction, and nothing but the instruction:
 reg [1:0] mem_data_predbranch;
 
-// Bus errors travel alongside data. They cause an exception if the core tries
-// to decode the instruction, but until then can be flushed harmlessly.
+// Bus errors (and other metadata) travel alongside data. They cause an
+// exception if the core decodes the instruction, but until then can be
+// flushed harmlessly.
 
-reg  [W_DATA-1:0]    fifo_mem        [0:FIFO_DEPTH];
-reg                  fifo_err        [0:FIFO_DEPTH];
-reg  [1:0]           fifo_predbranch [0:FIFO_DEPTH];
-reg  [1:0]           fifo_valid_hw   [0:FIFO_DEPTH];
-reg                  fifo_valid      [0:FIFO_DEPTH];
-reg                  fifo_valid_m1   [0:FIFO_DEPTH];
+reg  [W_DATA-1:0]    fifo_mem          [0:FIFO_DEPTH];
+reg                  fifo_err          [0:FIFO_DEPTH];
+reg  [1:0]           fifo_break_any    [0:FIFO_DEPTH];
+reg  [1:0]           fifo_break_d_mode [0:FIFO_DEPTH];
+reg  [1:0]           fifo_predbranch   [0:FIFO_DEPTH];
+reg  [1:0]           fifo_valid_hw     [0:FIFO_DEPTH];
+reg                  fifo_valid        [0:FIFO_DEPTH];
+reg                  fifo_valid_m1     [0:FIFO_DEPTH];
 
 wire [W_DATA-1:0] fifo_rdata       = fifo_mem[0];
 wire              fifo_full        = fifo_valid[FIFO_DEPTH - 1];
@@ -135,8 +163,9 @@ always @ (*) begin: boundary_conditions
 	fifo_mem[FIFO_DEPTH] = mem_data;
 	fifo_predbranch[FIFO_DEPTH] = 2'b00;
 	fifo_err[FIFO_DEPTH] = 1'b0;
-	fifo_valid_hw[FIFO_DEPTH] = 2'b00;
-	for (i = 0; i < FIFO_DEPTH; i = i + 1) begin
+	fifo_break_any[FIFO_DEPTH] = 2'b00;
+	fifo_break_d_mode[FIFO_DEPTH] = 2'b00;
+	for (i = 0; i <= FIFO_DEPTH; i = i + 1) begin
 		fifo_valid[i] = |EXTENSION_C ? |fifo_valid_hw[i] : fifo_valid_hw[i][0];
 		// valid-to-right condition: i == 0 || fifo_valid[i - 1], but without
 		// using negative array bound (seems broken in Yosys?) or OOB in the
@@ -156,14 +185,22 @@ always @ (posedge clk or negedge rst_n) begin: fifo_update
 			fifo_valid_hw[i] <= 2'b00;
 			fifo_mem[i] <= 32'h0;
 			fifo_err[i] <= 1'b0;
+			fifo_break_any[i] <= 2'b00;
+			fifo_break_d_mode[i] <= 2'b00;
 			fifo_predbranch[i] <= 2'b00;
 		end
+		// This exists only for loop boundary conditions, but is tied off in
+		// this synchronous process to work around a Verilator scheduling
+		// issue (see issue #21)
+		fifo_valid_hw[FIFO_DEPTH] <= 2'b00;
 	end else begin
 		for (i = 0; i < FIFO_DEPTH; i = i + 1) begin
 			if (fifo_pop || (fifo_push && !fifo_valid[i])) begin
-				fifo_mem[i]        <= fifo_valid[i + 1] ? fifo_mem[i + 1]        : mem_data;
-				fifo_err[i]        <= fifo_valid[i + 1] ? fifo_err[i + 1]        : mem_data_err;
-				fifo_predbranch[i] <= fifo_valid[i + 1] ? fifo_predbranch[i + 1] : mem_data_predbranch;
+				fifo_mem[i]          <= fifo_valid[i + 1] ? fifo_mem[i + 1]          : mem_data;
+				fifo_err[i]          <= fifo_valid[i + 1] ? fifo_err[i + 1]          : mem_or_pmp_err;
+				fifo_break_any[i]    <= fifo_valid[i + 1] ? fifo_break_any[i + 1]    : mem_break_any;
+				fifo_break_d_mode[i] <= fifo_valid[i + 1] ? fifo_break_d_mode[i + 1] : mem_break_d_mode;
+				fifo_predbranch[i]   <= fifo_valid[i + 1] ? fifo_predbranch[i + 1]   : mem_data_predbranch;
 			end
 			fifo_valid_hw[i] <=
 				jump_now                                   ? 2'h0                            :
@@ -181,16 +218,22 @@ always @ (posedge clk or negedge rst_n) begin: fifo_update
 			fifo_mem[0] <= dbg_instr_data;
 			fifo_err[0] <= 1'b0;
 			fifo_predbranch[0] <= 2'b00;
+			fifo_break_any[0] <= 2'b00;
+			fifo_break_d_mode[0] <= 2'b00;
 			fifo_valid_hw[0] <= jump_now ? 2'b00 : 2'b11;
 		end
-`ifdef HAZARD3_ASSERTIONS
-		// FIFO validity must be compact, so we can always consume from the end
-		if (!fifo_valid[0]) begin
-			assert(!fifo_valid[1]);
-		end
-`endif
+		fifo_valid_hw[FIFO_DEPTH] <= 2'b00;
 	end
 end
+
+`ifdef HAZARD3_ASSERTIONS
+always @ (posedge clk) if (rst_n) begin
+	// FIFO validity must be compact, so we can always consume from the end
+	if (!fifo_valid[0]) begin
+		assert(!fifo_valid[1]);
+	end
+end
+`endif
 
 assign pwrdown_ok = fifo_full && !jump_target_vld;
 
@@ -224,6 +267,7 @@ if (BRANCH_PREDICTOR) begin: have_btb
 end else begin: no_btb
 	always @ (*) begin
 		btb_src_addr = {W_ADDR{1'b0}};
+		btb_src_size = 1'b0;
 		btb_target_addr = {W_ADDR{1'b0}};
 		btb_valid = 1'b0;
 	end
@@ -237,7 +281,7 @@ endgenerate
 // Note this assumes the BTB target has not changed by the time the predicted
 // branch arrives at decode! This is always true because the only way for the
 // target address to change is when an older branch is taken, which would
-// flush the younger predicted-taken branch before it reaches decode. 
+// flush the younger predicted-taken branch before it reaches decode.
 
 assign btb_target_addr_out = btb_target_addr;
 
@@ -305,11 +349,14 @@ always @ (posedge clk or negedge rst_n) begin
 		// This should be impossible, but assert to be sure, because it *will*
 		// change the fetch address (and we shouldn't check it in hardware if
 		// we can prove it doesn't happen)
-`ifdef HAZARD3_ASSERTIONS
-		assert(!(jump_target_vld && reset_holdoff));
-`endif
 	end
 end
+
+`ifdef HAZARD3_ASSERTIONS
+always @ (posedge clk) if (rst_n) begin
+	assert(!(jump_target_vld && reset_holdoff));
+end
+`endif
 
 reg [W_ADDR-1:0] mem_addr_r;
 reg              mem_priv_r;
@@ -372,11 +419,6 @@ always @ (posedge clk or negedge rst_n) begin
 		pending_fetches <= 2'h0;
 		ctr_flush_pending <= 2'h0;
 	end else begin
-`ifdef HAZARD3_ASSERTIONS
-		assert(ctr_flush_pending <= pending_fetches);
-		assert(pending_fetches < 2'd3);
-		assert(!(mem_data_vld && !pending_fetches));
-`endif
 		mem_addr_hold <= mem_addr_vld && !mem_addr_rdy;
 		pending_fetches <= pending_fetches_next;
 		if (jump_now) begin
@@ -386,6 +428,14 @@ always @ (posedge clk or negedge rst_n) begin
 		end
 	end
 end
+
+`ifdef HAZARD3_ASSERTIONS
+always @ (posedge clk) if (rst_n) begin
+	assert(ctr_flush_pending <= pending_fetches);
+	assert(pending_fetches < 2'd3);
+	assert(!(mem_data_vld && !pending_fetches));
+end
+`endif
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -406,7 +456,7 @@ always @ (posedge clk or negedge rst_n) begin
 		end else if (mem_addr_vld && mem_addr_rdy) begin
 			if (|EXTENSION_C) begin
 				// If a predicted-taken branch instruction only spans the first
-				// half of a word, need to flag the second half as invalid. 
+				// half of a word, need to flag the second half as invalid.
 				mem_data_hwvld <= mem_aph_hwvld & {
 					!(|BRANCH_PREDICTOR && btb_match_now && (btb_src_addr[1] == btb_src_size)),
 					1'b1
@@ -430,135 +480,223 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 // ----------------------------------------------------------------------------
-// Instruction assembly yard
+// PMP and trigger unit interfacing: query -> kill/break
 
-// buf_level is the number of valid halfwords in {hwbuf, cir}.
-reg [1:0] buf_level;
-reg [W_BUNDLE-1:0] hwbuf;
+wire [W_ADDR-1:0] pmp_trigger_check_dph_addr;
+wire              pmp_trigger_check_dph_m_mode;
 
-wire [W_DATA-1:0] fetch_data = fifo_empty ? mem_data : fifo_rdata;
-wire [1:0] fetch_data_hwvld = fifo_empty ? mem_data_hwvld : fifo_valid_hw[0];
-wire fetch_data_vld = !fifo_empty || (mem_data_vld && ~|ctr_flush_pending && !debug_mode);
+// Register the fetch address into stage F so that the PMP can check it in
+// parallel with the bus data phase. Feels wasteful to have a separate
+// register, but using the fetch_addr counter is fraught due to the way that
+// new addresses go into it or past it (depending on aphase hold).
 
-wire [2*W_BUNDLE-1:0] fetch_data_aligned = {
-	fetch_data[W_BUNDLE +: W_BUNDLE],
-	fetch_data_hwvld[0] || ~|EXTENSION_C ?
-		fetch_data[0 +: W_BUNDLE] : fetch_data[W_BUNDLE +: W_BUNDLE]
+generate
+if (PMP_REGIONS > 0 || DEBUG_SUPPORT != 0) begin: have_check_reg
+
+	reg [W_ADDR-1:0] check_addr_dph;
+	reg              check_m_mode_dph;
+	always @ (posedge clk or negedge rst_n) begin
+		if (!rst_n) begin
+			check_addr_dph <= {W_ADDR{1'b0}};
+			check_m_mode_dph <= 1'b0;
+		end else if (mem_addr_vld && mem_addr_rdy) begin
+			check_addr_dph <= mem_addr;
+			check_m_mode_dph <= mem_priv;
+		end
+	end
+
+	assign pmp_trigger_check_dph_addr = check_addr_dph;
+	assign pmp_trigger_check_dph_m_mode = check_m_mode_dph;
+
+end else begin: no_check_reg
+
+	assign pmp_trigger_check_dph_addr = {W_ADDR{1'b0}};
+	assign pmp_trigger_check_dph_m_mode = 1'b0;
+
+end
+endgenerate
+
+generate
+if (PMP_REGIONS == 0) begin: no_pmp
+
+	assign pmp_i_addr = {W_ADDR{1'b0}};
+	assign pmp_i_m_mode = 1'b0;
+	assign pmp_kill_fetch_dph = 1'b0;
+
+end else begin: have_pmp
+
+	assign pmp_i_addr = pmp_trigger_check_dph_addr;
+	assign pmp_i_m_mode = pmp_trigger_check_dph_m_mode;
+	assign pmp_kill_fetch_dph = pmp_i_kill && !debug_mode;
+
+end
+endgenerate
+
+generate
+if (DEBUG_SUPPORT == 0) begin: no_triggers
+
+	assign trigger_addr = {W_ADDR{1'b0}};
+	assign trigger_m_mode = 1'b0;
+	assign mem_break_any = 2'b00;
+	assign mem_break_d_mode = 2'b00;
+
+end else begin: have_triggers
+
+	assign trigger_addr = pmp_trigger_check_dph_addr;
+	assign trigger_m_mode = pmp_trigger_check_dph_m_mode;
+	assign mem_break_any = trigger_break_any & {|EXTENSION_C, 1'b1};
+	assign mem_break_d_mode = trigger_break_d_mode & {|EXTENSION_C, 1'b1};
+
+end
+endgenerate
+
+// ----------------------------------------------------------------------------
+// Instruction buffer
+
+// The instruction buffer is a 3 x ~16-bit shift register:
+//
+// * 2 x 16-bit entries form the 32-bit current instruction register (CIR)
+//   which is the processor's decode window
+//
+// * 1 x 16-bit entry allows the decode window to be non-32-bit-aligned with
+//   respect to the 2 x 32-bit prefetch queue entries, which are always
+//   naturally aligned in memory (if fully populated).
+//
+// The third entry should be trimmed for non-RVC configurations due to
+// constant-folding on EXTENSION_C; it is unnecessary here because the
+// instructions are always 32-bit-aligned.
+
+// The entries ("slots") are slightly larger than 16 bits because they also
+// contain metadata like bus errors:
+localparam W_SLOT                = 4 + W_BUNDLE;
+localparam SLOT_BREAK_ANY_BIT    = 3 + W_BUNDLE;
+localparam SLOT_BREAK_D_MODE_BIT = 2 + W_BUNDLE;
+localparam SLOT_ERR_BIT          = 1 + W_BUNDLE;
+localparam SLOT_PREDBRANCH_BIT   = 0 + W_BUNDLE;
+
+reg  [3*W_SLOT-1:0] buf_contents;
+reg  [1:0]          buf_level;
+
+wire                fetch_data_vld   = !fifo_empty || (mem_data_vld && ~|ctr_flush_pending && !debug_mode);
+
+wire [W_DATA-1:0]   fetch_data         = fifo_empty ? mem_data            : fifo_rdata;
+wire [1:0]          fetch_data_hwvld   = fifo_empty ? mem_data_hwvld      : fifo_valid_hw[0];
+wire                fetch_bus_err      = fifo_empty ? mem_or_pmp_err      : fifo_err[0];
+wire [1:0]          fetch_break_any    = fifo_empty ? mem_break_any       : fifo_break_any[0];
+wire [1:0]          fetch_break_d_mode = fifo_empty ? mem_break_d_mode    : fifo_break_d_mode[0];
+wire [1:0]          fetch_predbranch   = fifo_empty ? mem_data_predbranch : fifo_predbranch[0];
+
+wire [W_SLOT-1:0] fetch_contents_hw1 = {
+	fetch_break_any[1],
+	fetch_break_d_mode[1],
+	fetch_bus_err,
+	fetch_predbranch[1],
+	fetch_data[W_BUNDLE +: W_BUNDLE]
 };
 
-// Shift any recycled instruction data down to backfill D's consumption
-// We don't care about anything which is invalid or will be overlaid with fresh data,
-// so choose these values in a way that minimises muxes
-wire [3*W_BUNDLE-1:0] instr_data_shifted =
-	cir_use[1]                ? {hwbuf, cir[W_BUNDLE +: W_BUNDLE], hwbuf} :
-	cir_use[0] && EXTENSION_C ? {hwbuf, hwbuf, cir[W_BUNDLE +: W_BUNDLE]} :
-	                            {hwbuf, cir};
+wire [W_SLOT-1:0] fetch_contents_hw0 = {
+	fetch_break_any[0],
+	fetch_break_d_mode[0],
+	fetch_bus_err,
+	fetch_predbranch[0],
+	fetch_data[0 +: W_BUNDLE]
+};
+
+wire [2*W_SLOT-1:0] fetch_contents_aligned = {
+	fetch_contents_hw1,
+	fetch_data_hwvld[0] || ~|EXTENSION_C ? fetch_contents_hw0 : fetch_contents_hw1
+};
+
+// Shift not-yet-used contents down to backfill D's consumption. We don't care
+// about anything which is invalid or will be overlaid with fresh data, so
+// choose these values in a way that minimises muxes.
+wire [3*W_SLOT-1:0] buf_shifted =
+	cir_use[1]                ? {buf_contents[W_SLOT +: 2 * W_SLOT], buf_contents[2 * W_SLOT +: W_SLOT]} :
+	cir_use[0] && EXTENSION_C ? {buf_contents[2 * W_SLOT +: W_SLOT], buf_contents[W_SLOT +: 2 * W_SLOT]} :
+	                            buf_contents;
 
 wire [1:0] level_next_no_fetch = buf_level - cir_use;
 
-// Overlay fresh fetch data onto the shifted/recycled instruction data
-// Again, if something won't be looked at, generate cheapest possible garbage.
+// Overlay fresh fetch data onto the shifted/recycled buffer contents. Again,
+// if something won't be looked at, generate the cheapest possible garbage.
 assign cir_room_for_fetch = level_next_no_fetch <= (|EXTENSION_C && ~&fetch_data_hwvld ? 2'h2 : 2'h1);
 assign fifo_pop = cir_room_for_fetch && !fifo_empty;
 
-wire [3*W_BUNDLE-1:0] instr_data_plus_fetch =
-	!cir_room_for_fetch                    ? instr_data_shifted :
-	level_next_no_fetch[1] && |EXTENSION_C ? {fetch_data_aligned[0 +: W_BUNDLE], instr_data_shifted[0 +: 2 * W_BUNDLE]} :
-	level_next_no_fetch[0] && |EXTENSION_C ? {fetch_data_aligned, instr_data_shifted[0 +: W_BUNDLE]} :
-	                                         {instr_data_shifted[2 * W_BUNDLE +: W_BUNDLE], fetch_data_aligned};
-
-// Also keep track of bus errors associated with CIR contents, shifted in the
-// same way as instruction data. Errors may come straight from the bus, or
-// may be buffered in the prefetch queue.
-
-wire fetch_bus_err = fifo_empty ? mem_data_err : fifo_err[0];
-
-reg  [2:0] cir_bus_err;
-wire [2:0] cir_bus_err_shifted =
-	cir_use[1]                ? cir_bus_err >> 2 :
-	cir_use[0] && EXTENSION_C ? cir_bus_err >> 1 : cir_bus_err;
-
-wire [2:0] cir_bus_err_plus_fetch =
-	!cir_room_for_fetch                    ? cir_bus_err_shifted :
-	level_next_no_fetch[1] && |EXTENSION_C ? {fetch_bus_err, cir_bus_err_shifted[1:0]} :
-	level_next_no_fetch[0] && |EXTENSION_C ? {{2{fetch_bus_err}}, cir_bus_err_shifted[0]} :
-	                                         {cir_bus_err_shifted[2], {2{fetch_bus_err}}};
-
-// And the same thing again for whether CIR contains a predicted-taken branch.
-// One day I should clean up this copy/paste.
-
-wire [1:0] fetch_predbranch = fifo_empty ? mem_data_predbranch : fifo_predbranch[0];
-wire [1:0] fetch_predbranch_aligned = {
-	fetch_predbranch[1],
-	fetch_data_hwvld[0] || ~|EXTENSION_C ? fetch_predbranch[0] : fetch_predbranch[1]
-};
-
-
-reg  [2:0] cir_predbranch_reg;
-wire [2:0] cir_predbranch_shifted =
-	cir_use[1]                ? cir_predbranch_reg >> 2 :
-	cir_use[0] && EXTENSION_C ? cir_predbranch_reg >> 1 : cir_predbranch_reg;
-
-wire [2:0] cir_predbranch_plus_fetch =
-	!cir_room_for_fetch                    ? cir_predbranch_shifted :
-	level_next_no_fetch[1] && |EXTENSION_C ? {fetch_predbranch_aligned[0], cir_predbranch_shifted[1:0]} :
-	level_next_no_fetch[0] && |EXTENSION_C ? {fetch_predbranch_aligned, cir_predbranch_shifted[0]} :
-	                                         {cir_predbranch_shifted[2], fetch_predbranch_aligned};
+wire [3*W_SLOT-1:0] buf_shifted_plus_fetch =
+	!cir_room_for_fetch                    ? buf_shifted :
+	level_next_no_fetch[1] && |EXTENSION_C ? {fetch_contents_aligned[0 +: W_SLOT], buf_shifted[0 +: 2 * W_SLOT]} :
+	level_next_no_fetch[0] && |EXTENSION_C ? {fetch_contents_aligned, buf_shifted[0 +: W_SLOT]} :
+	                                         {buf_shifted[2 * W_SLOT +: W_SLOT], fetch_contents_aligned};
 
 wire [1:0] fetch_fill_amount = cir_room_for_fetch && fetch_data_vld ? (
-	&fetch_data_hwvld ? 2'h2 : 2'h1
+	&fetch_data_hwvld || ~|EXTENSION_C ? 2'h2 : 2'h1
 ) : 2'h0;
 
-wire [1:0] buf_level_next =
-	jump_now && cir_flush_behind   ? (cir[1:0] == 2'b11 || ~|EXTENSION_C ? 2'h2 : 2'h1) :
-	jump_now                       ? 2'h0 : level_next_no_fetch + fetch_fill_amount;
+wire [1:0] buf_level_next = {1'b1, |EXTENSION_C} & (
+	jump_now && cir_flush_behind ? (cir[1:0] == 2'b11 || ~|EXTENSION_C ? 2'h2 : 2'h1) :
+	jump_now                     ? 2'h0 : level_next_no_fetch + fetch_fill_amount
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		buf_level <= 2'h0;
 		cir_vld <= 2'h0;
-		hwbuf <= 16'h0;
-		cir <= 32'h0;
-		cir_bus_err <= 3'h0;
-		cir_predbranch_reg <= 3'h0;
+		// Mysterious reset value ensures address buses are zero in reset
+		// (see definition of d_addr_offs in hazard3_decode)
+		buf_contents <= {{3 * W_SLOT - 2{1'b0}}, 2'b11};
 	end else begin
-`ifdef HAZARD3_ASSERTIONS
-		assert(cir_vld <= 2);
- 		assert(cir_use <= cir_vld);
- 		if (!jump_now)
-	 		assert(buf_level_next >= level_next_no_fetch);
-`endif
 		buf_level <= buf_level_next;
 		cir_vld <= buf_level_next & ~(buf_level_next >> 1'b1);
-		cir_bus_err <= cir_bus_err_plus_fetch;
-		cir_predbranch_reg <= cir_predbranch_plus_fetch;
-		{hwbuf, cir} <= instr_data_plus_fetch;
+		buf_contents <= buf_shifted_plus_fetch;
 	end
 end
 
 `ifdef HAZARD3_ASSERTIONS
-reg [1:0] property_past_buf_level; // Workaround for weird non-constant $past reset issue
-always @ (posedge clk or negedge rst_n) begin
+reg [1:0] prop_past_buf_level; // Workaround for weird non-constant $past reset issue
+always @ (posedge clk) begin
 	if (!rst_n) begin
-		property_past_buf_level <= 2'h0;
+		prop_past_buf_level <= 2'h0;
 	end else begin
-		property_past_buf_level <= buf_level;
+		prop_past_buf_level <= buf_level;
+
+		assert(cir_vld <= 2);
+		assert(cir_use <= cir_vld);
+		if (!jump_now) assert(buf_level_next >= level_next_no_fetch);
 		// We fetch 32 bits per cycle, max. If this happens it's due to negative overflow.
-		if (property_past_buf_level == 2'h0)
+		if (prop_past_buf_level == 2'h0)
 			assert(buf_level != 2'h3);
 	end
 end
 `endif
 
-assign cir_err = cir_bus_err[1:0];
-assign cir_predbranch = cir_predbranch_reg[1:0];
+assign cir = {
+	buf_contents[1 * W_SLOT +: W_BUNDLE],
+	buf_contents[0 * W_SLOT +: W_BUNDLE]
+};
+
+assign cir_err = {
+	buf_contents[1 * W_SLOT + SLOT_ERR_BIT],
+	buf_contents[0 * W_SLOT + SLOT_ERR_BIT]
+};
+
+assign cir_predbranch = {
+	buf_contents[1 * W_SLOT + SLOT_PREDBRANCH_BIT],
+	buf_contents[0 * W_SLOT + SLOT_PREDBRANCH_BIT]
+};
+
+assign cir_break_any = buf_contents[0 * W_SLOT + SLOT_BREAK_ANY_BIT] && |cir_vld;
+
+assign cir_break_d_mode = buf_contents[0 * W_SLOT + SLOT_BREAK_D_MODE_BIT] && |cir_vld;
 
 // ----------------------------------------------------------------------------
 // Register number predecode
 
-wire [31:0] next_instr = instr_data_plus_fetch[31:0];
-wire next_instr_is_32bit = next_instr[1:0] == 2'b11 || ~|EXTENSION_C;
+wire [31:0] next_instr = {
+	buf_shifted_plus_fetch[1 * W_SLOT +: W_BUNDLE],
+	buf_shifted_plus_fetch[0 * W_SLOT +: W_BUNDLE]
+};
 
+wire next_instr_is_32bit = next_instr[1:0] == 2'b11 || ~|EXTENSION_C;
 
 wire [3:0] uop_ctr = df_uop_step_next & {4{|EXTENSION_ZCMP}};
 
