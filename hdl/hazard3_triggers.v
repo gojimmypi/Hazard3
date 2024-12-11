@@ -375,6 +375,7 @@ wire exception_trigger_match =
 wire interrupt_trigger_match =
 	!x_d_mode && trigger_irq_dmode &&
 	(x_m_mode ? trigger_irq_m : trigger_irq_u) &&
+	event_interrupt &&
 	trigger_irq_cause[event_trap_cause] &&
 	IMPLEMENTED_IRQ_CAUSES[event_trap_cause];
 
