@@ -2,7 +2,7 @@
     "rtlDebugger.command": [
         "${workspaceFolder}/test/sim/tb_cxxrtl/tb",
         "--bin",
-        "/dev/zero",
+        "${workspaceFolder}/test/sim/hellow/tmp/hellow.bin",
         "--debug"
     ],
     "rtlDebugger.variableOptions": {
@@ -16,6 +16,9 @@
         },
         {
             "id": "cpu i_haddr"
+        },
+        {
+            "id": "d_haddr"
         }
     ]
 }
