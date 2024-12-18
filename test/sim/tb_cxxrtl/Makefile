@@ -1,5 +1,6 @@
 # To build single-core dual-port tb: make
 # To build dual-core single-port tb: make DOTF=tb_multicore.f
+# To build with debug agent support: make CDEFINES=CXXRTL_DEBUG_AGENT
 
 include ../project_paths.mk
 
