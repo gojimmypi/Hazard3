@@ -115,6 +115,7 @@ wire [1:0]           fd_cir_vld;
 wire [1:0]           df_cir_use;
 wire                 df_cir_flush_behind;
 wire [3:0]           df_uop_step_next;
+wire                 df_lspair_phase_next;
 
 wire                 x_btb_set;
 wire [W_ADDR-1:0]    x_btb_set_src_addr;
@@ -175,6 +176,7 @@ hazard3_frontend #(
 	.cir_use              (df_cir_use),
 	.cir_flush_behind     (df_cir_flush_behind),
 	.df_uop_step_next     (df_uop_step_next),
+	.df_lspair_phase_next (df_lspair_phase_next),
 
 	.pwrdown_ok           (f_frontend_pwrdown_ok),
 	.delay_first_fetch    (!pwrup_ack),
@@ -246,6 +248,7 @@ wire                 d_csr_ren;
 wire                 d_csr_wen;
 wire [1:0]           d_csr_wtype;
 wire                 d_csr_w_imm;
+wire [W_ADDR-1:0]    d_lspair_offset;
 
 wire                 x_jump_not_except;
 wire                 x_mmode_execution;
@@ -268,6 +271,7 @@ hazard3_decode #(
 	.df_cir_use           (df_cir_use),
 	.df_cir_flush_behind  (df_cir_flush_behind),
 	.df_uop_step_next     (df_uop_step_next),
+	.df_lspair_phase_next (df_lspair_phase_next),
 	.d_pc                 (d_pc),
 	.x_jump_not_except    (x_jump_not_except),
 
@@ -309,6 +313,7 @@ hazard3_decode #(
 	.d_sleep_unblock      (d_sleep_unblock),
 	.d_no_pc_increment    (d_no_pc_increment),
 	.d_uninterruptible    (d_uninterruptible),
+	.d_lspair_offset      (d_lspair_offset),
 	.d_fence_i            (d_fence_i)
 );
 
@@ -699,7 +704,10 @@ end
 // Supporting all branch types already requires rs1 + I-fmt, and pc + B-fmt.
 // B-fmt are almost identical to S-fmt, so we rs1 + S-fmt is almost free.
 
-wire [W_ADDR-1:0] x_addr_sum = (d_addr_is_regoffs ? x_rs1_bypass : d_pc) + d_addr_offs;
+wire [W_ADDR-1:0] x_addr_sum =
+	(d_lspair_offset & {W_ADDR{|EXTENSION_ZILSD}}) +
+	(d_addr_is_regoffs ? x_rs1_bypass : d_pc) +
+	d_addr_offs;
 
 always @ (*) begin
 	// Need to be careful not to use anything hready-sourced to gate htrans!

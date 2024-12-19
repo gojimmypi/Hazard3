@@ -20,6 +20,7 @@ module hazard3_decode #(
 	output wire [1:0]           df_cir_use,
 	output wire                 df_cir_flush_behind,
 	output wire [3:0]           df_uop_step_next,
+	output wire                 df_lspair_phase_next,
 	output wire [W_ADDR-1:0]    d_pc,
 
 	input  wire                 debug_mode,
@@ -61,6 +62,7 @@ module hazard3_decode #(
 	output reg                  d_sleep_unblock,
 	output wire                 d_no_pc_increment,
 	output wire                 d_uninterruptible,
+	output wire [W_ADDR-1:0]    d_lspair_offset,
 	output reg                  d_fence_i
 );
 
@@ -123,7 +125,7 @@ end
 // instruction (because uops in a sequence *which can except*, so excluding
 // the final sp adjust on popret/popretz, will all have the same PC as the
 // next uop, which will be in stage 2 when they take their exception)
-assign d_no_pc_increment = uop_nonfinal;
+assign d_no_pc_increment = uop_nonfinal || d_lspair_nonfinal;
 
 // Note !df_cir_flush_behind because the jump in cm.popret/popretz is
 // the *penultimate* instruction: we execute the stack adjustment in the
@@ -148,7 +150,9 @@ wire d_except_instr_bus_fault = fd_cir_vld > 2'd0 && fd_cir_err[0] ||
 	fd_cir_vld > 2'd1 && d_instr_is_32bit && fd_cir_err[1];
 
 assign d_starved = ~|fd_cir_vld || fd_cir_vld[0] && d_instr_is_32bit;
-wire d_stall = x_stall || d_starved || uop_nonfinal;
+
+wire d_lspair_nonfinal;
+wire d_stall = x_stall || d_starved || uop_nonfinal || d_lspair_nonfinal;
 
 assign df_cir_use =
 	d_starved || d_stall ? 2'h0 :
@@ -157,7 +161,7 @@ assign df_cir_use =
 // CIR Locking is required if we successfully assert a jump request, but
 // decode is stalled. It is not possible to gate the jump request if the
 // stall depends on bus stall (as this would create a through-path from bus
-// stall to bus request) so instead we instruct the frontent to preserve the
+// stall to bus request) so instead we instruct the frontend to preserve the
 // stalled instruction when flushing, and fill in behind it.
 //
 // Once the stall clears, the stalled instruction can execute its remaining
@@ -242,6 +246,62 @@ always @ (*) begin
 		d_addr_offs = 32'h0000_0000;
 	end
 end
+
+// ----------------------------------------------------------------------------
+// Track phase of load/store pair instructions (Zilsd and Zclsd)
+
+// This could be shared with uop_ctr (for Zcmp) but the two are fundamentally
+// different: Zcmp has 16-bit instructions which expand to sequences of
+// 32-bit, whereas Zilsd has multi-phase 32-bit instructions and Zclsd has
+// direct 16-bit aliases of those instructions. Therefore it's cleaner to
+// separate the phasing from the decompression for Zilsd/Zclsd.
+
+reg d_lspair_phase;
+
+// Reorder accesses to avoid clobbering rs1 (base) in first half of load:
+wire d_lspair_reg_sel = d_lspair_phase == d_instr[15];
+
+generate
+if (EXTENSION_ZILSD) begin: have_lspair_reg_sel
+
+	reg instr_is_lspair;
+	always @ (*) begin
+		casez ({d_invalid, fd_cir})
+			{1'b0, `RVOPC_LD}: instr_is_lspair = 1'b1;
+			{1'b0, `RVOPC_SD}: instr_is_lspair = 1'b1;
+			default:           instr_is_lspair = 1'b0;
+		endcase
+	end
+
+	always @ (posedge clk or negedge rst_n) begin
+		if (!rst_n) begin
+			d_lspair_phase <= 1'b0;
+		end else begin
+			d_lspair_phase <= df_lspair_phase_next;
+		end
+	end
+
+	assign df_lspair_phase_next =
+		!d_stall || f_jump_now      ? 1'b0 :
+		instr_is_lspair && !x_stall ? 1'b1 : d_lspair_phase;
+
+	assign d_lspair_nonfinal = instr_is_lspair && !d_lspair_phase;
+
+	assign d_lspair_offset = {
+		29'h0,
+		d_lspair_reg_sel && instr_is_lspair,
+		2'h0
+	};
+
+end else begin: no_lspair_reg_sel
+
+	always @ (*) d_lspair_phase = 1'b0;
+	assign df_lspair_phase_next = 1'b0;
+	assign d_lspair_nonfinal = 1'b0;
+	assign d_lspair_offset = 32'h0;
+
+end
+endgenerate
 
 // ----------------------------------------------------------------------------
 // Decode X controls
@@ -373,8 +433,12 @@ always @ (*) begin
 	`RVOPC_AMOOR_W:   if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_OR;   end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMIN_W:  if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MIN;  end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMAX_W:  if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MAX;  end else begin d_invalid_32bit = 1'b1; end
+
 	`RVOPC_AMOMINU_W: if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MINU; end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMAXU_W: if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MAXU; end else begin d_invalid_32bit = 1'b1; end
+
+	`RVOPC_LD:        if (EXTENSION_ZILSD) begin raw_addr_is_regoffs = 1'b1; raw_rs2 = X0; raw_memop = MEMOP_LW; raw_rd  = {d_instr[11: 8], d_lspair_reg_sel};                        end else begin d_invalid_32bit = 1'b1; end
+	`RVOPC_SD:        if (EXTENSION_ZILSD) begin raw_addr_is_regoffs = 1'b1; raw_rd  = X0; raw_memop = MEMOP_SW; raw_rs2 = {d_instr[24:21], d_lspair_reg_sel}; raw_aluop = ALUOP_RS2; end else begin d_invalid_32bit = 1'b1; end
 
 	`RVOPC_SH1ADD:    if (EXTENSION_ZBA)  begin raw_aluop = ALUOP_SHXADD;                                                              end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_SH2ADD:    if (EXTENSION_ZBA)  begin raw_aluop = ALUOP_SHXADD;                                                              end else begin d_invalid_32bit = 1'b1; end
@@ -424,7 +488,6 @@ always @ (*) begin
 	                                           raw_aluop = ALUOP_BEXTM;                                                                end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_H3_BEXTMI: if (EXTENSION_XH3BEXTM) begin
 	                                           raw_aluop = ALUOP_BEXTM;   raw_rs2 = X0; raw_imm = d_imm_i; raw_alusrc_b = ALUSRCB_IMM; end else begin d_invalid_32bit = 1'b1; end
-
 	`RVOPC_CSRRW:     if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = 1'b1  ;   raw_csr_ren = |raw_rd; raw_csr_wtype = CSR_WTYPE_W;                       end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_CSRRS:     if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = |raw_rs1; raw_csr_ren = 1'b1 ;   raw_csr_wtype = CSR_WTYPE_S;                       end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_CSRRC:     if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = |raw_rs1; raw_csr_ren = 1'b1 ;   raw_csr_wtype = CSR_WTYPE_C;                       end else begin d_invalid_32bit = 1'b1; end
