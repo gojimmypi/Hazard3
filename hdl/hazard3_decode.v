@@ -266,7 +266,7 @@ if (EXTENSION_ZILSD) begin: have_lspair_reg_sel
 
 	reg instr_is_lspair;
 	always @ (*) begin
-		casez ({d_invalid, fd_cir})
+		casez ({d_invalid || d_starved, fd_cir})
 			{1'b0, `RVOPC_LD}: instr_is_lspair = 1'b1;
 			{1'b0, `RVOPC_SD}: instr_is_lspair = 1'b1;
 			default:           instr_is_lspair = 1'b0;
