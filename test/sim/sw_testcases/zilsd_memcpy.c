@@ -1,4 +1,5 @@
 #include "tb_cxxrtl_io.h"
+#include "zilsd_macros.h"
 #include <stdint.h>
 
 #define BUF_WORDS 256
@@ -17,7 +18,7 @@ void __attribute__((naked)) copy1(void *dst, const void *src, uint32_t len) {
 		"bgeu a1, a2, 2f\n"
 	"1:\n"
 		// ld a4, a5, (a1)
-		".insn 4, 0x00003003 + (14 << 7) + (11 << 15)\n"
+		"zilsd_ld 14, 11, 0\n"
 		"sw a4, 0(a0)\n"
 		"sw a5, 4(a0)\n"
 		"addi a0, a0, 8\n"
@@ -44,7 +45,7 @@ void __attribute__((naked)) copy2(void *dst, const void *src, uint32_t len) {
 		"lw a4, 0(a1)\n"
 		"lw a5, 4(a1)\n"
 		// sd a4, a5, (a0)
-		".insn 4, 0x00003023 + (14 << 20) + (10 << 15)\n"
+		"zilsd_sd 14, 10, 0\n"
 		"addi a0, a0, 8\n"
 		"addi a1, a1, 8\n"
 		"bltu a1, a2, 1b\n"
@@ -66,13 +67,13 @@ void __attribute__((naked)) copy3(void *dst, const void *src, uint32_t len) {
 		"bgeu a1, a2, 2f\n"
 	"1:\n"
 		// ld a4, a5, 0(a1)
-		".insn 4, 0x00003003 + (14 <<  7) + (11 << 15)\n"
+		"zilsd_ld 14, 11, 0\n"
 		// ld a6, a7, 8(a1)
-		".insn 4, 0x00003003 + (16 <<  7) + (11 << 15) + (8 << 20)\n"
+		"zilsd_ld 16, 11, 8\n"
 		// sd a4, a5, 0(a0)
-		".insn 4, 0x00003023 + (14 << 20) + (10 << 15)\n"
+		"zilsd_sd 14, 10, 0\n"
 		// sd a6, a7, 8(a0)
-		".insn 4, 0x00003023 + (16 << 20) + (10 << 15) + (8 <<  7)\n"
+		"zilsd_sd 16, 10, 8\n"
 		"addi a0, a0, 16\n"
 		"addi a1, a1, 16\n"
 		"bltu a1, a2, 1b\n"
@@ -83,7 +84,6 @@ void __attribute__((naked)) copy3(void *dst, const void *src, uint32_t len) {
 		: "a4", "a5", "a6", "a7"
 	);
 }
-
 
 
 uint32_t buf0[BUF_WORDS];
