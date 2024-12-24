@@ -1,9 +1,25 @@
 #ifndef _ZILSD_MACROS_H
 #define _ZILSD_MACROS_H
 
+// Numerical index defines for common registers
+asm (
+".set x_ra, 1\n"
+".set x_sp, 2\n"
+".set x_s0, 8\n"
+".set x_s1, 9\n"
+".set x_a0, 10\n"
+".set x_a1, 11\n"
+".set x_a2, 12\n"
+".set x_a3, 13\n"
+".set x_a4, 14\n"
+".set x_a5, 15\n"
+".set x_a6, 16\n"
+".set x_a7, 17\n"
+);
+
 // Zilsd: ld
 asm (
-".macro zilsd_ld xdst, xbase, offset\n"
+".macro zilsd.ld xdst, xbase, offset\n"
 ".if \\xdst < 0 || \\xdst > 31\n"
 ".error \"Invalid xdst for ld\"\n"
 ".endif\n"
@@ -19,7 +35,7 @@ asm (
 
 // Zilsd: sd
 asm(
-".macro zilsd_sd xsrc, xbase, offset\n"
+".macro zilsd.sd xsrc, xbase, offset\n"
 ".if \\xsrc < 0 || \\xsrc > 31\n"
 ".error \"Invalid xsrc for sd\"\n"
 ".endif\n"

@@ -2,6 +2,9 @@
 #include "zilsd_macros.h"
 #include <stdint.h>
 
+// Test intent: basic coverage of ld and sd instructions in copy loops.
+// Intended to be easy to debug.
+
 #define BUF_WORDS 256
 
 static inline uint32_t test_pattern(uint32_t i) {
@@ -17,8 +20,7 @@ void __attribute__((naked)) copy1(void *dst, const void *src, uint32_t len) {
 		"add a2, a2, a1\n"
 		"bgeu a1, a2, 2f\n"
 	"1:\n"
-		// ld a4, a5, (a1)
-		"zilsd_ld 14, 11, 0\n"
+		"zilsd.ld x_a4, x_a1, 0\n"
 		"sw a4, 0(a0)\n"
 		"sw a5, 4(a0)\n"
 		"addi a0, a0, 8\n"
@@ -26,9 +28,6 @@ void __attribute__((naked)) copy1(void *dst, const void *src, uint32_t len) {
 		"bltu a1, a2, 1b\n"
 	"2:\n"
 		"ret\n"
-		:
-		:
-		: "a4", "a5", "a6", "a7"
 	);
 }
 
@@ -44,16 +43,12 @@ void __attribute__((naked)) copy2(void *dst, const void *src, uint32_t len) {
 	"1:\n"
 		"lw a4, 0(a1)\n"
 		"lw a5, 4(a1)\n"
-		// sd a4, a5, (a0)
-		"zilsd_sd 14, 10, 0\n"
+		"zilsd.sd x_a4, x_a0, 0\n"
 		"addi a0, a0, 8\n"
 		"addi a1, a1, 8\n"
 		"bltu a1, a2, 1b\n"
 	"2:\n"
 		"ret\n"
-		:
-		:
-		: "a4", "a5", "a6", "a7"
 	);
 }
 
@@ -66,22 +61,15 @@ void __attribute__((naked)) copy3(void *dst, const void *src, uint32_t len) {
 		"add a2, a2, a1\n"
 		"bgeu a1, a2, 2f\n"
 	"1:\n"
-		// ld a4, a5, 0(a1)
-		"zilsd_ld 14, 11, 0\n"
-		// ld a6, a7, 8(a1)
-		"zilsd_ld 16, 11, 8\n"
-		// sd a4, a5, 0(a0)
-		"zilsd_sd 14, 10, 0\n"
-		// sd a6, a7, 8(a0)
-		"zilsd_sd 16, 10, 8\n"
+		"zilsd.ld x_a4, x_a1, 0\n"
+		"zilsd.ld x_a6, x_a1, 8\n"
+		"zilsd.sd x_a4, x_a0, 0\n"
+		"zilsd.sd x_a6, x_a0, 8\n"
 		"addi a0, a0, 16\n"
 		"addi a1, a1, 16\n"
 		"bltu a1, a2, 1b\n"
 	"2:\n"
 		"ret\n"
-		:
-		:
-		: "a4", "a5", "a6", "a7"
 	);
 }
 
