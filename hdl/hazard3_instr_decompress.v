@@ -206,7 +206,7 @@ end else begin: instr_decompress
 			`RVOPC_C_LW:   instr_out = `RVOPC_NOZ_LW | rfmt_rd(rd_s) | rfmt_rs1(rs1_s)
 				| {5'h00, instr_in[5], instr_in[12:10], instr_in[6], 2'b00, 20'h00000};
 			`RVOPC_C_SW:   instr_out = `RVOPC_NOZ_SW | rfmt_rs2(rs2_s) | rfmt_rs1(rs1_s)
-				| {5'h00, instr_in[5], instr_in[12], 13'h000, instr_in[11:10], instr_in[6], 2'b00, 7'h00};
+				| {5'h00, instr_in[5], instr_in[12], 13'h0000, instr_in[11:10], instr_in[6], 2'b00, 7'h00};
 			`RVOPC_C_ADDI: instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(rd_l) | rfmt_rs1(rs1_l) | imm_ci;
 			`RVOPC_C_JAL:  instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'h1) | imm_cj;
 			`RVOPC_C_J:    instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'h0) | imm_cj;
@@ -305,22 +305,22 @@ end else begin: instr_decompress
 			// Optional Zclsd instructions:
 			`RVOPC_C_LD: begin
 				instr_out = `RVOPC_NOZ_LD | rfmt_rd(rd_s) | rfmt_rs1(rs1_s)
-					| {5'h00, instr_in[5], instr_in[12:10], instr_in[6], 2'b00, 20'h00000};
+					| {4'h00, instr_in[6:5], instr_in[12:10], 3'b000, 20'h00000};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
 			`RVOPC_C_SD: begin
 				instr_out = `RVOPC_NOZ_SD | rfmt_rs2(rs2_s) | rfmt_rs1(rs1_s)
-					| {5'h00, instr_in[5], instr_in[12], 13'h000, instr_in[11:10], instr_in[6], 2'b00, 7'h00};
+					| {4'h0, instr_in[6:5], instr_in[12], 13'h0000, instr_in[11:10], 3'b000, 7'h00};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
 			`RVOPC_C_LDSP: begin
 				instr_out = `RVOPC_NOZ_LD | rfmt_rd(rd_l) | rfmt_rs1(5'h2) |
-					{4'h0, instr_in[3:2], instr_in[12], instr_in[6:4], 2'b00, 20'h00000};
+					{3'h0, instr_in[4:2], instr_in[12], instr_in[6:5], 3'b000, 20'h00000};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD || ~|rd_l; // RESERVED
 			end
 			`RVOPC_C_SDSP: begin
 				instr_out = `RVOPC_NOZ_SD | rfmt_rs2(rs2_l) | rfmt_rs1(5'h2)
-					| {4'h0, instr_in[8:7], instr_in[12], 13'h0000, instr_in[11:9], 2'b00, 7'h00};
+					| {3'h0, instr_in[9:7], instr_in[12], 13'h0000, instr_in[11:10], 3'b000, 7'h00};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
 
