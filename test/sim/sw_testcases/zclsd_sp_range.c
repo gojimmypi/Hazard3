@@ -95,5 +95,95 @@ int main() {
 		);
 	}
 
+	tb_puts("Copying with ldsp\n");
+	// make all values in first half of testbuf unique (it currently repeats four times)
+	for (int i = 0; i < LDSP_RANGE / 4; ++i) {
+		if (testbuf[i] != 0) {
+			testbuf[i] += i << 16;
+		}
+	}
+
+
+	asm volatile (
+		// save gp as well as sp because gcc seems to ignore the clobber?
+		"addi sp, sp, -8\n"
+		"sw gp, 0(sp)\n"
+		"sw tp, 4(sp)\n"
+		"csrw mscratch, sp\n"
+		"la sp, testbuf\n"
+		"li ra, 0\n"
+		".set i, 0\n"
+		".rept 4\n"
+		// skip x0/x1 as this is reserved for ldsp
+		"zclsd.ldsp 2,  128 * i + 8\n"
+		"la sp, testbuf\n"
+		"zclsd.ldsp 4,  128 * i + 16\n"
+		"zclsd.ldsp 6,  128 * i + 24\n"
+		"zclsd.ldsp 8,  128 * i + 32\n"
+		"zclsd.ldsp 10, 128 * i + 40\n"
+		"zclsd.ldsp 12, 128 * i + 48\n"
+		"zclsd.ldsp 14, 128 * i + 56\n"
+		"zclsd.ldsp 16, 128 * i + 64\n"
+		"zclsd.ldsp 18, 128 * i + 72\n"
+		"zclsd.ldsp 20, 128 * i + 80\n"
+		"zclsd.ldsp 22, 128 * i + 88\n"
+		"zclsd.ldsp 24, 128 * i + 96\n"
+		"zclsd.ldsp 26, 128 * i + 104\n"
+		"zclsd.ldsp 28, 128 * i + 112\n"
+		"zclsd.ldsp 30, 128 * i + 120\n"
+		"sw x0,  512 + 128 * i + 0  (sp)\n"
+		"sw x1,  512 + 128 * i + 4  (sp)\n"
+		"sw x2,  512 + 128 * i + 8  (sp)\n"
+		"sw x3,  512 + 128 * i + 12 (sp)\n"
+		"sw x4,  512 + 128 * i + 16 (sp)\n"
+		"sw x5,  512 + 128 * i + 20 (sp)\n"
+		"sw x6,  512 + 128 * i + 24 (sp)\n"
+		"sw x7,  512 + 128 * i + 28 (sp)\n"
+		"sw x8,  512 + 128 * i + 32 (sp)\n"
+		"sw x9,  512 + 128 * i + 36 (sp)\n"
+		"sw x10, 512 + 128 * i + 40 (sp)\n"
+		"sw x11, 512 + 128 * i + 44 (sp)\n"
+		"sw x12, 512 + 128 * i + 48 (sp)\n"
+		"sw x13, 512 + 128 * i + 52 (sp)\n"
+		"sw x14, 512 + 128 * i + 56 (sp)\n"
+		"sw x15, 512 + 128 * i + 60 (sp)\n"
+		"sw x16, 512 + 128 * i + 64 (sp)\n"
+		"sw x17, 512 + 128 * i + 68 (sp)\n"
+		"sw x18, 512 + 128 * i + 72 (sp)\n"
+		"sw x19, 512 + 128 * i + 76 (sp)\n"
+		"sw x20, 512 + 128 * i + 80 (sp)\n"
+		"sw x21, 512 + 128 * i + 84 (sp)\n"
+		"sw x22, 512 + 128 * i + 88 (sp)\n"
+		"sw x23, 512 + 128 * i + 92 (sp)\n"
+		"sw x24, 512 + 128 * i + 96 (sp)\n"
+		"sw x25, 512 + 128 * i + 100(sp)\n"
+		"sw x26, 512 + 128 * i + 104(sp)\n"
+		"sw x27, 512 + 128 * i + 108(sp)\n"
+		"sw x28, 512 + 128 * i + 112(sp)\n"
+		"sw x29, 512 + 128 * i + 116(sp)\n"
+		"sw x30, 512 + 128 * i + 120(sp)\n"
+		"sw x31, 512 + 128 * i + 124(sp)\n"
+		".set i, (i + 1)\n"
+		".endr\n"
+		"csrr sp, mscratch\n"
+		"lw gp, 0(sp)\n"
+		"lw tp, 4(sp)\n"
+		"addi sp, sp, 8\n"
+		:
+		:
+		: "x1", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
+		  "x13", "x14", "x15", "x16", "x17", "x18", "x19", "x20", "x21", "x22",
+		  "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31", "memory"
+	);
+
+	tb_puts("Checking ldsp pattern\n");
+	for (int i = 0; i < LDSP_RANGE / 4; ++i) {
+		tb_assert(
+			testbuf[i] == testbuf[i + LDSP_RANGE / 4] || (i % 32) <= 2,
+			"Mismatch at %d: expected %08x, got %08x\n",
+			i, testbuf[i + LDSP_RANGE / 4], testbuf[i]
+		);
+	}
+
 	return 0;
 }
