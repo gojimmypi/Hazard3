@@ -723,7 +723,7 @@ wire [4:0] zcmp_mva01s_rs1 = uop_ctr[0] ? zcmp_sa01_r2s : zcmp_sa01_r1s;
 // "coarse" because the mapping of pair (x0, x1) -> (x0, x0) is not yet applied
 wire [4:0] zilsd_rs2_coarse      = {       next_instr[24:21], df_lspair_phase_next ^ ~next_instr[15]};
 wire [4:0] zclsd_sd_rs2_coarse   = {2'b01, next_instr[4:3],   df_lspair_phase_next ^ ~next_instr[7] };
-wire [4:0] zclsd_sdsp_rs2_coarse = {       next_instr[11:8],  df_lspair_phase_next ^ 1'b1           };
+wire [4:0] zclsd_sdsp_rs2_coarse = {       next_instr[6:3],   df_lspair_phase_next ^ 1'b1           };
 
 always @ (*) begin
 
@@ -780,7 +780,7 @@ always @ (*) begin
 	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BEQZ}: predecode_rs2_fine = 5'd0;    // -> beq rs1, x0, label
 	{1'b1, 1'bz, 1'bz, 16'hzzzz, `RVOPC_C_BNEZ}: predecode_rs2_fine = 5'd0;    // -> bne rs1, x0, label
 	{1'b1, 1'b1, 1'bz,           `RVOPC_SD    }: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[24:21]}};
-	{1'b1, 1'b1, 1'b1, 16'hzzzz, `RVOPC_C_SDSP}: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[11: 8]}};
+	{1'b1, 1'b1, 1'b1, 16'hzzzz, `RVOPC_C_SDSP}: predecode_rs2_fine = predecode_rs2_coarse & {5{|next_instr[ 6: 3]}};
 	default:                                     predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
 

@@ -7,6 +7,41 @@
 // does not clobber its base register (this is the same as zilsd_fault, but
 // using the equivalent zclsd instructions)
 
+/*EXPECTED-OUTPUT***************************************************************
+
+ld, clobber first, fault first
+mcause = 5
+ld, clobber first, fault second
+mcause = 5
+ld, clobber second, fault first
+mcause = 5
+ld, clobber second, fault second
+mcause = 5
+ld, clobber first, no fault
+ld, clobber second, no fault
+sd, even base, fault first
+mcause = 7
+sd, even base, fault second
+mcause = 7
+sd, odd base, fault first
+mcause = 7
+sd, odd base, fault second
+mcause = 7
+ld, align = 1
+mcause = 4
+sd, align = 1
+mcause = 6
+ld, align = 2
+mcause = 4
+sd, align = 2
+mcause = 6
+ld, align = 3
+mcause = 4
+sd, align = 3
+mcause = 6
+
+*******************************************************************************/
+
 void clear_exception_state(void) {
 	write_csr(mepc, 0);
 	write_csr(mcause, 0);
