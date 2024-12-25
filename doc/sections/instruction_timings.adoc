@@ -2,7 +2,7 @@
 
 All timings are given assuming perfect bus behaviour (no downstream bus stalls), and that the core is configured with `MULDIV_UNROLL = 2` and all other configuration options set for maximum performance.
 
-=== RV32I
+=== Base Instruction Set (RV32I)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -51,7 +51,7 @@ All timings are given assuming perfect bus behaviour (no downstream bus stalls),
 | `sb rs2, imm(rs1)` | 1 |
 |===
 
-=== M Extension
+=== Integer Multiply and Divide (M)
 
 Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1`. I.e. the sequential multiply/divide circuit processes two bits per cycle, and a separate dedicated multiplier is present for the `mul` instruction.
 
@@ -72,7 +72,7 @@ Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1
 | `remu rd, rs1, rs2` | 18 |
 |===
 
-=== A Extension
+=== Atomics (A)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -92,7 +92,7 @@ Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1
 |`amomaxu.w rd, rs2, (rs1)` | 4+ | 4 per attempt. Multiple attempts if reservation is lost.footnote:amo_timing[]
 |===
 
-=== C Extension
+=== Compressed Instructions (C or Zca)
 
 All C extension 16-bit instructions are aliases of base RV32I instructions. On Hazard3, they perform identically to their 32-bit counterparts.
 
@@ -115,7 +115,17 @@ A consequence of the C extension is that 32-bit instructions can be non-naturall
 | `ebreak` | 3 | Time given is for jumping to `mtvec`
 |===
 
-=== Bit Manipulation
+=== Load/Store Pair (Zilsd)
+
+[%autowidth.stretch, options="header"]
+|===
+| Instruction | Cycles | Note
+3+| Load/Store Pair
+| `ld rd, imm(rs1)` | 2 | Issues as two `lw`
+| `sd rs2, imm(rs1)` | 2 | Issues as two `sw`
+|===
+
+=== Bit Manipulation (Zba, Zbb, Zbc, Zbs)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -165,7 +175,7 @@ A consequence of the C extension is that 32-bit instructions can be non-naturall
 |`unzip rd, rs1`       | 1 |
 |===
 
-=== Zcb Extension
+=== Additional Basic Compressed Instructions (Zcb)
 
 Similarly to the C extension, this extension contains 16-bit variants of common 32-bit instructions:
 
@@ -175,7 +185,16 @@ Similarly to the C extension, this extension contains 16-bit variants of common 
 
 They perform identically to their 32-bit counterparts.
 
-=== Zcmp Extension
+=== Compressed Load/Store Pair (Zclsd)
+
+These 16-bit instructions behave identically to their 32-bit counterparts, namely:
+
+* `c.ld` expands to Zilsd `ld`
+* `c.ldsp` expands to Zilsd `ld`
+* `c.sd` expands to Zilsd `sd`
+* `c.sdsp` expands to Zilsd `sd`
+
+=== Push, Pop and Double Move (Zcmp)
 
 [%autowidth.stretch, options="header"]
 |===

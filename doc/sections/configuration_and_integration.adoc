@@ -269,6 +269,14 @@ Note Zca is equivalent to C, as we do not support the F extension.
 
 Default value: 0
 
+
+[[param-EXTENSION_ZCLSD]]
+===== EXTENSION_ZCLSD
+
+Support for Zclsd compressed load/store pair instructions.
+
+Requires: <<param-EXTENSION_ZILSD>>, <<param-EXTENSION_C>>.
+
 [[param-EXTENSION_ZCMP]]
 ===== EXTENSION_ZCMP
 Support for Zcmp push/pop and double-move instructions.
@@ -286,6 +294,15 @@ Support for the fence.i instruction. When the branch predictor is not present,
 this instruction is optional, since a plain branch/jump is sufficient to
 flush the instruction prefetch queue. When the branch predictor is enabled
 (<<param-BRANCH_PREDICTOR>> is 1), this instruction must be implemented.
+
+Default value: 0
+
+[[param-EXTENSION_ZILSD]]
+===== EXTENSION_ZILSD
+
+Support for Zilsd load/store pair instructions.
+
+Hazard3 issues a 64-bit load or store instruction as two 32-bit memory accesses. Therefore this extension improves code density but does not directly improve performance.
 
 Default value: 0
 

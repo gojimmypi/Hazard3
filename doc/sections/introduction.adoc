@@ -7,6 +7,7 @@ Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 * `A`: atomic memory operations, with AHB5 global exclusives
 * `C`: compressed instructions
 * `Zicsr`: CSR access
+* `Zilsd`: load/store pair
 * `Zba`: address generation
 * `Zbb`: basic bit manipulation
 * `Zbc`: carry-less multiplication
@@ -14,6 +15,7 @@ Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 * `Zbkb`: basic bit manipulation for scalar cryptography
 * `Zcb`: basic additional compressed instructions
 * `Zcmp`: push/pop and double-move compressed instructions
+* `Zclsd`: compressed load/store pair instructions
 * Debug, Machine and User privilege/execution modes
 * Privileged instructions `ECALL`, `EBREAK`, `MRET` and `WFI`
 * External debug support
@@ -79,12 +81,14 @@ These are links to the ratified versions of the base instruction set and extensi
 | `C` v2.0          | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
 | `Zicsr` v2.0      | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
 | `Zifencei` v2.0   | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
+| `Zilsd` v1.0-rc3 | https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf[Load/Store Pair for RV32 frozen v1.0-rc3]
 | `Zba` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbb` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbc` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbs` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbkb` v1.0.1     | https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf[Scalar Cryptography ISA extensions 20220218]
 | `Zcb` v1.0.3-1    | https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf[Code Size Reduction extensions frozen v1.0.3-1]
+| `Zclsd` v1.0-rc3 | https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf[Load/Store Pair for RV32 frozen v1.0-rc3]
 | `Zcmp` v1.0.3-1   | https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf[Code Size Reduction extensions frozen v1.0.3-1]
 | Machine ISA v1.12 | https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf[Privileged Architecture 20211203]
 | Debug v0.13.2     | https://riscv.org/wp-content/uploads/2019/03/riscv-debug-release.pdf[RISC-V External Debug Support 20190322]
