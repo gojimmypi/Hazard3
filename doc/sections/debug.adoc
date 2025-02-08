@@ -1,6 +1,6 @@
 == Debug
 
-Hazard3, along with its external debug components, implements version 0.13.2 of the RISC-V debug specification. It supports the following:
+Hazard3 implements version 0.13.2 of the RISC-V debug specification, including:
 
 * Run/halt/reset control (including halt-on-reset for each hart)
 * Abstract GPR access
@@ -38,6 +38,79 @@ The clock domain crossing (if any) occurs on the downstream port of the Debug Tr
 
 It is possible to instantiate multiple DMs, one per core, and attach them to a single Debug Transport Module. This is not the preferred topology, but it does allow multiple cores to be independently clocked. In this case, the first DM must be located at address `0x0` in the DMI address space, and you must set the `NEXT_DM_ADDR` parameter on each DM so that the debugger can walk the (null-terminated) linked list and discover all the DMs.
 
+=== Trigger Module
+
+Hazard3's Trigger Module generates synchronous traps to either Debug Mode or M-mode when certain pre-programmed conditions are met. It support four types of trigger: instruction address (breakpoint), interrupt, exception, and instruction count. The number of instruction address match triggers is configurable, and the remaining trigger types have one instance each.
+
+Use the following CSRs to configure individual triggers:
+
+* <<reg-tselect>>: Choose a trigger to configure. Implements exactly enough bits to index all implemented triggers; remaining bits are hardwired to 0
+* <<reg-tinfo>>: List the capabilities of the currently selected trigger (the supported values for `tdata1.type`)
+* <<reg-tdata1>>: Configure the trigger. Layout changes based on the value of `tdata1.type`
+* <<reg-tdata2>>: Further configuration, or address/data to match on
+* <<reg-tdata3>>: Supports filtering of triggers based on context -- not implemented on Hazard3, so hardwired to zero
+
+A compliant debugger can enumerate the triggers on a particular Hazard3 implementation using the standard method: incrementing `tselect` from 0, checking `tinfo` for each `tselect` index, and terminating when `tinfo` is 0 or `tselect` wraps.
+
+Hazard3 implements only a single trigger type for each `tselect` index. Therefore `tinfo` has only one bit set, and the `tdata1.type` field for each trigger is read-only, matching the bit set in `tinfo`.
+
+Most of Hazard3's triggers support a programmable `action` field, which determines whether the trigger targets M-mode (`action` = `0`) or Debug Mode (`action` = `1`).
+
+M-mode triggers generate an `ebreak` exception (`mcause` = `3`) with `mepc` pointing to the instruction which generated the trigger condition. This provides hardware support for self-hosted debuggers, such as an M-mode operating system supporting debug of U-mode applications on the same core.
+
+Debug Mode triggers enter Debug Mode with `dpc` pointing to the instruction which generated the trigger condition. The core ceases to execute instructions autonomously, and its internals become accessible to the external debug host.
+
+An `action` of `1` is ignored when that trigger's `tdata1.dmode` bit is clear. Only Debug Mode can modify this bit, and setting this bit prevents other modes from modifying the trigger's configuration. This effectively claims the trigger for external debugger use, and makes it unavailable to self-hosted debug software.
+
+==== Instruction Address Triggers
+
+The <<param-BREAKPOINT_TRIGGERS>> parameter configures the trigger unit with 0 or more hardware breakpoint comparators, assigned <<reg-tselect>> indices `0` through `BREAKPOINT_TRIGGERS - 1`. Each comparator continuously monitors the program counter for an exact match for its programmed address. When the comparator matches, the core takes a trap with `dpc` or `mepc` equal to the programmed breakpoint address.
+
+In standard RISC-V terms, these are instruction address match triggers, with the following characteristics as described by hardwired fields in `mcontrol` (aka <<reg-tdata1>>):
+
+* `tdata1.type` = `2`: address/data match
+* `mcontrol.timing` = `0`: trigger fires before the instruction executes
+* `mcontrol.select` = `0`: match on address (not data)
+* `mcontrol.match` = `0`: match on exact address
+* `mcontrol.store` = `load` = `0`: load/store address comparison not supported
+
+The `mcontrol.u` and `mcontrol.m` bits are fully implemented, and determine in which privilege modes the trigger will fire.
+
+The `mcontrol.action` field can be programmed with the value `0` or `1`, indicating a break to M-mode or D-mode respectively. D-mode breaks are taken only when `mcontrol.dmode` is set.
+
+`tdata2` contains the address to be matched on. The LSB of this register is hardwired to zero, as the RISC-V program counter never contains odd addresses. When compressed instruction support is disabled (<<param-EXTENSION_C>> is `0`), bit `1` is also hardwired to zero.
+
+The `mcontrol.execute` flag enables and disables the trigger (1/0).
+
+==== Instruction Count Trigger
+
+Hazard3 implements a single instruction count trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `0`.
+
+This trigger is hardwired with a `count` of `1`, and is intended to be a lightweight feature to support self-hosted M-mode single-stepping. Debug Mode already has this capability in the form of the `dcsr.step` flag, so the instruction count trigger supports `action` = `0` only (break to M-mode).
+
+The following configuration bits in <<reg-tdata1>> are _not_ hardwired:
+
+* `icount.m`: if `1`, enable the trigger in M-mode
+* `icount.u`: if `1`, enable the trigger in U-mode (only available when the <<param-U_MODE>> parameter is `1`)
+
+The trigger fires after one instruction successfully executes. `mepc` points to the next instruction in program order. Since `icount.count` is hardwired to `1`, hardware clears both the `m` and `u` flags after the trigger fires, to avoid repeat fires.
+
+IMPORTANT: As a deliberate departure from the 0.13.2 specification, the trigger does not fire on exceptions, because the resulting breakpoint exception would make the original exception unrecoverable and impossible to diagnose. To handle an exception occurring during single-stepping, catch the exception directly.
+
+To single-step a U-mode context from M-mode, set `icount.u` before returning to U-mode via `mret.` The U-mode context will trap back out after executing one instruction.
+
+To single-step an M-mode target, clear `tcontrol.mte`, then set `tcontrol.mpte` and `icount.m` before returning to an M-mode context via `mret`. The trigger is enabled after the return completes (via `mpte` shifting to `mte`), and the core traps back to the M-mode handler after executing one instruction in the M-mode returnee. The handler executes normally, because `mte` is cleared by the trap, and `icount.m` is cleared by the trigger match.
+
+To support the above behaviour, hardware does not clear `icount.m` or `icount.u` while `tcontrol.mte` is clear. See discussion https://github.com/riscv/riscv-debug-spec/pull/829#issuecomment-1492260861[here].
+
+==== Interrupt Trigger
+
+TODO
+
+==== Exception Trigger
+
+TODO
+
 === Implementation-defined behaviour
 
 Features implemented by the Hazard3 Debug Module (beyond the mandatory):
@@ -45,16 +118,16 @@ Features implemented by the Hazard3 Debug Module (beyond the mandatory):
 * Halt-on-reset, selectable per-hart
 * Program Buffer, size 2 words, `impebreak` = 1.
 * A single data register (`data0`) is implemented as a per-hart CSR accessible by the DM
-* `abstractauto` is supported on the `data0` register
+* `abstractauto` is supported on the `data0`, `progbuf0` and `progbuf1` registers
 * Up to 32 harts selectable via `hartsel`
+* Hart array mask selection
+* System bus access (optional)
 
 Not implemented:
 
-* Hart array mask selection
 * Abstract access memory
 * Abstract access CSR
 * Post-incrementing abstract access GPR
-* System bus access
 
 The core behaves as follows:
 
@@ -65,10 +138,10 @@ The core behaves as follows:
 ** Raises an illegal instruction exception when accessed outside of Debug Mode
 ** The DM ignores attempted core writes to the CSR, unless the DM is currently executing an abstract command on that core
 ** Used by the DM to implement abstract GPR access, by injecting CSR read/write instructions
-* `dcsr.stepie` is hardwired to 0 (no interrupts during single stepping)
-* `dcsr.stopcount` and `dcsr.stoptime` are hardwired to 1 (no counter or internal timer increment in debug mode)
-* `dcsr.mprven` is hardwired to 0
-* `dcsr.prv` is hardwired to 3 (M-mode)
+* `dcsr.stepie` is hardwired to `0` (no interrupts during single stepping)
+* `dcsr.stopcount` and `dcsr.stoptime` are hardwired to `1` (no counter or internal timer increment in debug mode)
+* `dcsr.mprven` is hardwired to `0`
+* `dcsr.prv` supports the values `3` (M-mode) and `0` (U-mode). If U-mode support is not configured, it is hardwired to `3`.
 
 See also <<debug-csr-section>> for more details on the core-side Debug Mode registers.
 

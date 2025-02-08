@@ -40,7 +40,7 @@ module hazard3_triggers #(
 	input  wire [W_DATA-1:0] cfg_wdata,
 	output reg  [W_DATA-1:0] cfg_rdata,
 
-	// Global trigger-to-M-mode enable (e.g. from tcontrol or mstatus.mie)
+	// Global trigger-to-M-mode enable from tcontrol
 	input  wire              trig_m_en,
 
 	// Fetch address query from stage F

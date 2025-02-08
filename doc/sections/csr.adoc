@@ -359,17 +359,40 @@ Hardwired to 0.
 
 === Standard Trigger CSRs
 
+[[reg-tselect]]
 ==== tselect
 
 Address: `0x7a0`
 
-Unimplemented. Reads as 0, write causes illegal instruction exception.
+TODO
 
-==== tdata1...3
+[[reg-tdata1]]
+==== tdata1
 
-Address: `0x7a1` through `0x7a3`
+Address: `0x7a1`
 
-Unimplemented. Access will cause an illegal instruction exception.
+TODO
+
+[[reg-tdata2]]
+==== tdata2
+
+Address: `0x7a2`
+
+TODO
+
+[[reg-tdata3]]
+==== tdata3
+
+Address: `0x7a3`
+
+Hardwired to zero.
+
+TODO
+
+[[reg-tinfo]]
+==== tinfo
+
+TODO
 
 [[debug-csr-section]]
 === Standard Debug Mode CSRs
