@@ -105,11 +105,25 @@ To support the above behaviour, hardware does not clear `icount.m` or `icount.u`
 
 ==== Interrupt Trigger
 
-TODO
+Hazard3 implements a single interrupt trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS + 1`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `1`.
+
+This trigger fires on a configurable subset of the interrupt cause values listed in the <<reg-mcause>> register description. `tdata2` contains a bitmap with one bit per cause value. The break is taken after the hardware interrupt entry sequence has taken place (e.g. the setting of `mcause`), but before the first instruction in the interrupt handler executes. `dpc` points to the first instruction in the interrupt handler.
+
+`action` is hardwired to `1` (Debug Mode entry), because all interrupts on Hazard3 target M-mode, so a breakpoint exception triggered by interrupt entry would make it impossible to return from the interrupt.
+
+The implemented bits are `11`, `7` and `3`, corresponding to `mip.meip`, `mip.mtip` and `mip.msip` respectively.
 
 ==== Exception Trigger
 
-TODO
+Hazard3 implements a single exception trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS + 2`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `2`.
+
+This trigger fires on a configurable subset of the exception cause values listed in the <<reg-mcause>> register description. `tdata2` contains a bitmap with one bit per cause value. The break is taken after the hardware exception entry sequence has taken place (e.g. the setting of `mcause`) but before the first instruction in the exception handler executes. `dpc` points to the first instruction in the exception handler.
+
+`action` is hardwired to `1` (Debug Mode entry) because all exceptions on Hazard3 target M-mode, so a breakpoint exception triggered by another exception would always make the original exception unrecoverable.
+
+Bits corresponding to causes impossible on a given Hazard3 implementation are hardwired to zero. For example, bit `0` (`mcause` = `0`, fetch alignment exception) is not implemented when <<param-EXTENSION_C>> is `1`, because there are no fetch alignment exceptions if compressed instructions are implemented.
+
+Bit `3` (`ebreak`) is also unimplemented. To catch `ebreak` execution from an external debugger, use the `dcsr.ebreakm` and `dcsr.ebreaku` flags.
 
 === Implementation-defined behaviour
 

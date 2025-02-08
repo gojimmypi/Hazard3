@@ -183,12 +183,14 @@ Trap vector base address. Read-write. Exactly which bits of `mtvec` can be modif
 
 NOTE: In the RISC-V specification, `mode` is a 2-bit write-any read-legal field in bits 1:0. Hazard3 implements this by hardwiring bit 1 to 0.
 
+[[reg-mscratch]]
 ==== mscratch
 
 Address: `0x340`
 
 Read-write 32-bit register. No specific hardware function -- available for software to swap with a register when entering a trap handler.
 
+[[reg-mepc]]
 ==== mepc
 
 Address: `0x341`
@@ -199,6 +201,7 @@ On Hazard3, bits 31:2 of `mepc` are capable of holding all 30-bit values. Bit 1 
 
 All traps on Hazard3 are precise. For example, a load/store bus error will set `mepc` to the exact address of the load/store instruction which encountered the fault.
 
+[[reg-mcause]]
 ==== mcause
 
 Address: `0x342`
