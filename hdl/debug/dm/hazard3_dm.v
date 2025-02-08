@@ -584,9 +584,9 @@ wire start_abstract_cmd = abstractcs_cmderr == CMDERR_OK && !abstractcs_busy && 
 wire dmi_access_illegal_when_busy =
 	(dmi_write && (
 		dmi_regaddr == ADDR_ABSTRACTCS || dmi_regaddr == ADDR_COMMAND || dmi_regaddr == ADDR_ABSTRACTAUTO ||
-		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF0)) ||
+		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF1)) ||
 	(dmi_read && (
-		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF0));
+		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF1));
 
 // Decode what acmd may be triggered on this cycle, and whether it is
 // supported -- command source may be a registered version of most recent
