@@ -38,6 +38,7 @@ The clock domain crossing (if any) occurs on the downstream port of the Debug Tr
 
 It is possible to instantiate multiple DMs, one per core, and attach them to a single Debug Transport Module. This is not the preferred topology, but it does allow multiple cores to be independently clocked. In this case, the first DM must be located at address `0x0` in the DMI address space, and you must set the `NEXT_DM_ADDR` parameter on each DM so that the debugger can walk the (null-terminated) linked list and discover all the DMs.
 
+[[section-trigger-module]]
 === Trigger Module
 
 Hazard3's Trigger Module generates synchronous traps to either Debug Mode or M-mode when certain pre-programmed conditions are met. It support four types of trigger: instruction address (breakpoint), interrupt, exception, and instruction count. The number of instruction address match triggers is configurable, and the remaining trigger types have one instance each.

@@ -362,19 +362,96 @@ Hardwired to 0.
 
 === Standard Trigger CSRs
 
+Trigger CSRs control Hazard3's trigger module, described in <<section-trigger-module>>. They are implemented if <<param-DEBUG_SUPPORT>> = `1`, and otherwise raise illegal instruction exceptions when accessed.
+
 [[reg-tselect]]
 ==== tselect
 
 Address: `0x7a0`
 
-TODO
+Implemented if: <<param-DEBUG_SUPPORT>> = `1`
+
+Select a trigger for configuration. The selected trigger is described in <<reg-tinfo>> and can be configured through <<reg-tdata1>> and <<reg-tdata2>>. See <<section-trigger-module>> for an overview of Hazard3's trigger capabilities.
+
+This register implements exactly enough bits to index the configured number of triggers. Remaining bits are hardwired to zero.
 
 [[reg-tdata1]]
 ==== tdata1
 
 Address: `0x7a1`
 
-TODO
+Configure the trigger selected by <<reg-tselect>>.
+
+[cols="10h,20h,~", options="header"]
+|===
+| Bits | Name | Description
+| 31:28 | `type` a| On Hazard3 this field is hardwired for a given value of <<reg-tselect>>:
+
+* `0`: no trigger
+* `2`: address/data match
+* `3`: instruction count
+* `4`: interrupt
+* `5`: exception
+
+| 27 | `dmode` | Claim this trigger for Debug Mode use. Only writable by Debug Mode. When set to 1, other modes cannot write to `tdata*` registers for this trigger. This bit must be set to enable Debug Mode entry from a trigger (`action` = `1`).
+
+Hazard3 hardwires this field to zero for the instruction count trigger, which only supports breaking to M-mode. It has normal read/write behaviour for other trigger types.
+|===
+
+The layout of bits `26:0` of this register depends on the value of `type`.
+
+[[reg-mcontrol]]
+===== mcontrol
+
+`mcontrol` is the alias for `tdata1` when `type` is `2` (address/data match trigger). Hazard3 implements only exact instruction address match (breakpoints).
+
+[cols="10h,20h,~", options="header"]
+|===
+| Bits | Name | Description
+| 26:21 | `maskmax` | Hardwired to zero; only exact matches are supported
+| 20 | `hit` | Hardwired to zero; this feature is not implemented
+| 19 | `select` | Hardwired to zero; only address matching is supported (not data matching)
+| 18 | `timing` | Hardwired to zero; the breakpoint takes place before the matching instruction executes (but after all earlier instructions in program order are observed to have completed)
+| 17:16 | `sizelo` | Hardwired to zero; all instruction sizes are matched
+| 15:12 | `action` | Supports the values `0` (break to M-mode `ebreak` exception handler) and `1` (break to Debug Mode). Bits 15:13 are hardwired to zero.
+
+An `action` of `0` is ignored when `tcontrol.mte` is `0`. An `action` of `1` is ignored when `dmode` is `0`.
+| 11 | `chain` | Hardwired to zero; chaining is not supported
+| 10:7 | `match` | Hardwired to zero; match is always on the exact address
+| 6 | `m` | Write 1 to enable matching during M-mode execution
+| 3 | `u` | Write 1 to enable matching during U-mode execution. Hardwired to zero if <<param-U_MODE>> = `0`.
+| 2 | `execute` | Write 1 to enable matching on instruction addresses
+| 1 | `store` | Hardwired to zero; store address/data matching is not supported
+| 0 | `load` | Hardwired to zero; load address/data matching is not supported
+|===
+
+[[reg-icount]]
+===== icount
+
+`icount` is the alias for `tdata1` when `type` is `3` (instruction count trigger).
+
+[cols="10h,20h,~", options="header"]
+|===
+| Bits | Name | Description
+| 24 | `hit` | Hardwired to zero; this feature is not implemented
+| 23:10 | `count` | Hardwired to `1`; only single-stepping is supported
+| 9 | `m` | Write 1 to enable matching during M-mode execution, if `tcontrol.mte` is also set. Self-clears when this trigger fires (in any privilege mode).
+| 6 | `u` | Write 1 to enable matching during U-mode execution. Hardwired to zero if <<param-U_MODE>> = `0`. Self-clears when this trigger fires (in any privilege mode).
+| 5:0 | `action` | Hardwired to `0`; this trigger only supports breaking to M-mode with an exception cause of `3` (`ebreak`). The corresponding Debug Mode functionality is already provided by `dcsr.step`.
+|===
+
+See <<section-icount-trigger>> for more information about this trigger's behaviour on Hazard3.
+
+[[reg-itrigger]]
+===== itrigger
+
+`itrigger` is the alias for `tdata1` when `type` is `4` (interrupt trigger).
+
+
+[[reg-etrigger]]
+===== etrigger
+
+`etrigger` is the alias for `tdata1` when `type` is `5` (exception trigger).
 
 [[reg-tdata2]]
 ==== tdata2
@@ -390,12 +467,26 @@ Address: `0x7a3`
 
 Hardwired to zero.
 
-TODO
-
 [[reg-tinfo]]
 ==== tinfo
 
-TODO
+Address: `0x7a4`
+
+Lists the capabilities of the trigger currently selected by <<reg-tselect>>. This takes the form of a bitmap of values supported by `tdata1.type`. For example, bit `2` being set (a value of `0x4`) indicates the trigger supports `type` = `2`, "address/data match".
+
+[cols="10h,~", options="header"]
+|===
+| Bits | Description
+| 5 | Supports `type` = `5`, exception trigger
+| 4 | Supports `type` = `4`, interrupt trigger
+| 3 | Supports `type` = `3`, instruction count trigger
+| 2 | Supports `type` = `2`, address/data match trigger
+| 0 | Supports `type` = `0`, disabled or no trigger
+|===
+
+Hazard3 triggers support only a single `type` each. Therefore `tinfo` always has exactly one bit set, and the `tdata1.type` field is read-only.
+
+If bit `0` is set, and no other bit is set, there is no trigger corresponding to the current value of `tselect`. There are also no triggers at higher values of `tselect`; trigger enumeration terminates at this point.
 
 [[debug-csr-section]]
 === Standard Debug Mode CSRs
