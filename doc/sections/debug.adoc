@@ -83,6 +83,7 @@ The `mcontrol.action` field can be programmed with the value `0` or `1`, indicat
 
 The `mcontrol.execute` flag enables and disables the trigger (1/0).
 
+[[section-icount-trigger]]
 ==== Instruction Count Trigger
 
 Hazard3 implements a single instruction count trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `0`.
@@ -104,6 +105,7 @@ To single-step an M-mode target, clear `tcontrol.mte`, then set `tcontrol.mpte` 
 
 To support the above behaviour, hardware does not clear `icount.m` or `icount.u` while `tcontrol.mte` is clear. See discussion https://github.com/riscv/riscv-debug-spec/pull/829#issuecomment-1492260861[here].
 
+[[section-interrupt-trigger]]
 ==== Interrupt Trigger
 
 Hazard3 implements a single interrupt trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS + 1`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `1`.
@@ -114,6 +116,7 @@ This trigger fires on a configurable subset of the interrupt cause values listed
 
 The implemented bits are `11`, `7` and `3`, corresponding to `mip.meip`, `mip.mtip` and `mip.msip` respectively.
 
+[[section-exception-trigger]]
 ==== Exception Trigger
 
 Hazard3 implements a single exception trigger, assigned <<reg-tselect>> index `BREAKPOINT_TRIGGERS + 2`. For example, if no breakpoint triggers are configured, it is accessed at `tselect` = `2`.

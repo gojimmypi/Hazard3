@@ -447,18 +447,48 @@ See <<section-icount-trigger>> for more information about this trigger's behavio
 
 `itrigger` is the alias for `tdata1` when `type` is `4` (interrupt trigger).
 
+[cols="10h,20h,~", options="header"]
+|===
+| Bits | Name | Description
+| 24 | `hit` | Hardwired to zero; this feature is not implemented
+| 9 | `m` | Write 1 to enable matching during M-mode execution, if `tcontrol.mte` is also set.
+| 6 | `u` | Write 1 to enable matching during U-mode execution. Hardwired to zero if <<param-U_MODE>> = `0`.
+| 5:0 | `action` | Hardwired to `1`; this trigger only supports breaking to Debug Mode (as an M-mode breakpoint exception triggered immediately after M-mode interrupt entry would be unrecoverable).
+|===
+
+See <<section-interrupt-trigger>> for more information about this trigger's behaviour on Hazard3.
 
 [[reg-etrigger]]
 ===== etrigger
 
 `etrigger` is the alias for `tdata1` when `type` is `5` (exception trigger).
 
+[cols="10h,20h,~", options="header"]
+|===
+| Bits | Name | Description
+| 24 | `hit` | Hardwired to zero; this feature is not implemented
+| 9 | `m` | Write 1 to enable matching during M-mode execution, if `tcontrol.mte` is also set.
+| 6 | `u` | Write 1 to enable matching during U-mode execution. Hardwired to zero if <<param-U_MODE>> = `0`.
+| 5:0 | `action` | Hardwired to `1`; this trigger only supports breaking to Debug Mode (as an M-mode breakpoint exception triggered immediately after M-mode interrupt entry would be unrecoverable).
+|===
+
+See <<section-exception-trigger>> for more information about this trigger's behaviour on Hazard3.
+
 [[reg-tdata2]]
 ==== tdata2
 
 Address: `0x7a2`
 
-TODO
+The interpretation of this CSR depends on the `type` field of <<reg-tdata1>>:
+
+[horizontal]
+`type` = `2`:: Address/data trigger: `tdata2` contains the address/data to be matched. On Hazard3 this is always an instruction address, and `tdata2` only implemenents enough bits to store any valid program counter (multiple of IALIGN).
+
+`type` = `3`:: Instruction count trigger: `tdata2` is hardwired to zero.
+
+`type` = `4`:: Interrupt trigger: `tdata2` contains a bitmap of the interrupt `mcause` values upon which this trigger will match. For example, setting bit `11` (value `0x800`) enables triggering on the machine external IRQ vector (`mip.meip`).
+
+`type` = `5`:: Exception trigger: `tdata2` contains a bitmap of the non-interrupt `mcause` values upon which this trigger will match. For example, setting bit `2` (value `0x4`) enables triggering on illegal instruction exceptions.
 
 [[reg-tdata3]]
 ==== tdata3
@@ -518,17 +548,18 @@ Debug control and status register. Access outside of Debug Mode will cause an il
 
 Fields not mentioned above are hardwired to 0.
 
-Hazard3 may set the following `dcsr.cause` values:
+Hazard3 may set the following `dcsr.cause` values on entry to Debug Mode:
 
 [cols="10h,~", options="header"]
 |===
 | Cause | Description
-| 1 | Processor entered Debug Mode due to an `ebreak` instruction executed in M-mode.
-| 3 | Processor entered Debug Mode due to a halt request, or a reset-halt request present when the core reset was released.
-| 4 | Processor entered Debug Mode after executing one instruction with single-stepping enabled.
+| `1` | An `ebreak` instruction executed in M-mode when `dcsr.ebreakm` was set, or U-mode when `dcsr.ebreaku` was set.
+| `2` | A trigger fired.
+| `3` | The Debug Module requested a processor halt, or a reset-halt request was present when the core reset was released.
+| `4` | The processor executed one instruction with single-stepping enabled via `dcsr.step`.
 |===
 
-Cause 5 (`resethaltreq`) is never set by hardware. This event is reported as a normal halt, cause 3. Cause 2 (trigger) is never used because there are no triggers. (TODO?)
+Cause `5` (`resethaltreq`) is never set by hardware. This event is reported as a normal halt, cause `3`.
 
 ==== dpc
 
