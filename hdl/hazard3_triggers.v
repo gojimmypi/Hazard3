@@ -86,10 +86,14 @@ assign break_d_mode = 1'b0;
 
 end else begin: have_triggers
 
-localparam TINDEX_ICOUNT    = BREAKPOINT_TRIGGERS + 0;
-localparam TINDEX_INTERRUPT = BREAKPOINT_TRIGGERS + 1;
-localparam TINDEX_EXCEPTION = BREAKPOINT_TRIGGERS + 2;
-localparam N_TRIGGERS       = BREAKPOINT_TRIGGERS + 3;
+localparam TINDEX_ICOUNT     = BREAKPOINT_TRIGGERS + 0;
+localparam TINDEX_INTERRUPT  = BREAKPOINT_TRIGGERS + 1;
+localparam TINDEX_EXCEPTION  = BREAKPOINT_TRIGGERS + 2;
+localparam N_TRIGGERS        = BREAKPOINT_TRIGGERS + 3;
+
+// If there are no breakpoints, we still have one dummy register (hardwired to
+// zero) for Verilog wrangling purposes. It has no synthesis effect.
+localparam N_BREAKPOINT_REGS = BREAKPOINT_TRIGGERS > 0 ? BREAKPOINT_TRIGGERS : 1;
 
 // ----------------------------------------------------------------------------
 // Configuration state
@@ -102,13 +106,13 @@ reg [W_TSELECT-1:0] tselect;
 // fields (type/dmode) and mcontrol refers to those fields specific to
 // type=2 (address/data match), the only trigger type we implement.
 
-// State for instruction address match triggers (breakpoints)
-reg              tdata1_dmode     [0:BREAKPOINT_TRIGGERS-1];
-reg              mcontrol_action  [0:BREAKPOINT_TRIGGERS-1];
-reg              mcontrol_m       [0:BREAKPOINT_TRIGGERS-1];
-reg              mcontrol_u       [0:BREAKPOINT_TRIGGERS-1];
-reg              mcontrol_execute [0:BREAKPOINT_TRIGGERS-1];
-reg [W_DATA-1:0] tdata2           [0:BREAKPOINT_TRIGGERS-1];
+// State for instruction address match triggers (breakpoints).
+reg              bp_tdata1_dmode  [0:N_BREAKPOINT_REGS-1];
+reg              mcontrol_action  [0:N_BREAKPOINT_REGS-1];
+reg              mcontrol_m       [0:N_BREAKPOINT_REGS-1];
+reg              mcontrol_u       [0:N_BREAKPOINT_REGS-1];
+reg              mcontrol_execute [0:N_BREAKPOINT_REGS-1];
+reg [W_DATA-1:0] bp_tdata2        [0:N_BREAKPOINT_REGS-1];
 
 // State for instruction count trigger
 // (hardwired: count=1 dmode=0 action=0; Debug mode single step is already
@@ -169,15 +173,6 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 
 		tselect <= {W_TSELECT{1'b0}};
 
-		for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-			tdata1_dmode[i] <= 1'b0;
-			mcontrol_action[i] <= 1'b0;
-			mcontrol_m[i] <= 1'b0;
-			mcontrol_u[i] <= 1'b0;
-			mcontrol_execute[i] <= 1'b0;
-			tdata2[i] <= {W_DATA{1'b0}};
-		end
-
 		icount_m <= 1'b0;
 		icount_u <= 1'b0;
 
@@ -199,17 +194,6 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 
 		end else if (cfg_wen && cfg_addr == TDATA1) begin
 
-			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-				if (tselect_match[i] && !(tdata1_dmode[i] && !x_d_mode)) begin
-					if (x_d_mode) begin
-						tdata1_dmode[i] <= cfg_wdata[27];
-					end
-					mcontrol_action[i] <= cfg_wdata[12];
-					mcontrol_m[i] <= cfg_wdata[6];
-					mcontrol_u[i] <= cfg_wdata[3] && |U_MODE;
-					mcontrol_execute[i] <= cfg_wdata[2];
-				end
-			end
 			if (tselect_match[TINDEX_ICOUNT]) begin
 				// This trigger does not implement a dmode bit, as Debug-mode
 				// break on single-step is already provided by dcsr.step
@@ -229,11 +213,6 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 
 		end else if (cfg_wen && cfg_addr == TDATA2) begin
 
-			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-				if (tselect_match[i] && !(tdata1_dmode[i] && !x_d_mode)) begin
-					tdata2[i] <= cfg_wdata & {{W_ADDR-2{1'b1}}, |EXTENSION_C, 1'b0};
-				end
-			end
 			if (tselect_match[TINDEX_INTERRUPT] && !(trigger_irq_dmode && !x_d_mode)) begin
 				trigger_irq_cause <= cfg_wdata[15:0] & IMPLEMENTED_IRQ_CAUSES;
 			end
@@ -251,6 +230,59 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 		end
 
 	end
+end
+
+// Separate breakpoint from non-breakpoint registers, as it's possible to have
+// a trigger module with zero breakpoints
+if (BREAKPOINT_TRIGGERS > 0) begin: have_bp_registers
+
+	always @ (posedge clk or negedge rst_n) begin: bp_cfg_update
+		integer i;
+		if (!rst_n) begin
+			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+				bp_tdata1_dmode[i] <= 1'b0;
+				mcontrol_action[i] <= 1'b0;
+				mcontrol_m[i] <= 1'b0;
+				mcontrol_u[i] <= 1'b0;
+				mcontrol_execute[i] <= 1'b0;
+				bp_tdata2[i] <= {W_DATA{1'b0}};
+			end
+		end else begin
+			if (cfg_wen && cfg_addr == TDATA1) begin
+				for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+					if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
+						if (x_d_mode) begin
+							bp_tdata1_dmode[i] <= cfg_wdata[27];
+						end
+						mcontrol_action[i] <= cfg_wdata[12];
+						mcontrol_m[i] <= cfg_wdata[6];
+						mcontrol_u[i] <= cfg_wdata[3] && |U_MODE;
+						mcontrol_execute[i] <= cfg_wdata[2];
+					end
+				end
+			end else if (cfg_wen && cfg_addr == TDATA2) begin
+				for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+					if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
+						bp_tdata2[i] <= cfg_wdata & {{W_ADDR-2{1'b1}}, |EXTENSION_C, 1'b0};
+					end
+				end
+			end
+		end
+	end
+
+end else begin: no_bp_registers
+
+	// Single dummy entry to avoid OOB accesses (some tools complain about
+	// indexing 0-sized arrays even in for loops which execute 0 iterations)
+	always @ (*) begin
+		bp_tdata1_dmode[0] = 1'b0;
+		mcontrol_action[0] = 1'b0;
+		mcontrol_m[0] = 1'b0;
+		mcontrol_u[0] = 1'b0;
+		mcontrol_execute[0] = 1'b0;
+		bp_tdata2[0] = {W_DATA{1'b0}};
+	end
+
 end
 
 // ----------------------------------------------------------------------------
@@ -274,7 +306,7 @@ always @ (*) begin: generate_padded_rdata
 	for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
 		tdata1_rdata[i] = {
 			4'h2,                              // type = address/data match
-			tdata1_dmode[i],
+			bp_tdata1_dmode[i],
 			6'h00,                             // maskmax = 0, exact match only
 			1'b0,                              // hit = 0, not implemented
 			1'b0,                              // select = 0, address match only
@@ -291,7 +323,7 @@ always @ (*) begin: generate_padded_rdata
 			1'b0,                              // store = 0, this is not a watchpoint
 			1'b0                               // load = 0, this is not a watchpoint
 		};
-		tdata2_rdata[i] = tdata2[i];
+		tdata2_rdata[i] = bp_tdata2[i];
 		tinfo_rdata[i] = 32'd1 << 2;           // type = 2, address/data match
 	end
 
@@ -432,34 +464,34 @@ assign break_m_step = break_on_step;
 // it is not known at this point where the instruction boundaries are (we
 // don't have the instruction data yet).
 
-reg [BREAKPOINT_TRIGGERS-1:0] breakpoint_enabled;
-reg [BREAKPOINT_TRIGGERS-1:0] breakpoint_match;
-reg [BREAKPOINT_TRIGGERS-1:0] want_d_mode_break;
-reg [BREAKPOINT_TRIGGERS-1:0] want_m_mode_break;
-reg [BREAKPOINT_TRIGGERS-1:0] want_d_mode_break_hw0;
-reg [BREAKPOINT_TRIGGERS-1:0] want_d_mode_break_hw1;
-reg [BREAKPOINT_TRIGGERS-1:0] want_m_mode_break_hw0;
-reg [BREAKPOINT_TRIGGERS-1:0] want_m_mode_break_hw1;
+reg [N_BREAKPOINT_REGS-1:0] breakpoint_enabled;
+reg [N_BREAKPOINT_REGS-1:0] breakpoint_match;
+reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break;
+reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break;
+reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw0;
+reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw1;
+reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw0;
+reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw1;
 
 always @ (*) begin: match_pc
 	integer i;
-	for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+	for (i = 0; i < N_BREAKPOINT_REGS; i = i + 1) begin
 		// Detect tripped breakpoints
 		breakpoint_enabled[i] = mcontrol_execute[i] && !fetch_d_mode && (
 			fetch_m_mode ? mcontrol_m[i] : mcontrol_u[i]
 		);
-		breakpoint_match[i] = breakpoint_enabled[i] && fetch_addr == {tdata2[i][W_DATA-1:2], 2'b00};
+		breakpoint_match[i] = breakpoint_enabled[i] && fetch_addr == {bp_tdata2[i][W_DATA-1:2], 2'b00};
 		// Decide the type of break implied by the trip
-		want_d_mode_break[i] = breakpoint_match[i] &&  mcontrol_action[i] && tdata1_dmode[i];
+		want_d_mode_break[i] = breakpoint_match[i] &&  mcontrol_action[i] && bp_tdata1_dmode[i];
 		want_m_mode_break[i] = breakpoint_match[i] && !mcontrol_action[i] && trig_m_en;
 		// Report separately for each halfword, so the frontend can pass this
 		// through the prefetch buffer. A breakpoint exception is taken when
 		// the first halfword of an instruction (of any size) is flagged with
 		// a breakpoint, implying an exact match.
-		want_d_mode_break_hw0[i] = want_d_mode_break[i] && !tdata2[i][1];
-		want_d_mode_break_hw1[i] = want_d_mode_break[i] &&  tdata2[i][1];
-		want_m_mode_break_hw0[i] = want_m_mode_break[i] && !tdata2[i][1];
-		want_m_mode_break_hw1[i] = want_m_mode_break[i] &&  tdata2[i][1];
+		want_d_mode_break_hw0[i] = want_d_mode_break[i] && !bp_tdata2[i][1];
+		want_d_mode_break_hw1[i] = want_d_mode_break[i] &&  bp_tdata2[i][1];
+		want_m_mode_break_hw0[i] = want_m_mode_break[i] && !bp_tdata2[i][1];
+		want_m_mode_break_hw1[i] = want_m_mode_break[i] &&  bp_tdata2[i][1];
 	end
 end
 
