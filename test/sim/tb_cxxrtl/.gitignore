@@ -1,5 +1,6 @@
 tb
+tb-*
+tb_*
 dut.cpp
 build.*
-tb_multicore
 

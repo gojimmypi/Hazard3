@@ -14,6 +14,9 @@ parser.add_argument("--vcd", action="store_true", help="Pass --vcd flag to simul
 parser.add_argument("--tb", default="../tb_cxxrtl/tb", help="Pass tb executable to run tests.")
 parser.add_argument("--tbarg", action="append", default=[], help="Extra argument to pass to tb executable. Can pass --tbarg=xxx multiple times to pass multiple arguments.")
 parser.add_argument("--postcmd", action="append", default=[], help="Add a command to run post-simulation, e.g. log file processing. The string TEST is expanded to the test result file name, minus any file extensions.")
+parser.add_argument("--build-dir", help="Add a suffix to the build directory name, e.g. for different ISA variants")
+parser.add_argument("--march", default="rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs")
+parser.add_argument("--no-tb-build", action="store_true")
 parser.epilog = """
 Example command lines:
 
@@ -46,22 +49,28 @@ else:
 
 testlist = sorted(testlist)
 
-tb_dir = os.path.join(*os.path.split(os.path.abspath(args.tb))[:-1])
-tb_build_ret = subprocess.run(
-	["make", "-C", tb_dir, "all"],
-	timeout=300
-)
-if tb_build_ret.returncode != 0:
-	sys.exit("Failed.")
+if not args.no_tb_build:
+	tb_dir = os.path.join(*os.path.split(os.path.abspath(args.tb))[:-1])
+	tb_build_ret = subprocess.run(
+		["make", "-C", tb_dir, "all"],
+		timeout=300
+	)
+	if tb_build_ret.returncode != 0:
+		sys.exit("Failed.")
 
 all_passed = True
+
+if args.build_dir is None:
+	build_dir = "tmp"
+else:
+	build_dir = f"tmp-{args.build_dir}"
 
 passed_test_count = 0
 for test in testlist:
 	sys.stdout.write(f"{test:<30}")
 	failed = False
 	test_build_ret = subprocess.run(
-		["make", f"APP={test}", f"tmp/{test}.bin"],
+		["make", f"APP={test}", f"TMP_PREFIX={build_dir}/", f"MARCH={args.march}", f"{build_dir}/{test}.bin"],
 		stdout=subprocess.DEVNULL
 	)
 	if test_build_ret.returncode != 0:
@@ -69,9 +78,9 @@ for test in testlist:
 		failed = True
 
 	if not failed:
-		cmdline = [args.tb, "--bin", f"tmp/{test}.bin", "--cycles", "1000000"]
+		cmdline = [args.tb, "--bin", f"{build_dir}/{test}.bin", "--cycles", "1000000"]
 		if args.vcd:
-			cmdline += ["--vcd", f"tmp/{test}.vcd"]
+			cmdline += ["--vcd", f"{build_dir}/{test}.vcd"]
 		cmdline += args.tbarg
 
 		try:
@@ -81,7 +90,7 @@ for test in testlist:
 				stderr = subprocess.PIPE,
 				timeout=10
 			)
-			with open(f"tmp/{test}.log", "wb") as f:
+			with open(f"{build_dir}/{test}.log", "wb") as f:
 				f.write(test_run_ret.stdout)
 		except subprocess.TimeoutExpired:
 			print("\033[31m[TIMOUT]\033[39m")
@@ -160,7 +169,7 @@ for test in testlist:
 	# Post-processing commands are run regardless of success. Their return
 	# codes are ignored.
 	for postcmd in args.postcmd:
-		postcmd = postcmd.replace("TEST", f"tmp/{test}")
+		postcmd = postcmd.replace("TEST", f"{build_dir}/{test}")
 		subprocess.run(shlex.split(postcmd))
 
 print(f"\nPassed: {passed_test_count} out of {len(testlist)}")

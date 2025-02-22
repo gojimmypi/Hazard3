@@ -1,5 +1,5 @@
-// True minimum configuration -- enough to run hello world but no support for
-// traps, debug, or any non-mandatory ISA extensions.
+// Minimum performance and unprivileged ISA feature set, but enough privileged
+// ISA and debug support to run a more interesting test suite.
 
 localparam RESET_VECTOR        = 32'h40;
 localparam MTVEC_INIT          = 32'h0;
@@ -20,17 +20,17 @@ localparam EXTENSION_XH3BEXTM  = 0;
 localparam EXTENSION_XH3IRQ    = 0;
 localparam EXTENSION_XH3PMPM   = 0;
 localparam EXTENSION_XH3POWER  = 0;
-localparam CSR_M_MANDATORY     = 0;
-localparam CSR_M_TRAP          = 0;
+localparam CSR_M_MANDATORY     = 1;
+localparam CSR_M_TRAP          = 1;
 localparam CSR_COUNTER         = 0;
-localparam U_MODE              = 0;
-localparam PMP_REGIONS         = 0;
+localparam U_MODE              = 1;
+localparam PMP_REGIONS         = 4;
 localparam PMP_GRAIN           = 0;
 localparam PMP_HARDWIRED       = {(PMP_REGIONS > 0 ? PMP_REGIONS : 1){1'b0}};
 localparam PMP_HARDWIRED_ADDR  = {(PMP_REGIONS > 0 ? PMP_REGIONS : 1){32'h0}};
 localparam PMP_HARDWIRED_CFG   = {(PMP_REGIONS > 0 ? PMP_REGIONS : 1){8'h00}};
-localparam DEBUG_SUPPORT       = 0;
-localparam BREAKPOINT_TRIGGERS = 4;
+localparam DEBUG_SUPPORT       = 1;
+localparam BREAKPOINT_TRIGGERS = 0;
 localparam NUM_IRQS            = 32;
 localparam IRQ_PRIORITY_BITS   = 0;
 localparam IRQ_INPUT_BYPASS    = {NUM_IRQS{1'b0}};

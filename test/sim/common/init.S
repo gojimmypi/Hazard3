@@ -59,13 +59,19 @@ j \name
 	la a0, 1f
 	csrw mtvec, a0
 	csrci mcountinhibit, 0x5
+	j 2f
 .p2align 2
 1:
+	csrw mcause, zero
+2:
+
 	// Set up trap vector table. mtvec LSB enables vectoring
 	la a0, .vector_table + 1
 	csrw mtvec, a0
 
 	// Put spare cores to sleep before setting up core 0 stack
+	// Note csrr is a NOP when there are no CSRs at all (no traps!):
+	li a0, 0
 	csrr a0, mhartid
 	bnez a0, .core1_wait
 
@@ -126,6 +132,8 @@ heap_ptr:
 
 progname:
 	.asciz "hazard3-testbench"
+
+.p2align 2
 
 // ----------------------------------------------------------------------------
 // Weak handler/ISR symbols
@@ -196,6 +204,7 @@ _str_a4:             .asciz "a4: "
 _str_a5:             .asciz "a5: "
 _str_ra:             .asciz "ra: "
 _str_sp:             .asciz "sp: "
+.p2align 2
 
 // Provide a default weak handler for each trap, which calls into the above
 // diagnostic routine with the trap name (a null-terminated string) in x31

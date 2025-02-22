@@ -1,6 +1,9 @@
+# Usually provided by passing --march=xxx to ./runtests
+MARCH      ?= rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs
+
 APP        := hellow
 SRCS        = ../common/init.S $(APP).c $(EXTRA_SRCS_$(APP))
-CCFLAGS    := -march=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs -Os
+CCFLAGS    := -march=$(MARCH) -Os
 MAX_CYCLES := 1000000
 INCDIR     := include ../common
 
