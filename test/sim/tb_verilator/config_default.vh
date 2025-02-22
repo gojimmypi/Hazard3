@@ -1,1 +1,0 @@
-../tb_cxxrtl/config_default.vh

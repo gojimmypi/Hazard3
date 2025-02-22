@@ -5,7 +5,8 @@ DOTF      = tb.f
 CONFIG    = default
 TBEXEC    = $(patsubst %.f,%,$(DOTF))
 
-FILE_LIST = $(shell HDL=$(HDL) $(SCRIPTS)/listfiles $(DOTF))
+FILE_LIST = $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/$(DOTF))
+VINCDIR   = $(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati ../tb_common/$(DOTF))
 BUILD_DIR = build-$(patsubst %.f,%,$(DOTF))
 VOBJ_DIR  = $(BUILD_DIR)/obj_dir
 VLIB      = $(VOBJ_DIR)/libV$(TOP).a
@@ -24,7 +25,7 @@ vlib: $(BUILD_DIR)/vlib.touch
 
 $(BUILD_DIR)/vcc.touch: $(FILE_LIST) $(wildcard *.vh)
 	mkdir -p $(VOBJ_DIR)
-	$(VERILATOR) --Mdir $(VOBJ_DIR) --cc --top-module $(TOP) -I$(HDL) $(FILE_LIST)
+	$(VERILATOR) --Mdir $(VOBJ_DIR) --cc --top-module $(TOP) $(addprefix -I,$(VINCDIR)) $(FILE_LIST)
 	touch $@
 
 # CFG_GCH_IF_CLANG is set as a workaround for a verilator issue with newer GCC

@@ -9,7 +9,7 @@ DOTF      := tb.f
 CONFIG    := default
 TBEXEC    := $(patsubst %.f,%,$(DOTF))
 
-FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles $(DOTF))
+FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/$(DOTF))
 BUILD_DIR := build-$(patsubst %.f,%,$(DOTF))
 
 # Note: clang++-18 has a >20x compile time regression, even at low
