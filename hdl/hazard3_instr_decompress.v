@@ -14,9 +14,10 @@ module hazard3_instr_decompress #(
 	input  wire        rst_n,
 
 	input  wire [31:0] instr_in,
-	output reg         instr_is_32bit,
 
+	output reg         instr_is_32bit,
 	output reg  [31:0] instr_out,
+
 	// If instruction is a non-final uop, need to suppress PC update, and null
 	// the PC offset in the mepc address in stage 3.
 	output wire        instr_out_is_uop,
@@ -31,7 +32,7 @@ module hazard3_instr_decompress #(
 	input  wire        instr_out_uop_clear,
 
 	// To regnum decoder in frontend
-	output wire [3:0]  df_uop_step_next,
+	output wire [3:0]  df_uop_step,
 
 	output reg         invalid
 );
@@ -128,7 +129,7 @@ assign instr_out_is_uop = in_uop_seq;
 assign instr_out_is_final_uop = uop_seq_end;
 assign instr_out_uop_atomic = uop_atomic;
 assign instr_out_uop_no_pc_update = uop_no_pc_update;
-assign df_uop_step_next = uop_ctr_nxt;
+assign df_uop_step = uop_ctr;
 
 // The offset from current sp value to the lowest-addressed saved register, +64.
 wire [3:0] zcmp_rlist = instr_in[7:4];

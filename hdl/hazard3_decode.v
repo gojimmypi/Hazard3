@@ -17,10 +17,20 @@ module hazard3_decode #(
 	input  wire [1:0]           fd_cir_err,
 	input  wire [1:0]           fd_cir_predbranch,
 	input  wire [1:0]           fd_cir_vld,
+	input  wire                 fd_cir_is_32bit,
+	input  wire                 fd_cir_invalid_16bit,
+	input  wire                 fd_cir_is_uop,
+	input  wire                 fd_cir_uop_nonfinal,
+	input  wire                 fd_cir_uop_no_pc_update,
+	input  wire                 fd_cir_uop_atomic,
+
 	output wire [1:0]           df_cir_use,
 	output wire                 df_cir_flush_behind,
-	output wire [3:0]           df_uop_step_next,
+
+	output wire                 df_uop_stall,
+	output wire                 df_uop_clear,
 	output wire                 df_lspair_phase_next,
+
 	output wire [W_ADDR-1:0]    d_pc,
 
 	input  wire                 debug_mode,
@@ -72,52 +82,20 @@ module hazard3_decode #(
 localparam HAVE_CSR = CSR_M_MANDATORY || CSR_M_TRAP || CSR_COUNTER;
 
 // ----------------------------------------------------------------------------
-// Expand compressed instructions
 
-wire [31:0] d_instr;
-wire        d_instr_is_32bit;
-wire        d_invalid_16bit;
-reg         d_invalid_32bit;
-wire        d_invalid = d_invalid_16bit || d_invalid_32bit;
+wire [31:0] d_instr = fd_cir | {
+	30'd0, {2{~|EXTENSION_C}}
+};
 
-wire        uop_seq_raw;
-wire        uop_final;
-wire        uop_no_pc_update;
-wire        uop_atomic;
-wire        uop_stall;
-wire        uop_clear;
+reg  d_invalid_32bit;
+wire d_invalid = fd_cir_invalid_16bit || d_invalid_32bit;
 
-hazard3_instr_decompress #(
-`include "hazard3_config_inst.vh"
-) decomp (
-	.clk                        (clk),
-	.rst_n                      (rst_n),
-
-	.instr_in                   (fd_cir),
-	.instr_is_32bit             (d_instr_is_32bit),
-	.instr_out                  (d_instr),
-	.instr_out_is_uop           (uop_seq_raw),
-	.instr_out_is_final_uop     (uop_final),
-	.instr_out_uop_no_pc_update (uop_no_pc_update),
-	.instr_out_uop_atomic       (uop_atomic),
-	.instr_out_uop_stall        (uop_stall),
-	.instr_out_uop_clear        (uop_clear),
-
-	.df_uop_step_next           (df_uop_step_next),
-
-	.invalid                    (d_invalid_16bit)
-);
-
-wire   uop_seq           = uop_seq_raw && !d_starved;
-wire   uop_nonfinal      = uop_seq && !uop_final;
-assign uop_stall         = x_stall || d_starved;
-
-assign d_uninterruptible = uop_atomic;
+assign d_uninterruptible = |EXTENSION_ZCMP && fd_cir_uop_atomic;
 
 `ifdef HAZARD3_ASSERTIONS
 always @ (posedge clk) if (rst_n) begin
-	assert(!(d_invalid && uop_seq_raw));
-	assert(!(d_invalid && uop_atomic));
+	assert(!(d_invalid && fd_cir_is_uop));
+	assert(!(d_invalid && fd_cir_uop_atomic));
 end
 `endif
 
@@ -125,12 +103,14 @@ end
 // instruction (because uops in a sequence *which can except*, so excluding
 // the final sp adjust on popret/popretz, will all have the same PC as the
 // next uop, which will be in stage 2 when they take their exception)
-assign d_no_pc_increment = uop_nonfinal || d_lspair_nonfinal;
+assign d_no_pc_increment = fd_cir_uop_nonfinal || d_lspair_nonfinal;
+
+assign df_uop_stall = x_stall || d_starved;
 
 // Note !df_cir_flush_behind because the jump in cm.popret/popretz is
 // the *penultimate* instruction: we execute the stack adjustment in the
 // fetch bubble to save a cycle, still need to finish the uop sequence.
-assign uop_clear         = f_jump_now && !df_cir_flush_behind;
+assign df_uop_clear = f_jump_now && !df_cir_flush_behind;
 
 // Decode various immmediate formats
 wire [31:0] d_imm_i = {{21{d_instr[31]}}, d_instr[30:20]};
@@ -147,16 +127,16 @@ wire [31:0] d_imm_j = {{12{d_instr[31]}}, d_instr[19:12], d_instr[20], d_instr[3
 // flushed by e.g. a branch instruction. Note the 16 LSBs must be valid for
 // us to know an instruction's size.
 wire d_except_instr_bus_fault = fd_cir_vld > 2'd0 && fd_cir_err[0] ||
-	fd_cir_vld > 2'd1 && d_instr_is_32bit && fd_cir_err[1];
+	fd_cir_vld > 2'd1 && fd_cir_is_32bit && fd_cir_err[1];
 
-assign d_starved = ~|fd_cir_vld || fd_cir_vld[0] && d_instr_is_32bit;
+assign d_starved = ~|fd_cir_vld || fd_cir_vld[0] && fd_cir_is_32bit;
 
 wire d_lspair_nonfinal;
-wire d_stall = x_stall || d_starved || uop_nonfinal || d_lspair_nonfinal;
+wire d_stall = x_stall || d_starved || fd_cir_uop_nonfinal || d_lspair_nonfinal;
 
 assign df_cir_use =
 	d_starved || d_stall ? 2'h0 :
-	d_instr_is_32bit ? 2'h2 : 2'h1;
+	fd_cir_is_32bit ? 2'h2 : 2'h1;
 
 // CIR Locking is required if we successfully assert a jump request, but
 // decode is stalled. It is not possible to gate the jump request if the
@@ -184,8 +164,8 @@ end
 
 reg  [W_ADDR-1:0] pc;
 wire [W_ADDR-1:0] pc_seq_next = pc + (
-	|EXTENSION_ZCMP && uop_seq && uop_no_pc_update ? 32'h0 :
-	d_instr_is_32bit                               ? 32'h4 : 32'h2
+	|EXTENSION_ZCMP && fd_cir_is_uop && fd_cir_uop_no_pc_update ? 32'h0 :
+	fd_cir_is_32bit                                             ? 32'h4 : 32'h2
 );
 
 assign d_pc = pc;
@@ -197,7 +177,7 @@ assign debug_dpc_rdata = pc;
 // alignments (!). We need to issue a branch-to-self to get back on a linear
 // path, otherwise PC and CIR will diverge and we will misexecute.
 wire partial_predicted_branch = !d_starved &&
-	|BRANCH_PREDICTOR && d_instr_is_32bit && ^fd_cir_predbranch;
+	|BRANCH_PREDICTOR && fd_cir_is_32bit && ^fd_cir_predbranch;
 
 wire predicted_branch = |BRANCH_PREDICTOR && fd_cir_predbranch[0];
 
@@ -206,8 +186,8 @@ wire predicted_branch = |BRANCH_PREDICTOR && fd_cir_predbranch[0];
 // exception to this is jumps in micro-op sequences: in this case the jump is
 // the penultimate instruction in the sequence (ret before addi sp) and we
 // need to capture the pc mid-uop-sequence.
-wire hold_pc_on_cir_lock = assert_cir_lock && !(uop_seq && !uop_no_pc_update);
-wire update_pc_on_cir_unlock = cir_lock_prev && deassert_cir_lock && !(uop_seq && uop_no_pc_update);
+wire hold_pc_on_cir_lock = assert_cir_lock && !(fd_cir_is_uop && !fd_cir_uop_no_pc_update);
+wire update_pc_on_cir_unlock = cir_lock_prev && deassert_cir_lock && !(fd_cir_is_uop && fd_cir_uop_no_pc_update);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -229,8 +209,8 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 wire [W_ADDR-1:0] branch_offs =
-	!d_instr_is_32bit && fd_cir_predbranch[0] && |BRANCH_PREDICTOR ? 32'h2 :
-	 d_instr_is_32bit && fd_cir_predbranch[1] && |BRANCH_PREDICTOR ? 32'h4 : d_imm_b;
+	!fd_cir_is_32bit && predicted_branch ? 32'h2 :
+	 fd_cir_is_32bit && predicted_branch ? 32'h4 : d_imm_b;
 
 always @ (*) begin
 	casez ({|EXTENSION_A, d_instr[6:2]})
@@ -368,9 +348,9 @@ always @ (*) begin
 	`RVOPC_BLTU:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_rd = X0; raw_aluop = ALUOP_LTU; raw_branchcond = BCOND_NZERO; end
 	`RVOPC_BGEU:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_rd = X0; raw_aluop = ALUOP_LTU; raw_branchcond = BCOND_ZERO;  end
 	`RVOPC_JALR:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_branchcond = BCOND_ALWAYS; raw_addr_is_regoffs = 1'b1;
-	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = d_instr_is_32bit ? 32'h4 : 32'h2; end
+	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'h4 : 32'h2; end
 	`RVOPC_JAL:       begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_branchcond = BCOND_ALWAYS; raw_rs1 = X0;
-	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = d_instr_is_32bit ? 32'h4 : 32'h2; end
+	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'h4 : 32'h2; end
 	`RVOPC_LUI:       begin raw_aluop = ALUOP_RS2; raw_imm = d_imm_u; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; raw_rs1 = X0; end
 	`RVOPC_AUIPC:     begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_aluop = ALUOP_ADD; raw_imm = d_imm_u; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; raw_alusrc_a = ALUSRCA_PC;  raw_rs1 = X0; end
 	`RVOPC_ADDI:      begin raw_aluop = ALUOP_ADD; raw_imm = d_imm_i; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; end

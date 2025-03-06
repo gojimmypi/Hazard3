@@ -112,9 +112,18 @@ wire                 fd_cir_break_any;
 wire                 fd_cir_break_d_mode;
 wire [1:0]           fd_cir_predbranch;
 wire [1:0]           fd_cir_vld;
+wire                 fd_cir_is_32bit;
+wire                 fd_cir_invalid_16bit;
+wire                 fd_cir_is_uop;
+wire                 fd_cir_uop_nonfinal;
+wire                 fd_cir_uop_no_pc_update;
+wire                 fd_cir_uop_atomic;
+
 wire [1:0]           df_cir_use;
 wire                 df_cir_flush_behind;
-wire [3:0]           df_uop_step_next;
+
+wire                 df_uop_stall;
+wire                 df_uop_clear;
 wire                 df_lspair_phase_next;
 
 wire                 x_btb_set;
@@ -173,9 +182,17 @@ hazard3_frontend #(
 	.cir_break_any        (fd_cir_break_any),
 	.cir_break_d_mode     (fd_cir_break_d_mode),
 	.cir_vld              (fd_cir_vld),
+	.cir_is_32bit         (fd_cir_is_32bit),
+	.cir_invalid_16bit    (fd_cir_invalid_16bit),
+	.cir_is_uop           (fd_cir_is_uop),
+	.cir_uop_nonfinal     (fd_cir_uop_nonfinal),
+	.cir_uop_no_pc_update (fd_cir_uop_no_pc_update),
+	.cir_uop_atomic       (fd_cir_uop_atomic),
+
 	.cir_use              (df_cir_use),
 	.cir_flush_behind     (df_cir_flush_behind),
-	.df_uop_step_next     (df_uop_step_next),
+	.uop_stall            (df_uop_stall),
+	.uop_clear            (df_uop_clear),
 	.df_lspair_phase_next (df_lspair_phase_next),
 
 	.pwrdown_ok           (f_frontend_pwrdown_ok),
@@ -261,60 +278,69 @@ wire [W_ADDR-1:0]    debug_dpc_rdata;
 hazard3_decode #(
 `include "hazard3_config_inst.vh"
 ) decode_u (
-	.clk                  (clk),
-	.rst_n                (rst_n),
+	.clk                     (clk),
+	.rst_n                   (rst_n),
 
-	.fd_cir               (fd_cir),
-	.fd_cir_err           (fd_cir_err),
-	.fd_cir_predbranch    (fd_cir_predbranch),
-	.fd_cir_vld           (fd_cir_vld),
-	.df_cir_use           (df_cir_use),
-	.df_cir_flush_behind  (df_cir_flush_behind),
-	.df_uop_step_next     (df_uop_step_next),
-	.df_lspair_phase_next (df_lspair_phase_next),
-	.d_pc                 (d_pc),
-	.x_jump_not_except    (x_jump_not_except),
+	.fd_cir                  (fd_cir),
+	.fd_cir_err              (fd_cir_err),
+	.fd_cir_predbranch       (fd_cir_predbranch),
+	.fd_cir_vld              (fd_cir_vld),
+	.fd_cir_is_32bit         (fd_cir_is_32bit),
+	.fd_cir_invalid_16bit    (fd_cir_invalid_16bit),
+	.fd_cir_is_uop           (fd_cir_is_uop),
+	.fd_cir_uop_nonfinal     (fd_cir_uop_nonfinal),
+	.fd_cir_uop_no_pc_update (fd_cir_uop_no_pc_update),
+	.fd_cir_uop_atomic       (fd_cir_uop_atomic),
 
-	.debug_mode           (debug_mode),
-	.m_mode               (x_mmode_execution),
-	.trap_wfi             (x_trap_wfi),
+	.df_cir_use              (df_cir_use),
+	.df_cir_flush_behind     (df_cir_flush_behind),
+	.df_uop_stall            (df_uop_stall),
+	.df_uop_clear            (df_uop_clear),
+	.df_lspair_phase_next    (df_lspair_phase_next),
 
-	.debug_dpc_wdata      (debug_dpc_wdata),
-	.debug_dpc_wen        (debug_dpc_wen),
-	.debug_dpc_rdata      (debug_dpc_rdata),
+	.d_pc                    (d_pc),
+	.x_jump_not_except       (x_jump_not_except),
 
-	.d_starved            (d_starved),
-	.x_stall              (x_stall),
-	.f_jump_now           (f_jump_now),
-	.f_jump_target        (f_jump_target),
-	.d_btb_target_addr    (d_btb_target_addr),
+	.debug_mode              (debug_mode),
+	.m_mode                  (x_mmode_execution),
+	.trap_wfi                (x_trap_wfi),
 
-	.d_imm                (d_imm),
-	.d_rs1                (d_rs1),
-	.d_rs2                (d_rs2),
-	.d_rd                 (d_rd),
-	.d_funct3_32b         (d_funct3_32b),
-	.d_funct7_32b         (d_funct7_32b),
-	.d_alusrc_a           (d_alusrc_a),
-	.d_alusrc_b           (d_alusrc_b),
-	.d_aluop              (d_aluop),
-	.d_memop              (d_memop),
-	.d_mulop              (d_mulop),
-	.d_csr_ren            (d_csr_ren),
-	.d_csr_wen            (d_csr_wen),
-	.d_csr_wtype          (d_csr_wtype),
-	.d_csr_w_imm          (d_csr_w_imm),
-	.d_branchcond         (d_branchcond),
-	.d_addr_offs          (d_addr_offs),
-	.d_addr_is_regoffs    (d_addr_is_regoffs),
-	.d_except             (d_except),
-	.d_sleep_wfi          (d_sleep_wfi),
-	.d_sleep_block        (d_sleep_block),
-	.d_sleep_unblock      (d_sleep_unblock),
-	.d_no_pc_increment    (d_no_pc_increment),
-	.d_uninterruptible    (d_uninterruptible),
-	.d_lspair_offset      (d_lspair_offset),
-	.d_fence_i            (d_fence_i)
+	.debug_dpc_wdata         (debug_dpc_wdata),
+	.debug_dpc_wen           (debug_dpc_wen),
+	.debug_dpc_rdata         (debug_dpc_rdata),
+
+	.d_starved               (d_starved),
+	.x_stall                 (x_stall),
+	.f_jump_now              (f_jump_now),
+	.f_jump_target           (f_jump_target),
+	.d_btb_target_addr       (d_btb_target_addr),
+
+	.d_imm                   (d_imm),
+	.d_rs1                   (d_rs1),
+	.d_rs2                   (d_rs2),
+	.d_rd                    (d_rd),
+	.d_funct3_32b            (d_funct3_32b),
+	.d_funct7_32b            (d_funct7_32b),
+	.d_alusrc_a              (d_alusrc_a),
+	.d_alusrc_b              (d_alusrc_b),
+	.d_aluop                 (d_aluop),
+	.d_memop                 (d_memop),
+	.d_mulop                 (d_mulop),
+	.d_csr_ren               (d_csr_ren),
+	.d_csr_wen               (d_csr_wen),
+	.d_csr_wtype             (d_csr_wtype),
+	.d_csr_w_imm             (d_csr_w_imm),
+	.d_branchcond            (d_branchcond),
+	.d_addr_offs             (d_addr_offs),
+	.d_addr_is_regoffs       (d_addr_is_regoffs),
+	.d_except                (d_except),
+	.d_sleep_wfi             (d_sleep_wfi),
+	.d_sleep_block           (d_sleep_block),
+	.d_sleep_unblock         (d_sleep_unblock),
+	.d_no_pc_increment       (d_no_pc_increment),
+	.d_uninterruptible       (d_uninterruptible),
+	.d_lspair_offset         (d_lspair_offset),
+	.d_fence_i               (d_fence_i)
 );
 
 // ----------------------------------------------------------------------------
@@ -885,7 +911,7 @@ assign x_btb_clear = d_fence_i || (m_trap_enter_vld && m_trap_enter_rdy) || (|BR
 
 assign x_btb_set_src_addr = d_pc;
 assign x_btb_set_target_addr = x_jump_target;
-assign x_btb_set_src_size = &fd_cir[1:0];
+assign x_btb_set_src_size = fd_cir_is_32bit;
 
 // Memory protection
 

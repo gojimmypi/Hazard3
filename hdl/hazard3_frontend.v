@@ -47,25 +47,28 @@ module hazard3_frontend #(
 	output wire [W_ADDR-1:0] btb_target_addr_out,
 
 	// Interface to Decode
-	// Note reg/wire distinction
-	// => decode is providing live feedback on the CIR it is decoding,
-	//    which we fetched previously
-	output wire [31:0]       cir,
-	output reg  [1:0]        cir_vld,          // number of valid halfwords in CIR
-	input  wire [1:0]        cir_use,          // number of halfwords D intends to consume
-	                                           // *may* be a function of hready
-	output wire [1:0]        cir_err,          // Bus error on upper/lower halfword of CIR.
-	output wire [1:0]        cir_predbranch,   // Set for last halfword of a predicted-taken branch
-	output wire              cir_break_any,    // Set for exact match of a breakpoint address on CIR LSB
-	output wire              cir_break_d_mode, // As above but specifically break to debug mode
+	output reg  [31:0]       cir,
+	output reg  [1:0]        cir_vld,              // number of valid halfwords in CIR
+	input  wire [1:0]        cir_use,              // number of halfwords D intends to consume
+	                                               // *may* be a function of hready
+	output wire [1:0]        cir_err,              // Bus error on upper/lower halfword of CIR.
+	output wire [1:0]        cir_predbranch,       // Set for last halfword of a predicted-taken branch
+	output wire              cir_break_any,        // Set for exact match of a breakpoint address on CIR LSB
+	output wire              cir_break_d_mode,     // As above but specifically break to debug mode
+	output reg               cir_is_32bit,         // Can't be decoded from CIR due to pre-expansion
+	output reg               cir_invalid_16bit,    // Expanded an invalid 32-bit instruction
+	output reg               cir_is_uop,           // Current instruction is part of a micro-op sequence
+	output reg               cir_uop_nonfinal,     // ...and there are more to follow in this instruction
+	output reg               cir_uop_no_pc_update, // Suppress PC increment or jump (note the jump in cm.popret is not the final uop!)
+	output reg               cir_uop_atomic,       // Prevent IRQ entry, so intermediate states are not observed
+	input  wire              uop_stall,
+	input  wire              uop_clear,
 
 	// "flush_behind": do not flush the oldest instruction when accepting a
 	//  jump request (but still flush younger instructions). Sometimes a
 	//  stalled instruction may assert a jump request, because e.g. the stall
 	//  is dependent on a bus stall signal so can't gate the request.
 	input  wire              cir_flush_behind,
-	// Required for regnum predecode when Zcmp is enabled:
-	input  wire [3:0]        df_uop_step_next,
 	// Required for regnum predecode when Zilsd is enabled:
 	input  wire              df_lspair_phase_next,
 
@@ -635,7 +638,7 @@ wire [1:0] fetch_fill_amount = cir_room_for_fetch && fetch_data_vld ? (
 ) : 2'h0;
 
 wire [1:0] buf_level_next = {1'b1, |EXTENSION_C} & (
-	jump_now && cir_flush_behind ? (cir[1:0] == 2'b11 || ~|EXTENSION_C ? 2'h2 : 2'h1) :
+	jump_now && cir_flush_behind ? (cir_is_32bit ? 2'h2 : 2'h1) :
 	jump_now                     ? 2'h0 : level_next_no_fetch + fetch_fill_amount
 );
 
@@ -671,11 +674,6 @@ always @ (posedge clk) begin
 end
 `endif
 
-assign cir = {
-	buf_contents[1 * W_SLOT +: W_BUNDLE],
-	buf_contents[0 * W_SLOT +: W_BUNDLE]
-};
-
 assign cir_err = {
 	buf_contents[1 * W_SLOT + SLOT_ERR_BIT],
 	buf_contents[0 * W_SLOT + SLOT_ERR_BIT]
@@ -700,7 +698,8 @@ wire [31:0] next_instr = {
 
 wire next_instr_is_32bit = next_instr[1:0] == 2'b11 || ~|EXTENSION_C;
 
-wire [3:0] uop_ctr = df_uop_step_next & {4{|EXTENSION_ZCMP}};
+wire [3:0] decomp_uop_step;
+wire [3:0] uop_ctr = decomp_uop_step & {4{|EXTENSION_ZCMP}};
 
 wire [4:0] zcmp_pushpop_rs2 =
 	uop_ctr == 4'h0 ? 5'd01                   : // ra
@@ -785,6 +784,98 @@ always @ (*) begin
 	endcase
 
 end
+
+// ----------------------------------------------------------------------------
+// Instruction decompression
+
+// Instructions are decompressed at the end of stage 1 (fetch data phase). On
+// ASIC, where the register file is synthesised with muxes, this puts
+// decompression somewhat in parallel with register file read, which uses
+// approximately decoded regnums.
+
+generate
+if (~|EXTENSION_C) begin: no_decompress
+
+	// No decompression; instructions decoded directly from prefetch buffer
+	always @ (*) begin
+		cir = {
+			buf_contents[1 * W_SLOT +: W_BUNDLE],
+			buf_contents[0 * W_SLOT +: W_BUNDLE]
+		} | 32'd3;
+		cir_is_32bit         = 1'b1;
+		cir_invalid_16bit    = ~&buf_contents[1:0];
+		cir_is_uop           = 1'b0;
+		cir_uop_nonfinal     = 1'b0;
+		cir_uop_no_pc_update = 1'b0;
+		cir_uop_atomic       = 1'b0;
+	end	
+
+	assign decomp_uop_step = 4'h0;
+
+end else begin: have_decompress
+
+	wire        decomp_instr_is_32bit;
+	wire [31:0] decomp_instr_out;
+	wire        decomp_is_uop;
+	wire        decomp_is_final_uop;
+	wire        decomp_uop_no_pc_update;
+	wire        decomp_uop_atomic;
+	wire        decomp_invalid;
+
+	wire        first_uop           = ~|decomp_uop_step && |buf_level_next;
+	wire        uop_stall_non_first = uop_stall && !first_uop;
+
+	hazard3_instr_decompress #(
+		`include "hazard3_config_inst.vh"
+	) decomp (
+		.clk                        (clk),
+		.rst_n                      (rst_n),
+
+		.instr_in                   (next_instr),
+
+		.instr_is_32bit             (decomp_instr_is_32bit),
+		.instr_out                  (decomp_instr_out),
+
+		.instr_out_is_uop           (decomp_is_uop),
+		.instr_out_is_final_uop     (decomp_is_final_uop),
+		.instr_out_uop_no_pc_update (decomp_uop_no_pc_update),
+		.instr_out_uop_atomic       (decomp_uop_atomic),
+		.instr_out_uop_stall        (uop_stall_non_first),
+		.instr_out_uop_clear        (uop_clear),
+		.df_uop_step                (decomp_uop_step),
+
+		.invalid                    (decomp_invalid)
+	);
+
+	wire cir_clken =
+		~|cir_vld || (!cir_vld[1] && &buf_contents[1:0]) ||
+		|cir_use  || (cir_is_uop && !uop_stall);
+
+	wire cir_is_uop_next = decomp_is_uop && |buf_level_next;
+	wire cir_uop_nonfinal_next = cir_is_uop_next && !decomp_is_final_uop;
+
+	always @ (posedge clk or negedge rst_n) begin
+		if (!rst_n) begin
+			cir                  <= 32'd3;
+			cir_is_32bit         <= 1'b0;
+			cir_invalid_16bit    <= 1'b0;
+			cir_is_uop           <= 1'b0;
+			cir_uop_nonfinal     <= 1'b0;
+			cir_uop_no_pc_update <= 1'b0;
+			cir_uop_atomic       <= 1'b0;
+		end else if (cir_clken) begin
+			cir                  <= decomp_instr_out | 32'd3;
+			cir_is_32bit         <= decomp_instr_is_32bit;
+			cir_invalid_16bit    <= decomp_invalid;
+			cir_is_uop           <= |EXTENSION_ZCMP && cir_is_uop_next;
+			cir_uop_nonfinal     <= |EXTENSION_ZCMP && cir_uop_nonfinal_next;
+			cir_uop_no_pc_update <= |EXTENSION_ZCMP && decomp_uop_no_pc_update;
+			cir_uop_atomic       <= |EXTENSION_ZCMP && decomp_uop_atomic;
+		end
+	end
+
+end
+endgenerate
 
 endmodule
 
