@@ -99,6 +99,7 @@ always @ (posedge clk) if (rst_n) begin
 end
 `endif
 
+wire d_lspair_nonfinal;
 // Signal to null the mepc offset when taking an exception on this
 // instruction (because uops in a sequence *which can except*, so excluding
 // the final sp adjust on popret/popretz, will all have the same PC as the
@@ -131,7 +132,6 @@ wire d_except_instr_bus_fault = fd_cir_vld > 2'd0 && fd_cir_err[0] ||
 
 assign d_starved = ~|fd_cir_vld || fd_cir_vld[0] && fd_cir_is_32bit;
 
-wire d_lspair_nonfinal;
 wire d_stall = x_stall || d_starved || fd_cir_uop_nonfinal || d_lspair_nonfinal;
 
 assign df_cir_use =
