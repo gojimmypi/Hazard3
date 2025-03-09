@@ -500,12 +500,12 @@ end
 assign break_any    = {
 	|want_m_mode_break_hw1 || |want_d_mode_break_hw1 || break_ie,
 	|want_m_mode_break_hw0 || |want_d_mode_break_hw0 || break_ie
-};
+} & {2{BREAKPOINT_TRIGGERS > 0}};
 
 assign break_d_mode = {
 	|want_d_mode_break_hw1 || break_ie,
 	|want_d_mode_break_hw0 || break_ie
-};
+} & {2{BREAKPOINT_TRIGGERS > 0}};
 
 end
 endgenerate
