@@ -934,22 +934,25 @@ if (PMP_REGIONS > 0) begin: have_pmp
 	hazard3_pmp #(
 	`include "hazard3_config_inst.vh"
 	) pmp (
-		.clk              (clk),
-		.rst_n            (rst_n),
+		.clk                       (clk),
+		.rst_n                     (rst_n),
 
-		.cfg_addr         (x_pmp_cfg_addr),
-		.cfg_wen          (x_pmp_cfg_wen),
-		.cfg_wdata        (x_pmp_cfg_wdata),
-		.cfg_rdata        (x_pmp_cfg_rdata),
+		.cfg_addr                  (x_pmp_cfg_addr),
+		.cfg_wen                   (x_pmp_cfg_wen),
+		.cfg_wdata                 (x_pmp_cfg_wdata),
+		.cfg_rdata                 (x_pmp_cfg_rdata),
 
-		.i_addr           (f_pmp_i_addr),
-		.i_m_mode         (f_pmp_i_m_mode),
-		.i_kill           (f_pmp_i_kill),
+		.i_addr                    (f_pmp_i_addr),
+		.i_m_mode                  (f_pmp_i_m_mode),
+		.i_kill                    (f_pmp_i_kill),
 
-		.d_addr           (bus_haddr_d),
-		.d_m_mode         (x_mmode_loadstore),
-		.d_write          (bus_hwrite_d),
-		.d_kill           (x_loadstore_pmp_badperm)
+		.d_addr                    (bus_haddr_d),
+		.d_addr_addend_rs1         (x_rs1_bypass),
+		.d_addr_addend_imm         (d_addr_offs),
+		.d_addr_addend_lspair_offs (d_lspair_offset),
+		.d_m_mode                  (x_mmode_loadstore),
+		.d_write                   (bus_hwrite_d),
+		.d_kill                    (x_loadstore_pmp_badperm)
 	);
 
 end else begin: no_pmp

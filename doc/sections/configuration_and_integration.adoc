@@ -408,6 +408,34 @@ region to OFF instead).
 If _G_ > 1, the _G_ - 1 LSBs of pmpaddr are read-only-0 when `pmpcfg.a` is
 OFF, and read-only-1 when `pmpcfg.a` is NAPOT.
 
+Increasing <<param-PMP_GRAIN>> from its default value reduces the area and
+delay cost associated with the PMP unit.
+
+Default value: `0`
+
+[[param-PMP_MATCH_NAPOT]]
+===== PMP_MATCH_NAPOT
+
+PMP_MATCH_NAPOT: Enable PMP support for the NAPOT (naturally-aligned
+power-of-two) and NA4 (naturally-aligned four-byte) matching modes. When
+disabled, attempting to select these modes will set the PMP region to OFF.
+
+Default value: `1`
+
+[[param-PMP_MATCH_TOR]]
+===== PMP_MATCH_TOR
+
+PMP_MATCH_TOR: Enable PMP support for the TOR (top-of-range) matching mode.
+When disabled, attempting to select this mode will set the region to OFF.
+
+Note that NA4 and NAPOT use a separate comparator circuit from TOR
+comparisons. Setting both <<param-PMP_MATCH_NAPOT>> and
+<<param-PMP_MATCH_TOR>> incurs the area cost of both circuits. For best area
+efficiency, select the best single comparator type for your application,
+noting that TOR covers all the possibilities of NAPOT if there are no gaps
+between the regions. Also consider whether <<param-PMP_GRAIN>> can be
+increased from its default value.
+
 Default value: `0`
 
 [[param-PMP_HARDWIRED]]

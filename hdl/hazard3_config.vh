@@ -130,6 +130,15 @@ parameter PMP_REGIONS         = 0,
 // read-only-0 when PMPCFG.A is OFF, and read-only-1 when PMPCFG.A is NAPOT.
 parameter PMP_GRAIN           = 0,
 
+// PMP_MATCH_NAPOT: Enable PMP support for the NAPOT (naturally-aligned
+// power-of-two) and NA4 (naturally-aligned four-byte) matching modes. When
+// disabled, attempting to select these modes will set the PMP region to OFF.
+parameter PMP_MATCH_NAPOT     = 1,
+
+// PMP_MATCH_TOR: Enable PMP support for the TOR (top-of-range) matching mode.
+// When disabled, attempting to select this mode will set the region to OFF.
+parameter PMP_MATCH_TOR       = 0,
+
 // PMPADDR_HARDWIRED: If a bit is 1, the corresponding region's pmpaddr and
 // pmpcfg registers are read-only. PMP_GRAIN is ignored on hardwired regions.
 // It's recommended to make hardwired regions the highest-numbered, so they

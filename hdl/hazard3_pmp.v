@@ -26,15 +26,27 @@ module hazard3_pmp #(
 
 	// Load/store address query
 	input  wire [W_ADDR-1:0] d_addr,
+	// Broken out separately for carry-save:
+	input  wire [W_ADDR-1:0] d_addr_addend_rs1,
+	input  wire [W_ADDR-1:0] d_addr_addend_imm,
+	input  wire [W_ADDR-1:0] d_addr_addend_lspair_offs,
 	input  wire              d_m_mode,
 	input  wire              d_write,
 	output wire              d_kill
 );
 
-localparam PMP_A_OFF   = 2'b00;
-localparam PMP_A_TOR   = 2'b01; // we don't implement
-localparam PMP_A_NA4   = 2'b10;
 localparam PMP_A_NAPOT = 2'b11;
+localparam PMP_A_NA4   = 2'b10;
+localparam PMP_A_TOR   = 2'b01;
+localparam PMP_A_OFF   = 2'b00;
+
+// Which values are supported in A field (unsupported are mapped to OFF):
+localparam [3:0] PMP_A_SUPPORTED = {
+	|PMP_MATCH_NAPOT,
+	|PMP_MATCH_NAPOT && PMP_GRAIN == 0,
+	|PMP_MATCH_TOR,
+	1'b1
+};
 
 `include "hazard3_csr_addr.vh"
 
@@ -101,10 +113,8 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 					pmpcfg_w[i] <= cfg_wdata[i % 4 * 8 + 1];
 					pmpcfg_r[i] <= cfg_wdata[i % 4 * 8 + 0];
 					// Unsupported A values are mapped to OFF (it's a WARL field).
-					pmpcfg_a[i] <=
-						cfg_wdata[i % 4 * 8 + 3 +: 2] == PMP_A_TOR ? PMP_A_OFF :
-						cfg_wdata[i % 4 * 8 + 3 +: 2] == PMP_A_NA4 && PMP_GRAIN > 0 ? PMP_A_OFF :
-						cfg_wdata[i % 4 * 8 + 3 +: 2];
+					pmpcfg_a[i] <= PMP_A_SUPPORTED[cfg_wdata[i % 4 * 8 + 3 +: 2]] ?
+						cfg_wdata[i % 4 * 8 + 3 +: 2] : PMP_A_OFF;
 				end
 			end
 			if (cfg_addr == PMPADDR0 + i[11:0] && !pmpcfg_l[i]) begin
@@ -153,40 +163,113 @@ always @ (*) begin: cfg_read
 end
 
 // ----------------------------------------------------------------------------
-// Address query lookup
+// Match addresses against regions
 
-// Decode PMPCFGx.A and PMPADDRx into a 32-bit address mask and address value
-reg [W_ADDR-1:0] match_mask [0:PMP_REGIONS-1];
-reg [W_ADDR-1:0] match_addr [0:PMP_REGIONS-1];
+reg  [PMP_REGIONS-1:0] d_match_napot;
+reg  [PMP_REGIONS-1:0] i_match_napot;
+reg  [PMP_REGIONS-1:0] d_match_tor;
+reg  [PMP_REGIONS-1:0] i_match_tor;
 
-// Encoding: (noting ADDR is a 4-byte address, not a word address):
-// CFG.A |  ADDR    | Region size
-// ------+----------+------------
-// NA4   | y..yyyyy | 4 bytes
-// NAPOT | y..yyyy0 | 8 bytes
-// NAPOT | y..yyy01 | 16 bytes
-// NAPOT | y..yy011 | 32 bytes
-// NAPOT | y..y0111 | 64 bytes
-// etc.
-//
-// So, with the exception of NA4, the rule is to check all bits more
-// significant than the least-significant 0 bit.
+if (PMP_MATCH_NAPOT != 0) begin: have_napot
 
-always @ (*) begin: decode_match_mask_addr
-	integer i, j;
-	for (i = 0; i < PMP_REGIONS; i = i + 1) begin
-		if (pmpcfg_a[i] == PMP_A_NA4) begin
-			match_mask[i] = {{W_ADDR-2{1'b1}}, 2'b00};
-		end else begin
-			// Bits 1:0 are always 0. Bit 2 is 0 because NAPOT is at least 8 bytes.
-			match_mask[i] = {W_ADDR{1'b0}};
-			for (j = 3; j < W_ADDR; j = j + 1) begin
-				match_mask[i][j] = match_mask[i][j - 1] || !pmpaddr[i][j - 3];
+	// Decode PMPCFGx.A and PMPADDRx into a 32-bit address mask and address
+	reg [W_ADDR-1:0] match_mask [0:PMP_REGIONS-1];
+	reg [W_ADDR-1:0] match_addr [0:PMP_REGIONS-1];
+
+	// Encoding: (noting ADDR is a 4-byte address, not a word address):
+	// CFG.A |  ADDR    | Region size
+	// ------+----------+------------
+	// NA4   | y..yyyyy | 4 bytes
+	// NAPOT | y..yyyy0 | 8 bytes
+	// NAPOT | y..yyy01 | 16 bytes
+	// NAPOT | y..yy011 | 32 bytes
+	// NAPOT | y..y0111 | 64 bytes
+	// etc.
+	//
+	// So, with the exception of NA4, the rule is to check all bits more
+	// significant than the least-significant 0 bit.
+
+	always @ (*) begin: decode_match_mask_addr
+		integer i, j;
+		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
+			if (!pmpcfg_a[i][0]) begin
+				match_mask[i] = {{W_ADDR-2{1'b1}}, 2'b00};
+			end else begin
+				// Bits 1:0 are always 0. Bit 2 is 0 because NAPOT is at least 8 bytes.
+				match_mask[i] = {W_ADDR{1'b0}};
+				for (j = 3; j < W_ADDR; j = j + 1) begin
+					match_mask[i][j] = match_mask[i][j - 1] || !pmpaddr[i][j - 3];
+				end
 			end
+			match_addr[i] = {pmpaddr[i], 2'b00} & match_mask[i];
 		end
-		match_addr[i] = {pmpaddr[i], 2'b00} & match_mask[i];
 	end
+
+	// We check only the least-addressed byte of each access. See later
+	// comments for an argument as to why this is sufficient.
+
+	always @ (*) begin: check_d_match
+		integer i;
+		for (i = PMP_REGIONS - 1; i >= 0; i = i - 1) begin
+			d_match_napot[i] = pmpcfg_a[i][1] &&
+				(d_addr & match_mask[i]) == match_addr[i];
+			i_match_napot[i] = pmpcfg_a[i][1] &&
+				(i_addr & match_mask[i]) == match_addr[i];
+		end
+	end
+
+end else begin: no_napot
+
+	always @ (*) d_match_napot = {PMP_REGIONS{1'b0}};
+	always @ (*) i_match_napot = {PMP_REGIONS{1'b0}};
+
 end
+
+if (PMP_MATCH_TOR != 0) begin: have_tor
+
+	reg [W_ADDR-1:0]      watermark [0:PMP_REGIONS-1];
+	reg [W_ADDR:0]        d_sum [0:PMP_REGIONS-1];
+	reg [PMP_REGIONS-1:0] d_lt;
+	reg [PMP_REGIONS-1:0] i_lt;
+
+	always @ (*) begin: compare
+		integer i;
+		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
+			watermark[i] = {
+				pmpaddr[i][W_ADDR-3:0] & (~30'h0 << PMP_GRAIN),
+				2'b00
+			};
+			// Explicit 4-way sum to encourage carry-save
+			d_sum[i] =
+				 {1'b0, d_addr_addend_rs1} +
+				 {1'b0, d_addr_addend_imm} +
+				 {1'b0, d_addr_addend_lspair_offs & {32{|EXTENSION_ZILSD}}} +
+				-{1'b0, watermark[i]};
+			d_lt[i] = d_sum[i][W_ADDR];
+			i_lt[i] = i_addr < watermark[i];
+		end
+	end
+
+	wire [PMP_REGIONS-1:0] d_prev_ge = ~(d_lt << 1);
+	wire [PMP_REGIONS-1:0] i_prev_ge = ~(i_lt << 1);
+
+	always @ (*) begin: match
+		integer i;
+		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
+			d_match_tor[i] = d_lt[i] && d_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
+			i_match_tor[i] = i_lt[i] && i_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
+		end
+	end
+
+end else begin: no_tor
+
+	always @ (*) d_match_tor = {PMP_REGIONS{1'b0}};
+	always @ (*) i_match_tor = {PMP_REGIONS{1'b0}};
+
+end
+
+// ----------------------------------------------------------------------------
+// Decode permissions from matches
 
 // For load/stores we assume any non-naturally-aligned transfers trigger a
 // misaligned load/store/AMO exception, so we only need to decode the PMP
@@ -209,7 +292,7 @@ always @ (*) begin: check_d_match
 	// Lowest-numbered match wins, so work down from the top. This should be
 	// inferred as a priority mux structure (cascade mux).
 	for (i = PMP_REGIONS - 1; i >= 0; i = i - 1) begin
-		if (|pmpcfg_a[i] && (d_addr & match_mask[i]) == match_addr[i]) begin
+		if (d_match_napot[i] || d_match_tor[i]) begin
 			d_m = pmpcfg_m[i];
 			d_l = pmpcfg_l[i];
 			d_r = pmpcfg_r[i];
@@ -240,7 +323,7 @@ always @ (*) begin: check_i_match
 	i_l = 1'b0;
 	i_x = 1'b0;
 	for (i = PMP_REGIONS - 1; i >= 0; i = i - 1) begin
-		if (|pmpcfg_a[i] && (i_addr & match_mask[i]) == match_addr[i]) begin
+		if (i_match_napot[i] || i_match_tor[i]) begin
 			i_m = pmpcfg_m[i];
 			i_l = pmpcfg_l[i];
 			i_x = pmpcfg_x[i];
