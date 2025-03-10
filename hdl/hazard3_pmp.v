@@ -165,12 +165,18 @@ end
 // ----------------------------------------------------------------------------
 // Match addresses against regions
 
-reg  [PMP_REGIONS-1:0] d_match_napot;
-reg  [PMP_REGIONS-1:0] i_match_napot;
-reg  [PMP_REGIONS-1:0] d_match_tor;
-reg  [PMP_REGIONS-1:0] i_match_tor;
+wire [PMP_REGIONS-1:0] d_match_napot;
+wire [PMP_REGIONS-1:0] i_match_napot;
+wire [PMP_REGIONS-1:0] d_match_tor;
+wire [PMP_REGIONS-1:0] i_match_tor;
 
 if (PMP_MATCH_NAPOT != 0) begin: have_napot
+
+	reg [PMP_REGIONS-1:0] d_match_napot_r;
+	reg [PMP_REGIONS-1:0] i_match_napot_r;
+
+	assign d_match_napot = d_match_napot_r;
+	assign i_match_napot = i_match_napot_r;
 
 	// Decode PMPCFGx.A and PMPADDRx into a 32-bit address mask and address
 	reg [W_ADDR-1:0] match_mask [0:PMP_REGIONS-1];
@@ -211,26 +217,31 @@ if (PMP_MATCH_NAPOT != 0) begin: have_napot
 	always @ (*) begin: check_d_match
 		integer i;
 		for (i = PMP_REGIONS - 1; i >= 0; i = i - 1) begin
-			d_match_napot[i] = pmpcfg_a[i][1] &&
+			d_match_napot_r[i] = pmpcfg_a[i][1] &&
 				(d_addr & match_mask[i]) == match_addr[i];
-			i_match_napot[i] = pmpcfg_a[i][1] &&
+			i_match_napot_r[i] = pmpcfg_a[i][1] &&
 				(i_addr & match_mask[i]) == match_addr[i];
 		end
 	end
 
 end else begin: no_napot
 
-	always @ (*) d_match_napot = {PMP_REGIONS{1'b0}};
-	always @ (*) i_match_napot = {PMP_REGIONS{1'b0}};
+	assign d_match_napot = {PMP_REGIONS{1'b0}};
+	assign i_match_napot = {PMP_REGIONS{1'b0}};
 
 end
 
 if (PMP_MATCH_TOR != 0) begin: have_tor
 
+	reg [PMP_REGIONS-1:0] d_match_tor_r;
+	reg [PMP_REGIONS-1:0] i_match_tor_r;
 	reg [W_ADDR-1:0]      watermark [0:PMP_REGIONS-1];
 	reg [W_ADDR:0]        d_sum [0:PMP_REGIONS-1];
 	reg [PMP_REGIONS-1:0] d_lt;
 	reg [PMP_REGIONS-1:0] i_lt;
+
+	assign d_match_tor = d_match_tor_r;
+	assign i_match_tor = i_match_tor_r;
 
 	always @ (*) begin: compare
 		integer i;
@@ -256,15 +267,15 @@ if (PMP_MATCH_TOR != 0) begin: have_tor
 	always @ (*) begin: match
 		integer i;
 		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
-			d_match_tor[i] = d_lt[i] && d_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
-			i_match_tor[i] = i_lt[i] && i_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
+			d_match_tor_r[i] = d_lt[i] && d_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
+			i_match_tor_r[i] = i_lt[i] && i_prev_ge[i] && pmpcfg_a[i] == PMP_A_TOR;
 		end
 	end
 
 end else begin: no_tor
 
-	always @ (*) d_match_tor = {PMP_REGIONS{1'b0}};
-	always @ (*) i_match_tor = {PMP_REGIONS{1'b0}};
+	assign d_match_tor = {PMP_REGIONS{1'b0}};
+	assign i_match_tor = {PMP_REGIONS{1'b0}};
 
 end
 
