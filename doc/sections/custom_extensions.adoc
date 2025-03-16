@@ -46,7 +46,7 @@ If `mstatus.tw` is set, attempting to execute this instruction in privilege mode
 
 If an unblock signal has been received in the time since the last `h3.block`, this instruction executes as a `nop`, and the processor does not enter the sleep state. Conceptually, the sleep state falls through immediately because the corresponding unblock signal has already been received.
 
-An unblock signal is received when a neighbouring processor (the exact definition of "neighbouring" being left to the implementor) executes an `h3.unblock` instruction, or for some other platform-defined reason.
+An unblock signal is received when a neighbouring processor (the exact definition of "neighbouring" being left to the implementer) executes an `h3.unblock` instruction, or for some other platform-defined reason.
 
 This instruction is encoded as `slt x0, x0, x0`, which is part of the custom nop-compatible hint encoding space.
 

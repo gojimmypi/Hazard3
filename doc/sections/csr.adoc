@@ -143,7 +143,7 @@ The table below lists the fields which are _not_ hardwired to 0:
 |Bits | Name | Description
 | 11 | `meie` | External interrupt enable. Hazard3 has internal custom CSRs to further filter external interrupts, see <<reg-meiea>>.
 | 7 | `mtie` | Timer interrupt enable. A timer interrupt is requested when `mie.mtie`, `mip.mtip` and `mstatus.mie` are all 1.
-| 3 | `msie` | Software interrupt enable. A software interupt is requested when  `mie.msie`, `mip.mtip` and `mstatus.mie` are all 1.
+| 3 | `msie` | Software interrupt enable. A software interrupt is requested when  `mie.msie`, `mip.mtip` and `mstatus.mie` are all 1.
 |===
 
 NOTE: RISC-V reserves bits 16+ of `mie`/`mip` for platform use, which Hazard3 could use for external interrupt control. On RV32I this could only control 16 external interrupts, so Hazard3 instead adds nonstandard interrupt enable registers starting at <<reg-meiea>>, and keeps the upper half of `mie` reserved.
@@ -369,8 +369,6 @@ Trigger CSRs control Hazard3's trigger module, described in <<section-trigger-mo
 
 Address: `0x7a0`
 
-Implemented if: <<param-DEBUG_SUPPORT>> = `1`
-
 Select a trigger for configuration. The selected trigger is described in <<reg-tinfo>> and can be configured through <<reg-tdata1>> and <<reg-tdata2>>. See <<section-trigger-module>> for an overview of Hazard3's trigger capabilities.
 
 This register implements exactly enough bits to index the configured number of triggers. Remaining bits are hardwired to zero.
@@ -415,7 +413,7 @@ The layout of bits `26:0` of this register depends on the value of `type`.
 | 17:16 | `sizelo` | Hardwired to zero; all instruction sizes are matched
 | 15:12 | `action` | Supports the values `0` (break to M-mode `ebreak` exception handler) and `1` (break to Debug Mode). Bits 15:13 are hardwired to zero.
 
-An `action` of `0` is ignored when `tcontrol.mte` is `0`. An `action` of `1` is ignored when `dmode` is `0`.
+An `action` of `0` is ignored when `tcontrol.mte` is `0`. An `action` of `1` is ignored when `tdata1.dmode` is `0`.
 | 11 | `chain` | Hardwired to zero; chaining is not supported
 | 10:7 | `match` | Hardwired to zero; match is always on the exact address
 | 6 | `m` | Write 1 to enable matching during M-mode execution
@@ -632,7 +630,7 @@ Address: `0xbe1`
 
 External interrupt pending array. Contains a read-only bit for each external interrupt request. Similarly to `meiea`, this register is a window into an array of up to 512 external interrupt flags. The status appears in the upper 16 bits of the value read from `meipa`, and the lower 5 bits of the value _written_ by the same CSR instruction (or 0 if no write takes place) select a 16-bit window of the full interrupt pending array.
 
-A `1` bit indicates that interrupt is currently asserted. IRQs are assumed to be level-sensitive, and the relevant `meipa` bit is cleared by servicing the requestor so that it deasserts its interrupt request.
+A `1` bit indicates that interrupt is currently asserted. IRQs are assumed to be level-sensitive, and the relevant `meipa` bit is cleared by servicing the requester so that it deasserts its interrupt request.
 
 When any interrupt of sufficient priority is both set in `meipa` and enabled in `meiea`, the standard RISC-V external interrupt pending bit `mip.meip` is asserted. In other words, `meipa` is filtered by `meiea` to generate the standard `mip.meip` flag. So, an external interrupt is taken when _all_ of the following are true:
 
@@ -721,7 +719,7 @@ External interrupt context register. Configures the priority level for interrupt
 
 A three-level stack of preemption priorities is maintained in the `preempt`, `ppreempt` and `pppreempt` fields. The priority stack is saved when hardware enters the external interrupt vector, and restored by an `mret` instruction if `meicontext.mreteirq` is set.
 
-The top entry of the priority stack, `preempt`, is used by hardware to ensure that only higher-priority interrupts can preempt the current interrupt. The next entry, `ppreempt`, is used to avoid servicing interrupts which may already be in progress in a frame that was preempted. The third entry, `pppreempt`, has no hardware effect, but ensures that `preempt` and `ppreempt` can be correctly saved/restored across arbitary levels of preemption.
+The top entry of the priority stack, `preempt`, is used by hardware to ensure that only higher-priority interrupts can preempt the current interrupt. The next entry, `ppreempt`, is used to avoid servicing interrupts which may already be in progress in a frame that was preempted. The third entry, `pppreempt`, has no hardware effect, but ensures that `preempt` and `ppreempt` can be correctly saved/restored across arbitrary levels of preemption.
 
 [cols="10h,20h,~", options="header"]
 |===

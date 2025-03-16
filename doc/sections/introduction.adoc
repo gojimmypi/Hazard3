@@ -32,8 +32,11 @@ The three stages are:
 ** Contains the instruction prefetch buffer
 ** Predecodes register numbers `rs1`/`rs2`, for faster register file read and register bypass
 ** Contains the address match logic for the optional branch predictor
+** Compares data-phase fetch address with breakpoint addresses
+** Looks up data-phase fetch address against PMP regions
 * `X`: Execute
 ** Decodes and execute instructions
+** Looks up load/store/AMO addresses against PMP regions
 ** Drives the address phase for load/store/AMO
 ** Generates jump/branch addresses
 ** Contains the read and write ports for the CSR file

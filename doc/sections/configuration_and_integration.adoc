@@ -82,7 +82,7 @@ The processor asserts `pwrup_req` when it intends to wake from its low-power sta
 | 32         | In  | `dbg_instr_data`             | Instruction injection interface. Tie to zeroes if debug support is not configured.
 | 1          | In  | `dbg_instr_data_vld`         | Instruction injection interface. Tie low if debug support is not configured.
 | 1          | Out | `dbg_instr_data_rdy`         | Instruction injection interface. Disconnect if debug support is not configured.
-| 1          | Out | `dbg_instr_caught_exception` | Exception caught during Program Buffer excecution. Disconnect if debug support is not configured.
+| 1          | Out | `dbg_instr_caught_exception` | Exception caught during Program Buffer execution. Disconnect if debug support is not configured.
 | 1          | Out | `dbg_instr_caught_ebreak`    | Breakpoint instruction caught during Program Buffer execution. Disconnect if debug support is not configured.
 4+| **Shared System Bus Access**
 4+| This subordinate bus port allows the standard System Bus Access (SBA) feature of the Debug Module to share bus access with the core. Alternatively, use the standalone `hazard3_sbus_to_ahb` adapter to provide dedicated SBA access to the system bus.
