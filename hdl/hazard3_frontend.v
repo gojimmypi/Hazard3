@@ -822,8 +822,11 @@ end else begin: have_decompress
 	wire        decomp_uop_atomic;
 	wire        decomp_invalid;
 
-	wire        first_uop           = ~|decomp_uop_step && |buf_level_next;
-	wire        uop_stall_non_first = uop_stall && !first_uop;
+	wire        first_uop           = ~|decomp_uop_step;
+	// Ensure the first uop goes straight through, as it is registered into CIR:
+	wire        uop_stall_non_first = first_uop ? ~|buf_level_next : uop_stall;
+	// Ensure the uop counter stops at 0 after rolling over once:
+	wire        uop_stall_on_repeat = cir_is_uop && !cir_uop_nonfinal;
 
 	hazard3_instr_decompress #(
 		`include "hazard3_config_inst.vh"
@@ -840,7 +843,7 @@ end else begin: have_decompress
 		.instr_out_is_final_uop     (decomp_is_final_uop),
 		.instr_out_uop_no_pc_update (decomp_uop_no_pc_update),
 		.instr_out_uop_atomic       (decomp_uop_atomic),
-		.instr_out_uop_stall        (uop_stall_non_first),
+		.instr_out_uop_stall        (uop_stall_non_first || uop_stall_on_repeat),
 		.instr_out_uop_clear        (uop_clear),
 		.df_uop_step                (decomp_uop_step),
 
