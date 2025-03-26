@@ -464,35 +464,33 @@ assign break_m_step = break_on_step;
 // it is not known at this point where the instruction boundaries are (we
 // don't have the instruction data yet).
 
-reg [N_BREAKPOINT_REGS-1:0] breakpoint_enabled;
-reg [N_BREAKPOINT_REGS-1:0] breakpoint_match;
-reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break;
-reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break;
-reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw0;
-reg [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw1;
-reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw0;
-reg [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw1;
+wire [N_BREAKPOINT_REGS-1:0] breakpoint_enabled;
+wire [N_BREAKPOINT_REGS-1:0] breakpoint_match;
+wire [N_BREAKPOINT_REGS-1:0] want_d_mode_break;
+wire [N_BREAKPOINT_REGS-1:0] want_m_mode_break;
+wire [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw0;
+wire [N_BREAKPOINT_REGS-1:0] want_d_mode_break_hw1;
+wire [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw0;
+wire [N_BREAKPOINT_REGS-1:0] want_m_mode_break_hw1;
 
-always @ (*) begin: match_pc
-	integer i;
-	for (i = 0; i < N_BREAKPOINT_REGS; i = i + 1) begin
-		// Detect tripped breakpoints
-		breakpoint_enabled[i] = mcontrol_execute[i] && !fetch_d_mode && (
-			fetch_m_mode ? mcontrol_m[i] : mcontrol_u[i]
-		);
-		breakpoint_match[i] = breakpoint_enabled[i] && fetch_addr == {bp_tdata2[i][W_DATA-1:2], 2'b00};
-		// Decide the type of break implied by the trip
-		want_d_mode_break[i] = breakpoint_match[i] &&  mcontrol_action[i] && bp_tdata1_dmode[i];
-		want_m_mode_break[i] = breakpoint_match[i] && !mcontrol_action[i] && trig_m_en;
-		// Report separately for each halfword, so the frontend can pass this
-		// through the prefetch buffer. A breakpoint exception is taken when
-		// the first halfword of an instruction (of any size) is flagged with
-		// a breakpoint, implying an exact match.
-		want_d_mode_break_hw0[i] = want_d_mode_break[i] && !bp_tdata2[i][1];
-		want_d_mode_break_hw1[i] = want_d_mode_break[i] &&  bp_tdata2[i][1];
-		want_m_mode_break_hw0[i] = want_m_mode_break[i] && !bp_tdata2[i][1];
-		want_m_mode_break_hw1[i] = want_m_mode_break[i] &&  bp_tdata2[i][1];
-	end
+genvar g;
+for (g = 0; g < N_BREAKPOINT_REGS; g = g + 1) begin: match_pc
+	// Detect tripped breakpoints
+	assign breakpoint_enabled[g] = mcontrol_execute[g] && !fetch_d_mode && (
+		fetch_m_mode ? mcontrol_m[g] : mcontrol_u[g]
+	);
+	assign breakpoint_match[g] = breakpoint_enabled[g] && fetch_addr == {bp_tdata2[g][W_DATA-1:2], 2'b00};
+	// Decide the type of break implied by the trip
+	assign want_d_mode_break[g] = breakpoint_match[g] &&  mcontrol_action[g] && bp_tdata1_dmode[g];
+	assign want_m_mode_break[g] = breakpoint_match[g] && !mcontrol_action[g] && trig_m_en;
+	// Report separately for each halfword, so the frontend can pass this
+	// through the prefetch buffer. A breakpoint exception is taken when
+	// the first halfword of an instruction (of any size) is flagged with
+	// a breakpoint, implying an exact match.
+	assign want_d_mode_break_hw0[g] = want_d_mode_break[g] && !bp_tdata2[g][1];
+	assign want_d_mode_break_hw1[g] = want_d_mode_break[g] &&  bp_tdata2[g][1];
+	assign want_m_mode_break_hw0[g] = want_m_mode_break[g] && !bp_tdata2[g][1];
+	assign want_m_mode_break_hw1[g] = want_m_mode_break[g] &&  bp_tdata2[g][1];
 end
 
 // Break flags to frontend (tag the current fetch dphase as containing a breakpoint):
