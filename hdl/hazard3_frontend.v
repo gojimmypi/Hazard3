@@ -826,7 +826,7 @@ end else begin: have_decompress
 	// Ensure the first uop goes straight through, as it is registered into CIR:
 	wire        uop_stall_non_first = first_uop ? ~|buf_level_next : uop_stall;
 	// Ensure the uop counter stops at 0 after rolling over once:
-	wire        uop_stall_on_repeat = cir_is_uop && !cir_uop_nonfinal;
+	wire        uop_stall_on_repeat = cir_is_uop && !cir_uop_nonfinal && ~|cir_use;
 
 	hazard3_instr_decompress #(
 		`include "hazard3_config_inst.vh"
