@@ -253,6 +253,10 @@ hazard3_cpu_1port #(
 	.hwdata                     (i_hwdata),
 	.hrdata                     (i_hrdata),
 
+	.fence_i_vld                (),
+	.fence_d_vld                (),
+	.fence_rdy                  (1'b1),
+
 	.dbg_req_halt               (hart_req_halt              [0]),
 	.dbg_req_halt_on_reset      (hart_req_halt_on_reset     [0]),
 	.dbg_req_resume             (hart_req_resume            [0]),
@@ -313,6 +317,10 @@ hazard3_cpu_1port #(
 	.hexokay                    (d_hexokay),
 	.hwdata                     (d_hwdata),
 	.hrdata                     (d_hrdata),
+
+	.fence_i_vld                (),
+	.fence_d_vld                (),
+	.fence_rdy                  (1'b1),
 
 	.dbg_req_halt               (hart_req_halt              [1]),
 	.dbg_req_halt_on_reset      (hart_req_halt_on_reset     [1]),

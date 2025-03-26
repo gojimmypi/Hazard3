@@ -49,6 +49,7 @@ You must synchronise resets externally according to your STA constraints and you
 
 Most ports are common to the two top-level wrappers, `hazard3_cpu_1port` and `hazard3_cpu_2port`. The only difference is the number of AHB5 manager ports used to access the bus: `hazard3_cpu_1port` has a single port used for all accesses, whereas `hazard3_cpu_2port` adds a separate, dedicated port for instruction fetch.
 
+[[interfaces-all-wrappers]]
 ==== Interfaces Common to All Wrappers
 
 [options="header",cols="1,1,3,4"]
@@ -69,6 +70,19 @@ The processor asserts `pwrup_req` when it intends to wake from its low-power sta
 | 1          | Out | `clk_en`                     | Control output for an external top-level clock gate on `clk`. Active-high enable. Hazard3 tolerates up to one cycle of delay between the assertion of `clk_en` and the resulting clock pulse on `clk`.
 | 1          | Out | `unblock_out`                | Pulses high when an `h3.unblock` instruction executes. Disconnect if Xh3power is not configured.
 | 1          | In  | `unblock_in`                 | A high input pulse will release a blocked `h3.block` instruction, or cause the next `h3.block` instruction to immediately fall through.
+4+| **Memory ordering signals**
+| 1          | Out | `fence_i_vld`                | Indicates the core is executing a `fence.i` instruction. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_d_vld`.
+
+The core waits for all in-progress bus accesses (load/store and instruction fetch) to complete before asserting this signal.
+
+Once `fetch_rdy` is seen high, the core flushes its prefetch buffer to order the fetch of younger instructions against the fence. It then resumes normal execution.
+
+| 1          | Out | `fence_d_vld`                | Indicates the core is executing a non-instruction fence, such as `fence rw, rw`. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_i_vld`.
+
+The core waits for any in-progress load/store bus accesses to complete before asserting this signal.
+| 1          | In  | `fence_rdy`                  | Signal to the core that the memory subsystem has finished processing the fence requested by `fence_i_vld` or `fence_d_vld`.
+
+If no special handling of fences is required, tie this signal high.
 4+| **Debug Module controls**
 4+| All Debug Module signals should be connected to the signal with the matching name on the Hazard3 Debug Module implementation.
 | 1          | In  | `dbg_req_halt`               | Debugger halt request. Tie low if debug support is not configured.

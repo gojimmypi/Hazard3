@@ -73,7 +73,8 @@ module hazard3_decode #(
 	output wire                 d_no_pc_increment,
 	output wire                 d_uninterruptible,
 	output wire [W_ADDR-1:0]    d_lspair_offset,
-	output reg                  d_fence_i
+	output reg                  d_fence_i,
+	output reg                  d_fence_d
 );
 
 `include "rv_opcodes.vh"
@@ -310,6 +311,7 @@ reg                  raw_sleep_wfi;
 reg                  raw_sleep_block;
 reg                  raw_sleep_unblock;
 reg                  raw_fence_i;
+reg                  raw_fence_d;
 
 always @ (*) begin
 	// Assign some defaults
@@ -333,6 +335,7 @@ always @ (*) begin
 	raw_sleep_block = 1'b0;
 	raw_sleep_unblock = 1'b0;
 	raw_fence_i = 1'b0;
+	raw_fence_d = 1'b0;
 	// Note this funct3/funct7 are valid only for 32-bit instructions. They
 	// are useful for clusters of related ALU ops, such as sh*add, clmul.
 	d_funct3_32b = fd_cir[14:12];
@@ -475,7 +478,7 @@ always @ (*) begin
 	`RVOPC_CSRRSI:    if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = |raw_rs1; raw_csr_ren = 1'b1 ;   raw_csr_wtype = CSR_WTYPE_S; raw_csr_w_imm = 1'b1; end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_CSRRCI:    if (HAVE_CSR)              begin raw_imm = d_imm_i; raw_csr_wen = |raw_rs1; raw_csr_ren = 1'b1 ;   raw_csr_wtype = CSR_WTYPE_C; raw_csr_w_imm = 1'b1; end else begin d_invalid_32bit = 1'b1; end
 
-	`RVOPC_FENCE:     begin raw_rs2 = X0; end  // NOP, note rs1/rd are zero in instruction
+	`RVOPC_FENCE:     begin raw_rs2 = X0; raw_fence_d = 1'b1; end  // Note rs1/rd are zero in instruction
 	`RVOPC_FENCE_I:   if (EXTENSION_ZIFENCEI)    begin raw_except = debug_mode ? EXCEPT_NONE : EXCEPT_REFETCH; raw_fence_i = 1'b1;                                          end else begin d_invalid_32bit = 1'b1; end // note rs1/rs2/rd are zero in instruction
 	`RVOPC_ECALL:     if (HAVE_CSR)              begin raw_except = m_mode || !U_MODE ? EXCEPT_ECALL_M : EXCEPT_ECALL_U;  raw_rs2 = X0; raw_rs1 = X0; raw_rd = X0;          end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_EBREAK:    if (HAVE_CSR)              begin raw_except = EXCEPT_EBREAK; raw_rs2 = X0; raw_rs1 = X0; raw_rd = X0;                                                 end else begin d_invalid_32bit = 1'b1; end
@@ -512,6 +515,7 @@ always @ (*) begin
 	d_sleep_block     = raw_sleep_block;
 	d_sleep_unblock   = raw_sleep_unblock;
 	d_fence_i         = raw_fence_i;
+	d_fence_d         = raw_fence_d;
 
 	if (d_invalid || d_starved || d_except_instr_bus_fault || partial_predicted_branch) begin
 		d_rs1             = {W_REGADDR{1'b0}};

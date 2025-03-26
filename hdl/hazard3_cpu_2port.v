@@ -58,6 +58,11 @@ module hazard3_cpu_2port #(
 	output wire [W_DATA-1:0]  d_hwdata,
 	input  wire [W_DATA-1:0]  d_hrdata,
 
+	// Memory ordering signals
+	output wire               fence_i_vld,
+	output wire               fence_d_vld,
+	input  wire               fence_rdy,
+
 	// Debugger run/halt control
 	input  wire               dbg_req_halt,
 	input  wire               dbg_req_halt_on_reset,
@@ -159,6 +164,10 @@ hazard3_core #(
 	.bus_hwrite_d               (core_hwrite_d),
 	.bus_wdata_d                (core_wdata_d),
 	.bus_rdata_d                (core_rdata_d),
+
+	.fence_i_vld                (fence_i_vld),
+	.fence_d_vld                (fence_d_vld),
+	.fence_rdy                  (fence_rdy),
 
 	.dbg_req_halt               (dbg_req_halt),
 	.dbg_req_halt_on_reset      (dbg_req_halt_on_reset),

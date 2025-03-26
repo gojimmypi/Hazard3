@@ -240,7 +240,7 @@ always @ (posedge clk) if (rst_n) begin
 end
 `endif
 
-assign pwrdown_ok = fifo_full && !jump_target_vld;
+assign pwrdown_ok = (fifo_full && !jump_target_vld) || debug_mode;
 
 // ----------------------------------------------------------------------------
 // Branch target buffer

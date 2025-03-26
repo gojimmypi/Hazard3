@@ -53,6 +53,11 @@ module hazard3_core #(
 	output reg  [W_DATA-1:0]   bus_wdata_d,
 	input  wire [W_DATA-1:0]   bus_rdata_d,
 
+	// Memory ordering signals
+	output wire                fence_i_vld,
+	output wire                fence_d_vld,
+	input  wire                fence_rdy,
+
 	// Debugger run/halt control
 	input  wire                dbg_req_halt,
 	input  wire                dbg_req_halt_on_reset,
@@ -261,6 +266,7 @@ wire                 d_sleep_unblock;
 wire                 d_no_pc_increment;
 wire                 d_uninterruptible;
 wire                 d_fence_i;
+wire                 d_fence_d;
 wire                 d_csr_ren;
 wire                 d_csr_wen;
 wire [1:0]           d_csr_wtype;
@@ -340,7 +346,8 @@ hazard3_decode #(
 	.d_no_pc_increment       (d_no_pc_increment),
 	.d_uninterruptible       (d_uninterruptible),
 	.d_lspair_offset         (d_lspair_offset),
-	.d_fence_i               (d_fence_i)
+	.d_fence_i               (d_fence_i),
+	.d_fence_d               (d_fence_d)
 );
 
 // ----------------------------------------------------------------------------
@@ -450,6 +457,7 @@ always @ (*) begin
 	end
 end
 
+wire x_stall_on_fence;
 wire x_stall_muldiv;
 wire x_jump_req;
 
@@ -459,6 +467,7 @@ assign x_stall =
 	x_stall_on_exclusive_overlap ||
 	x_stall_on_amo ||
 	x_stall_on_raw ||
+	x_stall_on_fence ||
 	x_stall_muldiv ||
 	bus_aph_req_d && !bus_aph_ready_d ||
 	x_jump_req && !f_jump_rdy;
@@ -761,6 +770,15 @@ always @ (*) begin
 		((xm_sleep_wfi || xm_sleep_block) && !m_sleep_stall_release)
 	);
 end
+
+// Fences are not issued until relevant buses are quiet.
+wire m_dphase_in_flight;
+assign x_stall_on_fence =
+	(d_fence_i && !(fence_rdy && !m_dphase_in_flight && f_frontend_pwrdown_ok)) ||
+	(d_fence_d && !(fence_rdy && !m_dphase_in_flight));
+
+assign fence_i_vld = d_fence_i && !m_dphase_in_flight && f_frontend_pwrdown_ok;
+assign fence_d_vld = d_fence_d && !m_dphase_in_flight;
 
 // Multiply/divide
 
@@ -1089,7 +1107,7 @@ wire x_except_counts_as_retire =
 
 assign x_instr_ret = |df_cir_use && (x_except == EXCEPT_NONE || x_except_counts_as_retire);
 
-wire m_dphase_in_flight = xm_memop != MEMOP_NONE && xm_memop != MEMOP_AMO;
+assign m_dphase_in_flight = xm_memop != MEMOP_NONE && xm_memop != MEMOP_AMO;
 
 // Need to delay IRQ entry on sleep exit because, for deep sleep states, we
 // can't access the bus until the power handshake has completed.

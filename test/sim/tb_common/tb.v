@@ -224,6 +224,20 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
+wire      fence_i_vld;
+wire      fence_d_vld;
+reg [3:0] fence_rdy_delay_ctr;
+wire      fence_rdy = &fence_rdy_delay_ctr;
+always @ (posedge clk or negedge rst_n) begin
+	if (!rst_n) begin
+		fence_rdy_delay_ctr <= 4'h0;
+	end else if (fence_i_vld || fence_d_vld) begin
+		fence_rdy_delay_ctr <= fence_rdy_delay_ctr + 4'h1;
+	end else begin
+		fence_rdy_delay_ctr <= 4'h0;
+	end
+end
+
 // Clock gate is disabled, as CXXRTL currently can't simulated gated clocks
 // due to a limitation of the scheduler design
 
@@ -284,6 +298,10 @@ hazard3_cpu_2port #(
 	.d_hexokay                  (d_hexokay),
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
+
+	.fence_i_vld                (fence_i_vld),
+	.fence_d_vld                (fence_d_vld),
+	.fence_rdy                  (fence_rdy),
 
 	.dbg_req_halt               (hart_req_halt),
 	.dbg_req_halt_on_reset      (hart_req_halt_on_reset),
