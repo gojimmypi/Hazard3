@@ -49,6 +49,8 @@ You must synchronise resets externally according to your STA constraints and you
 
 Most ports are common to the two top-level wrappers, `hazard3_cpu_1port` and `hazard3_cpu_2port`. The only difference is the number of AHB5 manager ports used to access the bus: `hazard3_cpu_1port` has a single port used for all accesses, whereas `hazard3_cpu_2port` adds a separate, dedicated port for instruction fetch.
 
+NOTE: Hazard3 adopts the convention that all signals are active-high, with the exception of the reset input `rst_n`.
+
 [[interfaces-all-wrappers]]
 ==== Interfaces Common to All Wrappers
 
@@ -268,7 +270,7 @@ Default value: `0`
 
 Support for Zbkb basic bit manipulation for cryptography.
 
-Requires: <<param-EXTENSION_ZBB>>. (Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.)
+Requires: <<param-EXTENSION_ZBB>> = `1`. (Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.)
 
 Default value: `0`
 
@@ -277,7 +279,7 @@ Default value: `0`
 
 Support for Zcb basic additional compressed instructions
 
-Requires: <<param-EXTENSION_C>>. (Some Zcb instructions also require Zbb or M, as they are 16-bit aliases of 32-bit instructions present in those extensions.)
+Requires: <<param-EXTENSION_C>> = `1`. (Some Zcb instructions also require Zbb or M, as they are 16-bit aliases of 32-bit instructions present in those extensions.)
 
 Note Zca is equivalent to C, as we do not support the F extension.
 
@@ -289,13 +291,13 @@ Default value: `0`
 
 Support for Zclsd compressed load/store pair instructions.
 
-Requires: <<param-EXTENSION_ZILSD>>, <<param-EXTENSION_C>>.
+Requires: <<param-EXTENSION_ZILSD>> = `1` and <<param-EXTENSION_C>> = `1`.
 
 [[param-EXTENSION_ZCMP]]
 ===== EXTENSION_ZCMP
 Support for Zcmp push/pop and double-move instructions.
 
-Requires: <<param-EXTENSION_C>>.
+Requires: <<param-EXTENSION_C>> = `1`.
 
 Note Zca is equivalent to C, as we do not support the F extension.
 
@@ -307,7 +309,7 @@ Default value: `0`
 Support for the fence.i instruction. When the branch predictor is not present,
 this instruction is optional, since a plain branch/jump is sufficient to
 flush the instruction prefetch queue. When the branch predictor is enabled
-(<<param-BRANCH_PREDICTOR>> is 1), this instruction must be implemented.
+(<<param-BRANCH_PREDICTOR>> = 1), this instruction must be implemented.
 
 Default value: `0`
 
@@ -335,14 +337,16 @@ Default value: `0`
 
 Custom preemptive, prioritised interrupt support. Can be disabled if an
 external interrupt controller (e.g. PLIC) is used. If disabled, and
-NUM_IRQS > 1, the external interrupts are simply OR'd into mip.meip. See <<extension-xh3irq-section>>.
+<<param-NUM_IRQS>> > `1`, the external interrupts are simply OR'd into
+`mip.meip`. See <<extension-xh3irq-section>>.
 
 Default value: `0`
 
 [[param-EXTENSION_XH3PMPM]]
 ===== EXTENSION_XH3PMPM
 
-Custom PMPCFGMx CSRs to enforce PMP regions in M-mode without locking. See <<extension-xh3pmpm-section>>.
+Enable the custom PMPCFGMx CSRs, which can enforce PMP regions in M-mode
+without locking the regions. See <<extension-xh3pmpm-section>>.
 
 Default value: `0`
 
@@ -393,7 +397,7 @@ bus accesses, and software's access to CSRs is restricted. Additionally, if
 the PMP is included, the core may restrict U-mode software's access to
 memory.
 
-Requires: <<param-CSR_M_TRAP>>.
+Requires: <<param-CSR_M_TRAP>> = `1`.
 
 Default value: `0`
 
@@ -406,7 +410,7 @@ useful if U-mode is supported, but this is not a requirement.
 Hazard3's PMP supports only the NAPOT and(if <<param-PMP_GRAIN>> is 0) NA4
 region types.
 
-Requires: <<param-CSR_M_TRAP>>.
+Requires: <<param-CSR_M_TRAP>> = `1`.
 
 Default value: `0`
 
@@ -473,24 +477,36 @@ Default value: all-zeroes.
 [[param-PMP_HARDWIRED_ADDR]]
 ===== PMP_HARDWIRED_ADDR
 
-Values of pmpaddr registers whose PMP_HARDWIRED bits are set to 1. Has no effect on PMP regions which are not hardwired.
+Values of `pmpaddr` registers whose <<param-PMP_HARDWIRED>> bits are set to `1`. Has no effect on PMP regions which are not hardwired.
 
 Default value: all-zeroes.
 
 [[param-PMP_HARDWIRED_CFG]]
 ===== PMP_HARDWIRED_CFG
 
-Values of pmpcfg registers whose PMP_HARDWIRED bits are set to 1. Has no effect on PMP regions which are not hardwired.
+Values of `pmpcfg` registers whose <<param-PMP_HARDWIRED>> bits are set to `1`. Has no effect on PMP regions which are not hardwired.
 
 Default value: all-zeroes.
 
 [[param-DEBUG_SUPPORT]]
 ===== DEBUG_SUPPORT
 
-Support for run/halt and instruction injection from an external Debug Module,
-support for Debug Mode, and Debug Mode CSRs.
+Enable the following hardware functionality:
 
-Requires: <<param-CSR_M_MANDATORY>>, <<param-CSR_M_TRAP>>.
+* Support for run/halt and instruction injection from an external Debug Module,
+* Support for Debug Mode
+* Debug Mode CSRs
+* A minimal Trigger Module with an exception trigger, an interrupt trigger and an instruction count trigger (see <<section-trigger-module>>)
+
+If the Hazard3 Debug Module is also instantiated and correctly connected to
+the core, this is sufficient for debugging the core from any RISC-V-compliant
+debug host.
+
+Consider also enabling hardware breakpoints using
+<<param-BREAKPOINT_TRIGGERS>> if debugging code in read-only memory is an
+anticipated use case.
+
+Requires: <<param-CSR_M_MANDATORY>> = `1` and <<param-CSR_M_TRAP>> = `1`.
 
 Default value: `0`
 
@@ -502,7 +518,7 @@ supports only exact execution address matches, ignoring instruction size.
 That is, a trigger which supports type=2 execute=1 (but not store/load=1,
 i.e. not a watchpoint).
 
-Requires: <<param-DEBUG_SUPPORT>>
+Requires: <<param-DEBUG_SUPPORT>> = `1`.
 
 Default value: `0`
 
@@ -511,19 +527,26 @@ Default value: `0`
 [[param-NUM_IRQS]]
 ===== NUM_IRQS
 
-NUM_IRQS: Number of external IRQs. Minimum 1, maximum 512. Note that if
-<<param-EXTENSION_XH3IRQ>> (Hazard3 interrupt controller) is disabled then
-multiple external interrupts are simply OR'd into mip.meip.
+Number of external IRQs. Minimum 1, maximum 512. Note that if
+<<param-EXTENSION_XH3IRQ>> = `0`, the internal interrupt controller is not
+present. In this case multiple external interrupts are simply OR'd into
+`mip.meip`.
 
 Default value: `1`
 
 [[param-IRQ_PRIORITY_BITS]]
 ===== IRQ_PRIORITY_BITS
 
-IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt
-in meipra, if EXTENSION_XH3IRQ is enabled. The number of distinct levels
-is (1 << IRQ_PRIORITY_BITS). Minimum 0, max 4. Note that multiple priority
-levels with a large number of IRQs will have a severe effect on timing.
+IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt in
+the internal interrupt controller described in <<extension-xh3irq-section>>.
+The <<reg-meipra>> array CSR configures the individual priorities.
+
+The number of distinct levels is `(1 << IRQ_PRIORITY_BITS)`. The minimum value
+is `0` (1 level), and the maximum value is `4` (16 levels).  Note that
+multiple priority levels with a large number of IRQs will have a severe effect
+on timing.
+
+Requires: <<param-EXTENSION_XH3IRQ>> = `1`.
 
 Default value: `0`
 
@@ -533,7 +556,9 @@ Default value: `0`
 Disable the input registers on the external interrupts, to reduce latency by
 one cycle. Can be applied on an IRQ-by-IRQ basis.
 
-Ignored if <<param-EXTENSION_XH3IRQ>> is disabled.
+Ignored if <<param-EXTENSION_XH3IRQ>> = `0`. In this case, when the internal
+interrupt controller is not present, all external IRQ inputs are OR'd together
+before being registered in a single flip-flop.
 
 Default value: all-zeroes (not bypassed).
 
@@ -542,9 +567,20 @@ Default value: all-zeroes (not bypassed).
 [[param-MVENDORID_VAL]]
 ===== MVENDORID_VAL
 
-Value of the <<reg-mvendorid>> CSR. JEDEC JEP106-compliant vendor ID, or
-all-zeroes. 31:7 is continuation code count, 6:0 is ID. Parity bit is not
-stored.
+Value of the <<reg-mvendorid>> CSR. Should be either a JEDEC JEP-106-compliant vendor ID, or
+all-zeroes.
+
+Bits `31:7` store the continuation code count, and bits `6:0` are the ID. The
+parity bit is not stored.
+
+[IMPORTANT]
+====
+The number of continuation codes is _one less than_ the JEP106 bank number.
+
+For example, Raspberry Pi has an ID of `0x13` (19 decimal) in bank 10 (decimal). This has a continuation code count of 9, yielding an `mvendorid` of `0x00000493`.
+====
+
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
@@ -553,12 +589,16 @@ Default value: all-zeroes.
 
 Value of the <<reg-mimpid>> CSR. Implementation ID for this specific version of Hazard3. Should be a git hash, or all-zeroes.
 
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
+
 Default value: all-zeroes.
 
 [[param-MHARTID_VAL]]
 ===== MHARTID_VAL
 
 Value of the <<reg-mhartid>> CSR. Each Hazard3 core has a single hardware thread. Multiple cores should have unique IDs.
+
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
@@ -567,6 +607,8 @@ Default value: all-zeroes.
 
 Value of the <<reg-mconfigptr>> CSR. Pointer to configuration structure blob,
 or all-zeroes. Must be at least 4-byte-aligned.
+
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
@@ -585,14 +627,14 @@ Default value: `0`
 [[param-MULDIV_UNROLL]]
 ===== MULDIV_UNROLL
 
-Bits per clock for multiply/divide circuit, if present. Must be a power of 2.
+Configure bits-per-clock for the sequential multiply/divide circuit, if present. Must be a power of 2.
 
 Default value: `1`
 
 [[param-MUL_FAST]]
 ===== MUL_FAST
 
-Use single-cycle multiply circuit for MUL instructions, retiring to stage 3.
+Use a single-cycle multiply circuit for MUL instructions, retiring to stage 3.
 The sequential multiply/divide circuit is still used for MULH*
 
 Default value: `0`
@@ -601,9 +643,9 @@ Default value: `0`
 ===== MUL_FASTER
 
 Retire fast multiply results to stage 2 instead of stage 3.
-Throughput is the same, but latency is reduced from 2 cycles to 1 cycle.
+The throughput is the same, but latency is reduced from 2 cycles to 1 cycle.
 
-Requires: <<param-MUL_FAST>>.
+Requires: <<param-MUL_FAST>> = `1`.
 
 Default value: `0`
 
@@ -613,7 +655,7 @@ Default value: `0`
 Extend the fast multiply circuit to also cover MULH*, and remove
 the multiply functionality from the sequential multiply/divide circuit.
 
-Requires: <<param-MUL_FAST>>
+Requires: <<param-MUL_FAST>> = `1`.
 
 Default value: `0`
 
@@ -643,7 +685,7 @@ which is allocated on a taken backward branch, and cleared on a mispredicted
 nontaken branch, a fence.i or a trap. Successful prediction eliminates the
 1-cyle fetch bubble on a taken branch, usually making tight loops faster.
 
-Requires: <<param-EXTENSION_ZIFENCEI>>
+Requires: <<param-EXTENSION_ZIFENCEI>> = `1`.
 
 Default value: `0`
 
@@ -655,8 +697,8 @@ recommended, because a common idiom in setup code is to set mtvec just
 past code that may trap, as a hardware `try {...} catch` block.
 
 
-* The vectoring mode can be made fixed by clearing the LSB of MTVEC_WMASK
-* In vectored mode, the vector table must be aligned to its size, rounded
-  up to a power of two.
+NOTE: The vectoring mode, in bits `1:0`, can be made fixed by clearing the LSB of `MTVEC_WMASK`.
 
-Default: All writable except for bit 1.
+In vectored mode, the vector table must be aligned to its size, rounded up to a power of two. If all four standard M-mode vectors (exception, `msip`, `mtip` and `meip`) are in use, this means 64-byte alignment.
+
+Default: All writable except for bit `1`.
