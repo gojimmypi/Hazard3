@@ -186,6 +186,15 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 		trigger_exception_dmode <= 1'b0;
 		trigger_exception_cause <= 16'h0;
 
+		for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+			bp_tdata1_dmode[i] <= 1'b0;
+			mcontrol_action[i] <= 1'b0;
+			mcontrol_m[i] <= 1'b0;
+			mcontrol_u[i] <= 1'b0;
+			mcontrol_execute[i] <= 1'b0;
+			bp_tdata2[i] <= {W_DATA{1'b0}};
+		end
+
 	end else begin
 
 		if (cfg_wen && cfg_addr == TSELECT) begin
@@ -210,6 +219,17 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 				trigger_exception_m <= cfg_wdata[9];
 				trigger_exception_u <= cfg_wdata[6] && |U_MODE;
 			end
+			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+				if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
+					if (x_d_mode) begin
+						bp_tdata1_dmode[i] <= cfg_wdata[27];
+					end
+					mcontrol_action[i] <= cfg_wdata[12];
+					mcontrol_m[i] <= cfg_wdata[6];
+					mcontrol_u[i] <= cfg_wdata[3] && |U_MODE;
+					mcontrol_execute[i] <= cfg_wdata[2];
+				end
+			end
 
 		end else if (cfg_wen && cfg_addr == TDATA2) begin
 
@@ -218,6 +238,11 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 			end
 			if (tselect_match[TINDEX_EXCEPTION] && !(trigger_exception_dmode && !x_d_mode)) begin
 				trigger_exception_cause <= cfg_wdata[15:0] & IMPLEMENTED_EXCEPTION_CAUSES;
+			end
+			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
+				if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
+					bp_tdata2[i] <= cfg_wdata & {{W_ADDR-2{1'b1}}, |EXTENSION_C, 1'b0};
+				end
 			end
 
 		end
@@ -229,60 +254,19 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 			icount_u <= 1'b0;
 		end
 
-	end
-end
-
-// Separate breakpoint from non-breakpoint registers, as it's possible to have
-// a trigger module with zero breakpoints
-if (BREAKPOINT_TRIGGERS > 0) begin: have_bp_registers
-
-	always @ (posedge clk or negedge rst_n) begin: bp_cfg_update
-		integer i;
-		if (!rst_n) begin
-			for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-				bp_tdata1_dmode[i] <= 1'b0;
-				mcontrol_action[i] <= 1'b0;
-				mcontrol_m[i] <= 1'b0;
-				mcontrol_u[i] <= 1'b0;
-				mcontrol_execute[i] <= 1'b0;
-				bp_tdata2[i] <= {W_DATA{1'b0}};
-			end
-		end else begin
-			if (cfg_wen && cfg_addr == TDATA1) begin
-				for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-					if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
-						if (x_d_mode) begin
-							bp_tdata1_dmode[i] <= cfg_wdata[27];
-						end
-						mcontrol_action[i] <= cfg_wdata[12];
-						mcontrol_m[i] <= cfg_wdata[6];
-						mcontrol_u[i] <= cfg_wdata[3] && |U_MODE;
-						mcontrol_execute[i] <= cfg_wdata[2];
-					end
-				end
-			end else if (cfg_wen && cfg_addr == TDATA2) begin
-				for (i = 0; i < BREAKPOINT_TRIGGERS; i = i + 1) begin
-					if (tselect_match[i] && !(bp_tdata1_dmode[i] && !x_d_mode)) begin
-						bp_tdata2[i] <= cfg_wdata & {{W_ADDR-2{1'b1}}, |EXTENSION_C, 1'b0};
-					end
-				end
-			end
+		// With no breakpoints, there is still a dummy entry to avoid
+		// `generate` spaghetti; tools complain about comb processes without
+		// sensitivies etc, so just synchronously tie to 0:
+		if (BREAKPOINT_TRIGGERS == 0) begin
+			bp_tdata1_dmode[0] <= 1'b0;
+			mcontrol_action[0] <= 1'b0;
+			mcontrol_m[0] <= 1'b0;
+			mcontrol_u[0] <= 1'b0;
+			mcontrol_execute[0] <= 1'b0;
+			bp_tdata2[0] <= {W_DATA{1'b0}};
 		end
+
 	end
-
-end else begin: no_bp_registers
-
-	// Single dummy entry to avoid OOB accesses (some tools complain about
-	// indexing 0-sized arrays even in for loops which execute 0 iterations)
-	always @ (*) begin
-		bp_tdata1_dmode[0] = 1'b0;
-		mcontrol_action[0] = 1'b0;
-		mcontrol_m[0] = 1'b0;
-		mcontrol_u[0] = 1'b0;
-		mcontrol_execute[0] = 1'b0;
-		bp_tdata2[0] = {W_DATA{1'b0}};
-	end
-
 end
 
 // ----------------------------------------------------------------------------
