@@ -9,8 +9,8 @@ ifneq ($(CONFIG),default)
   TBEXEC := $(TBEXEC)-$(CONFIG)
 endif
 
-FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/$(DOTF))
-VINCDIR   := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati ../tb_common/$(DOTF))
+FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/hdl/$(DOTF))
+VINCDIR   := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati ../tb_common/hdl/$(DOTF))
 BUILD_DIR := build-$(patsubst %.f,%,$(DOTF))
 VOBJ_DIR  := $(BUILD_DIR)/obj_dir
 VLIB      := $(VOBJ_DIR)/libV$(TOP).a
@@ -19,7 +19,8 @@ VERILATOR_ROOT := $(shell verilator --getenv VERILATOR_ROOT)
 CXX       := g++
 VERILATOR := verilator
 
-CINCLUDE  := $(VOBJ_DIR) $(VERILATOR_ROOT)/include
+TB_CFILES := tb.cpp $(wildcard ../tb_common/*.cpp)
+CINCLUDE  := $(VOBJ_DIR) $(VERILATOR_ROOT)/include ../tb_common/include
 
 .PHONY: clean all lint vcc vlib
 
@@ -41,9 +42,9 @@ $(BUILD_DIR)/vlib.touch: $(BUILD_DIR)/vcc.touch
 clean::
 	rm -rf $(BUILD_DIR) $(TBEXEC)
 
-$(TBEXEC): $(BUILD_DIR)/vlib.touch tb.cpp
+$(TBEXEC): $(BUILD_DIR)/vlib.touch $(TB_CFILES)
 	$(CXX) -O3 $(addprefix -D,$(CDEFINES) $(CDEFINES_$(DOTF))) \
-	  $(addprefix -I ,$(CINCLUDE)) $(wildcard $(VOBJ_DIR)/*.o) tb.cpp -o $(TBEXEC)
+	  $(addprefix -I ,$(CINCLUDE)) $(wildcard $(VOBJ_DIR)/*.o) $(TB_CFILES) -o $(TBEXEC)
 
 lint:
 	$(VERILATOR) --lint-only --top-module $(TOP) $(addprefix -I,$(VINCDIR)) -DCONFIG_HEADER="\"config_$(CONFIG).vh\"" $(FILE_LIST)

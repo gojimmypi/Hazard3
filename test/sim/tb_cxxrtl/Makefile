@@ -13,9 +13,15 @@ ifneq ($(CONFIG),default)
   TBEXEC := $(TBEXEC)-$(CONFIG)
 endif
 
-FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/$(DOTF))
-VINCDIR   := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati ../tb_common/$(DOTF))
+FILE_LIST := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles ../tb_common/hdl/$(DOTF))
+VINCDIR   := $(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati ../tb_common/hdl/$(DOTF))
 BUILD_DIR := build-$(TBEXEC)
+
+CPPFILES  := tb.cpp $(wildcard ../tb_common/*.cpp)
+CPPINCDIR =
+CPPINCDIR += $(shell yosys-config --datdir)/include/backends/cxxrtl/runtime
+CPPINCDIR += $(BUILD_DIR)
+CPPINCDIR += ../tb_common/include
 
 # Note: clang++-18 has a >20x compile time regression, even at low
 # optimisation levels. I have tried clang++-16 and clang++-17, both fine.
@@ -36,8 +42,8 @@ $(BUILD_DIR)/dut.cpp: $(FILE_LIST) $(wildcard *.vh) $(VINCDIR)
 clean::
 	rm -rf $(BUILD_DIR) $(TBEXEC)
 
-$(TBEXEC): $(BUILD_DIR)/dut.cpp tb.cpp
-	$(CLANGXX) -O3 -std=c++14 $(addprefix -D,$(CDEFINES) $(CDEFINES_$(DOTF))) -I $(shell yosys-config --datdir)/include/backends/cxxrtl/runtime -I $(BUILD_DIR) tb.cpp -o $(TBEXEC)
+$(TBEXEC): $(BUILD_DIR)/dut.cpp $(CPPFILES)
+	$(CLANGXX) -O3 -std=c++14 $(addprefix -D,$(CDEFINES) $(CDEFINES_$(DOTF))) $(addprefix -I ,$(CPPINCDIR)) $(CPPFILES) -o $(TBEXEC)
 
 lint:
 	verilator --lint-only --top-module $(TOP) $(addprefix -I,$(VINCDIR)) -DCONFIG_HEADER="\"config_$(CONFIG).vh\"" $(FILE_LIST)
