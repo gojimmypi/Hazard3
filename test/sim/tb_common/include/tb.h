@@ -76,11 +76,20 @@ class tb_top {
 protected:
 	mem_access_callback_t mem_callback_i;
 	mem_access_callback_t mem_callback_d;
+	uint64_t rand_state[4];
 public:
 	void set_mem_callback_i(mem_access_callback_t cb) {mem_callback_i = cb;}
 	void set_mem_callback_d(mem_access_callback_t cb) {mem_callback_d = cb;}
 
-	tb_top(const tb_cli_args &args) {mem_callback_i = tb_mem_access; mem_callback_d = tb_mem_access;}
+	tb_top(const tb_cli_args &args) {
+		mem_callback_i = tb_mem_access;
+		mem_callback_d = tb_mem_access;
+		seed_rand((const uint8_t*)"looks random to me", 18);
+	}
+
+	void seed_rand(const uint8_t *data, size_t len);
+	uint32_t rand();
+
 	virtual void step(const tb_cli_args &args, mem_io_state &memio) = 0;
 
 	virtual void set_trst_n(bool trst_n) = 0;

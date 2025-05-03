@@ -107,6 +107,10 @@ void tb_cxxrtl_top::step(const tb_cli_args &args, mem_io_state &memio) {
 	// - A single, single-ported processor (instruction fetch + load/store muxed internally)
 	// - A pair of single-ported processors, for dual-core debug tests
 
+	// Randomise read data bus by default (it should be ignored)
+	top.p_i__hrdata.set<uint32_t>(rand());
+	top.p_d__hrdata.set<uint32_t>(rand());
+
 	if (top.p_d__hready.get<bool>()) {
 		// Clear bus error by default
 		top.p_d__hresp.set<bool>(false);

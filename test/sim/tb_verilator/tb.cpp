@@ -78,6 +78,10 @@ void tb_verilator_top::step(const tb_cli_args &args, mem_io_state &memio) {
 	// - A single, single-ported processor (instruction fetch + load/store muxed internally)
 	// - A pair of single-ported processors, for dual-core debug tests
 
+	// Randomise read data bus by default (it should be ignored)
+	top->i_hrdata = rand();
+	top->d_hrdata = rand();
+
 	if (top->d_hready) {
 		// Clear bus error by default
 		top->d_hresp = false;
