@@ -192,3 +192,8 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 }
+
+// Needed on MacOS, haven't looked into why
+double sc_time_stamp() {
+	return 0.0;
+}

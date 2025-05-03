@@ -43,7 +43,7 @@ clean::
 	rm -rf $(BUILD_DIR) $(TBEXEC)
 
 $(TBEXEC): $(BUILD_DIR)/vlib.touch $(TB_CFILES)
-	$(CXX) -O3 $(addprefix -D,$(CDEFINES) $(CDEFINES_$(DOTF))) \
+	$(CXX) -O3 -std=c++14 $(addprefix -D,$(CDEFINES) $(CDEFINES_$(DOTF))) \
 	  $(addprefix -I ,$(CINCLUDE)) $(wildcard $(VOBJ_DIR)/*.o) $(TB_CFILES) -o $(TBEXEC)
 
 lint:
