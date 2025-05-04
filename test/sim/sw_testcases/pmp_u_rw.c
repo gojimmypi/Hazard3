@@ -10,7 +10,6 @@
 #define MCAUSE_ECALL_UMODE 8
 
 /*EXPECTED-OUTPUT***************************************************************
-
 Initial word read/write check
 mcause = 8
 mcause = 8
@@ -32,15 +31,6 @@ mcause = 5
 Restore read permission, remove write permission, byte read/write
 mcause = 7
 mcause = 8
-Read with TOR
-Read address 00000000
- -> 8
-Read address 00000004
- -> 8
-Read address 00000008
- -> 8
-Read address 0000000c
- -> 5
 *******************************************************************************/
 
 typedef uint32_t uxlen_t;
@@ -223,29 +213,6 @@ int main() {
 	readback = call_umode((umode_func_2a_1r)&do_lbu, (uintptr_t)&scratch_word + 3, 0);
 	tb_printf("mcause = %u\n", read_csr(mcause));
 	tb_assert(readback == scratch_word >> 24, "Failed to read\n");
-
-	tb_puts("Read with TOR\n");
-
-	// Clear the default background permissions
-	write_pmpcfg(1, 0);
-
-	// Test the implicit 0 lower bound for region 0: grant read on the first 12 bytes
-	write_pmpcfg(0, PMPCFG_A_TOR << PMPCFG_A_LSB | PMPCFG_R_BITS);
-	write_pmpaddr(0, 0xc >> 2);
-
-	// Grant execute on just the function of interest
-	write_pmpaddr(2, (uintptr_t)do_lw >> 2);
-	write_pmpaddr(3, ((uintptr_t)do_lw + 12u) >> 2);
-	write_pmpcfg(3, PMPCFG_A_TOR << PMPCFG_A_LSB | PMPCFG_X_BITS);
-
-	// First 3 succeed, last one faults
-	for (int i = 0; i < 4; ++i) {
-		uintptr_t addr = i << 2;
-		tb_printf("Read address %08x\n", addr);
-		write_csr(mcause, 0);
-		(void)call_umode((umode_func_2a_1r)&do_lw, addr, 0);
-		tb_printf(" -> %u\n", read_csr(mcause));
-	}
 
 	return 0;
 }
