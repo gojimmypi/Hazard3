@@ -107,10 +107,6 @@ void tb_cxxrtl_top::step(const tb_cli_args &args, mem_io_state &memio) {
 	// - A single, single-ported processor (instruction fetch + load/store muxed internally)
 	// - A pair of single-ported processors, for dual-core debug tests
 
-	// Randomise read data bus by default (it should be ignored)
-	top.p_i__hrdata.set<uint32_t>(rand());
-	top.p_d__hrdata.set<uint32_t>(rand());
-
 	if (top.p_d__hready.get<bool>()) {
 		// Clear bus error by default
 		top.p_d__hresp.set<bool>(false);
@@ -127,7 +123,11 @@ void tb_cxxrtl_top::step(const tb_cli_args &args, mem_io_state &memio) {
 			top.p_d__hready.set<bool>(false);
 			top.p_d__hresp.set<bool>(true);
 		}
-		top.p_d__hrdata.set<uint32_t>(resp.rdata);
+		if (req_d_vld && !req_d.write) {
+			top.p_d__hrdata.set<uint32_t>(resp.rdata);
+		} else {
+			top.p_d__hrdata.set<uint32_t>(rand());
+		}
 		top.p_d__hexokay.set<bool>(resp.exokay);
 	} else {
 		// hready=0. Currently this only happens when we're in the first
@@ -159,7 +159,11 @@ void tb_cxxrtl_top::step(const tb_cli_args &args, mem_io_state &memio) {
 			top.p_i__hready.set<bool>(false);
 			top.p_i__hresp.set<bool>(true);
 		}
-		top.p_i__hrdata.set<uint32_t>(resp.rdata);
+		if (req_i_vld && !req_i.write) {
+			top.p_i__hrdata.set<uint32_t>(resp.rdata);
+		} else {
+			top.p_i__hrdata.set<uint32_t>(rand());
+		}
 		top.p_i__hexokay.set<bool>(resp.exokay);
 	} else {
 		// hready=0. Currently this only happens when we're in the first
