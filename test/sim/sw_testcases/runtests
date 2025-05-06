@@ -82,16 +82,13 @@ for test in testlist:
 		if args.vcd:
 			cmdline += ["--vcd", f"{build_dir}/{test}.vcd"]
 		cmdline += args.tbarg
+		cmdline += ["--logfile", f"{build_dir}/{test}.log"]
 
 		try:
 			test_run_ret = subprocess.run(
 				cmdline,
-				stdout = subprocess.PIPE,
-				stderr = subprocess.PIPE,
-				timeout=10
+				timeout = 10
 			)
-			with open(f"{build_dir}/{test}.log", "wb") as f:
-				f.write(test_run_ret.stdout)
 		except subprocess.TimeoutExpired:
 			print("\033[31m[TIMOUT]\033[39m")
 			failed = True
@@ -114,7 +111,7 @@ for test in testlist:
 	# the expected output (if there is an expected_output file)
 
 	if not failed:
-		output_lines = test_run_ret.stdout.decode("utf-8").strip().splitlines()
+		output_lines = open(f"{build_dir}/{test}.log", "rb").read().decode("utf-8").strip().splitlines()
 		returncode = -1
 		if len(output_lines) >= 2:
 			exit_line = output_lines[-2]

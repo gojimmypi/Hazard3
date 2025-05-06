@@ -18,6 +18,7 @@ static const char *help_str =
 "    --jtagdump       : Dump OpenOCD JTAG bitbang commands to a file so they\n"
 "                       can be replayed. (Lower perf impact than VCD dumping)\n"
 "    --jtagreplay     : Play back some dumped OpenOCD JTAG bitbang commands\n"
+"    --logfile path   : File to write testbench stdout\n"
 #ifdef CXXRTL_DEBUG_AGENT
 "    --debug          : Run CXXRTL debugger\n"
 #endif
@@ -48,6 +49,11 @@ void tb_parse_args(int argc, char **argv, tb_cli_args &args) {
 				exit_help("Option --vcd requires an argument\n");
 			args.dump_waves = true;
 			args.waves_path = argv[i + 1];
+			i += 1;
+		} else if (s == "--logfile") {
+			if (argc - i < 2)
+				exit_help("Option --logfile requires an argument\n");
+			args.log_path = argv[i + 1];
 			i += 1;
 		} else if (s == "--jtagdump") {
 			if (argc - i < 2)

@@ -17,6 +17,7 @@ struct tb_cli_args {
 	std::string jtag_dump_path;
 	bool replay_jtag;
 	std::string jtag_replay_path;
+	std::string log_path;
 #ifdef CXXRTL_DEBUG_AGENT
 	bool run_agent;
 #endif

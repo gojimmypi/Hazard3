@@ -211,12 +211,12 @@ int main(int argc, char **argv) {
 		tb.step(args, memio);
 
 		if (memio.exit_req) {
-			printf("CPU requested halt. Exit code %d\n", memio.exit_code);
-			printf("Ran for " I64_FMT " cycles\n", cycle + 1);
+			fprintf(tb.logfile, "CPU requested halt. Exit code %d\n", memio.exit_code);
+			fprintf(tb.logfile, "Ran for " I64_FMT " cycles\n", cycle + 1);
 			break;
 		}
 		if (cycle + 1 == args.max_cycles) {
-			printf("Max cycles reached\n");
+			fprintf(tb.logfile, "Max cycles reached\n");
 			timed_out = true;
 		}
 		if (jtag_exit_cmd)
@@ -226,10 +226,10 @@ int main(int argc, char **argv) {
 	jtag.close();
 
 	for (auto r : args.dump_ranges) {
-		printf("Dumping memory from %08x to %08x:\n", r.first, r.second);
+		fprintf(tb.logfile, "Dumping memory from %08x to %08x:\n", r.first, r.second);
 		for (int i = 0; i < r.second - r.first; ++i)
-			printf("%02x%c", memio.mem[r.first + i], i % 16 == 15 ? '\n' : ' ');
-		printf("\n");
+			fprintf(tb.logfile, "%02x%c", memio.mem[r.first + i], i % 16 == 15 ? '\n' : ' ');
+		fprintf(tb.logfile, "\n");
 	}
 
 	if (args.propagate_return_code && timed_out) {

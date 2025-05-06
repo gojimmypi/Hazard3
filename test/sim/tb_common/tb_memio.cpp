@@ -89,9 +89,9 @@ bus_response tb_mem_access(tb_top &tb, mem_io_state &memio, bus_request req) {
 				memio.mem[req.addr + i] = req.wdata >> (8 * i) & 0xffu;
 			}
 		} else if (req.addr == IO_BASE + IO_PRINT_CHAR) {
-			putchar(req.wdata);
+			fprintf(tb.logfile, "%c", (char)(req.wdata & 0xff));
 		} else if (req.addr == IO_BASE + IO_PRINT_U32) {
-			printf("%08x\n", req.wdata);
+			fprintf(tb.logfile, "%08x\n", req.wdata);
 		} else if (req.addr == IO_BASE + IO_EXIT) {
 			if (!memio.exit_req) {
 				memio.exit_req = true;

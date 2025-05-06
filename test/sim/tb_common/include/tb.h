@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <cstdio>
 
 #include <unistd.h>
 #include <sys/socket.h>
@@ -78,6 +79,7 @@ protected:
 	mem_access_callback_t mem_callback_d;
 	uint64_t rand_state[4];
 public:
+	FILE *logfile;
 	void set_mem_callback_i(mem_access_callback_t cb) {mem_callback_i = cb;}
 	void set_mem_callback_d(mem_access_callback_t cb) {mem_callback_d = cb;}
 
@@ -85,6 +87,11 @@ public:
 		mem_callback_i = tb_mem_access;
 		mem_callback_d = tb_mem_access;
 		seed_rand((const uint8_t*)"looks random to me", 18);
+		if (args.log_path != "") {
+			logfile = fopen(args.log_path.c_str(), "wb");
+		} else {
+			logfile = stdout;
+		}
 	}
 
 	void seed_rand(const uint8_t *data, size_t len);
