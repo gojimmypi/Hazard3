@@ -45,6 +45,10 @@ always @ (posedge clk)
 (* keep *) wire [31:0]       d_hwdata;
 (* keep *) wire [31:0]       d_hrdata;
 
+(* keep *) wire              fence_i_vld;
+(* keep *) wire              fence_d_vld;
+(* keep *) wire              fence_rdy;
+
 localparam W_DATA = 32;
 
 (* keep *) wire              dbg_req_halt;
@@ -111,6 +115,10 @@ hazard3_cpu_2port dut (
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
 
+	.fence_i_vld                (fence_i_vld),
+	.fence_d_vld                (fence_d_vld),
+	.fence_rdy                  (fence_rdy),
+
 	.dbg_req_halt               (dbg_req_halt),
 	.dbg_req_halt_on_reset      (dbg_req_halt_on_reset),
 	.dbg_req_resume             (dbg_req_resume),
@@ -140,7 +148,7 @@ hazard3_cpu_2port dut (
 );
 
 // ----------------------------------------------------------------------------
-// Power signal properties
+// Power and fence signal properties
 
 (* keep *) wire pwrup_ack_nxt;
 always @ (posedge clk or negedge rst_n) begin
@@ -149,6 +157,23 @@ always @ (posedge clk or negedge rst_n) begin
 	 end else begin
 	 	pwrup_ack <= 1'b1;
 	 end
+end
+
+reg d_in_flight;
+reg i_in_flight;
+
+always @ (posedge clk) begin
+	if (!rst_n) begin
+		d_in_flight <= 1'b0;
+		i_in_flight <= 1'b0;
+	end else begin
+		if (d_hready) begin
+			d_in_flight <= d_htrans[1];
+		end
+		if (i_hready) begin
+			i_in_flight <= i_htrans[1];
+		end
+	end
 end
 
 always @ (posedge clk) if (rst_n) begin
@@ -175,6 +200,22 @@ always @ (posedge clk) if (rst_n) begin
 		assert(i_htrans == 2'h0);
 		assert(d_htrans == 2'h0);
 	end
+
+	// Assert there are no load/store accesses during a fence of any kind
+	if ((fence_d_vld || fence_i_vld) && !dbg_sbus_vld) begin
+		assert(d_htrans == 2'h0);
+		assert(!d_in_flight);
+	end
+
+	// Assert there are no instruction fetches during an instruction fence
+	if (fence_i_vld) begin
+		assert(i_htrans == 2'h0);
+		assert(!i_in_flight);
+	end
+
+	// It should be impossible to execute both an instruction and data fence simultaneously
+	assert(!(fence_i_vld && fence_d_vld));
+
 end
 
 // ----------------------------------------------------------------------------
