@@ -40,16 +40,16 @@ These are links to the ratified versions of the extensions.
 | `A` v2.1 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
 | `C` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
 | `Zicsr` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zilsd` v1.0-rc3 | [Zilsd and Zclsd frozen v1.0-rc3](https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf) |
+| `Zilsd` v1.0 | [Zilsd and Zclsd frozen v1.0](https://github.com/riscv/riscv-zilsd/releases/download/v1.0/riscv-zilsd-v1.0.pdf) |
 | `Zifencei` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
 | `Zba` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbb` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbc` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbs` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbkb` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
-| `Zcb` v1.0.3-1 | [Code Size Reduction extensions frozen v1.0.3-1](https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf) |
-| `Zclsd` v1.0-rc3 | [Zilsd and Zclsd frozen v1.0-rc3](https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf) |
-| `Zcmp` v1.0.3-1 | [Code Size Reduction extensions frozen v1.0.3-1](https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf) |
+| `Zcb` v1.0 | [Code Size Reduction extensions frozen v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
+| `Zclsd` v1.0 | [Zilsd and Zclsd frozen v1.0](https://github.com/riscv/riscv-zilsd/releases/download/v1.0/riscv-zilsd-v1.0.pdf) |
+| `Zcmp` v1.0 | [Code Size Reduction extensions frozen v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
 | Machine ISA v1.12 | [Privileged Architecture 20211203](https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf) |
 | Debug v0.13.2 | [RISC-V External Debug Support 20190322](https://riscv.org/wp-content/uploads/2019/03/riscv-debug-release.pdf) |
 
@@ -57,7 +57,7 @@ These specifications are abstract descriptions of the architectural features tha
 
 # Cloning This Repository
 
-For the purpose of using Hazard3 in your design, this repository is self-contained. You need the submodules for simulation scripts, compliance tests and example SoC components:
+For the purpose of using Hazard3 in your design, this repository is self-contained. However, you need the submodules for simulation scripts, tests and example SoC components. In the latter case you should do a recursive clone:
 
 ```bash
 git clone --recursive https://github.com/Wren6991/Hazard3.git hazard3
@@ -91,7 +91,7 @@ You will need:
 
 The [Yosys GitHub repo](https://github.com/YosysHQ/yosys) has instructions for building Yosys from source.
 
-The following steps work for me on Ubuntu 24.04 using version `b1569de5` mentioned above.
+The following steps work for me on Ubuntu 24.04 using version `a0e94e506` mentioned above.
 
 ```bash
 sudo apt install build-essential clang lld bison flex libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot pkg-config python3 libboost-system-dev libboost-python-dev libboost-filesystem-dev zlib1g-dev
@@ -105,7 +105,7 @@ sudo make install
 
 ## RISC-V Toolchain
 
-I recommend building a toolchain to get libraries with the correct ISA support. Follow the below instructions to build a 32-bit GCC 14 version of the [RISC-V GNU toolchain](https://github.com/riscv/riscv-gnu-toolchain) with a multilib setup suitable for Hazard3 development.
+I recommend _building_ a toolchain to get libraries with the correct ISA support. Follow the below instructions to build a 32-bit version of the [RISC-V GNU toolchain](https://github.com/riscv/riscv-gnu-toolchain) with a multilib setup suitable for Hazard3 development.
 
 ```bash
 # Prerequisites for Ubuntu 24.04
@@ -133,7 +133,7 @@ Make sure this toolchain can be found on your `PATH` (as `riscv32-unknown-elf-*`
 export PATH="$PATH:/opt/riscv/gcc14/bin"
 ```
 
-### Aside: Non-multilib (Smaller Install Size)
+### Non-multilib (Smaller Install Size)
 
 For a faster build and a smaller install size, use this `./configure` line instead:
 
@@ -143,11 +143,9 @@ For a faster build and a smaller install size, use this `./configure` line inste
 
 Adjust the `--with-arch` line as necessary for your Hazard3 configuration. You may need to adjust architectures used in software Makefiles in this repository to fit your chosen architecture variant.
 
-You can also remove the `--with-gcc-src` flag if you would prefer to use the GCC version pinned by the toolchain repository.
+### Building Toolchain on MacOS
 
-### Aside: Building Toolchain on MacOS
-
-These are my hacks to build the latest `riscv-gnu-toolchain` on MacOS Sonoma on M4 (Arm). Standard disclaimers apply: may turn your laptop inside out, may summon demons flying out of your nose, etc.
+These are my hacks to build the latest `riscv-gnu-toolchain` on MacOS Sequoia on M4 (Arm).
 
 ```bash
 brew install python3 gawk gnu-sed make gmp mpfr libmpc isl zlib expat texinfo flock libslirp
@@ -324,6 +322,28 @@ run
 # Should break at _exit. Check the terminal with the simulator, you should see
 # the hello world message. The exit code is in register a0, it should be 123:
 info reg a0
+```
+
+# Simulating with Verilator
+
+There is a Verilator harness with the same features and interface as the CXXRTL harness, except it does not support VCD dumping. First build Verilator:
+
+```
+git clone https://github.com/verilator/verilator.git
+cd verilator
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+```
+
+Then go to the Hazard3 repository and build the simulator. You should be able to run the hello world binary you compiled earlier:
+
+```bash
+cd test/sim/tb_verilator
+make tb
+./tb --bin ../hellow/tmp/hellow.bin
 ```
 
 # Building an Example SoC
