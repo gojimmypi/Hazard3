@@ -192,6 +192,23 @@ int main(int argc, char **argv) {
 		fprintf(tb.logfile, "\n");
 	}
 
+	if (args.sig_path != "") {
+		FILE *sigfile = fopen(args.sig_path.c_str(), "wb");
+		for (auto r : args.dump_ranges) {
+			for (uint32_t i = 0; i < r.second - r.first; i += 4) {
+				fprintf(
+					sigfile,
+					"%02x%02x%02x%02x\n",
+					memio.mem[r.first + i + 3],
+					memio.mem[r.first + i + 2],
+					memio.mem[r.first + i + 1],
+					memio.mem[r.first + i + 0]
+				);
+			}
+		}
+		fclose(sigfile);
+	}
+
 	if (args.propagate_return_code && timed_out) {
 		return -1;
 	} else if (args.propagate_return_code && memio.exit_req) {

@@ -19,6 +19,8 @@ static const char *help_str =
 "                       can be replayed. (Lower perf impact than VCD dumping)\n"
 "    --jtagreplay     : Play back some dumped OpenOCD JTAG bitbang commands\n"
 "    --logfile path   : File to write testbench stdout\n"
+"    --sigfile path   : File to write only the data from --dump commands\n"
+"                       (hex, 32 bits per line, same as riscv-arch-test)\n"
 #ifdef CXXRTL_DEBUG_AGENT
 "    --debug          : Run CXXRTL debugger\n"
 #endif
@@ -54,6 +56,11 @@ void tb_parse_args(int argc, char **argv, tb_cli_args &args) {
 			if (argc - i < 2)
 				exit_help("Option --logfile requires an argument\n");
 			args.log_path = argv[i + 1];
+			i += 1;
+		} else if (s == "--sigfile") {
+			if (argc - i < 2)
+				exit_help("Option --sigfile requires an argument\n");
+			args.sig_path = argv[i + 1];
 			i += 1;
 		} else if (s == "--jtagdump") {
 			if (argc - i < 2)
