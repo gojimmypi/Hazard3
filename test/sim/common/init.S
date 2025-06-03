@@ -69,6 +69,13 @@ j \name
 	la a0, .vector_table + 1
 	csrw mtvec, a0
 
+	// Ensure gp is initialised on all cores -- don't wait for newlib _start
+	// as that is core-0-only
+.option push
+.option norelax
+	la gp, __global_pointer$
+.option pop
+
 	// Put spare cores to sleep before setting up core 0 stack
 	// Note csrr is a NOP when there are no CSRs at all (no traps!):
 	li a0, 0
