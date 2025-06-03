@@ -20,4 +20,4 @@ endif
 
 $(TOP).pdf: $(shell find -name "*.adoc" | grep -v rev.adoc)
 	@echo ":revdate: Updated: `date +%Y-%b-%d`" > rev.adoc
-	asciidoctor-pdf $(TOP).adoc
+	asciidoctor-pdf -a compress $(TOP).adoc

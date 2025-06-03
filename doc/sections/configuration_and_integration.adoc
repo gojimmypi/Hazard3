@@ -407,9 +407,6 @@ Default value: `0`
 Number of physical memory protection regions, or 0 for no PMP. PMP is more
 useful if U-mode is supported, but this is not a requirement.
 
-Hazard3's PMP supports only the NAPOT and(if <<param-PMP_GRAIN>> is 0) NA4
-region types.
-
 Requires: <<param-CSR_M_TRAP>> = `1`.
 
 Default value: `0`
