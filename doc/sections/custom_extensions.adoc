@@ -26,12 +26,12 @@ This extension is enabled by: <<param-EXTENSION_XH3IRQ>>
 
 This lightweight extension controls up to 512 external interrupts, with up to 16 levels of preemption. It adds no new instructions, but several CSRs:
 
-* <<reg-meiea>>
-* <<reg-meipa>>
-* <<reg-meifa>>
-* <<reg-meipra>>
-* <<reg-meinext>>
-* <<reg-meicontext>>
+* <<reg-h3.meiea>>
+* <<reg-h3.meipa>>
+* <<reg-h3.meifa>>
+* <<reg-h3.meipra>>
+* <<reg-h3.meinext>>
+* <<reg-h3.meicontext>>
 
 If this extension is disabled then Hazard3 supports a single external interrupt input (or multiple inputs that it simply ORs together in an uncontrolled fashion), so an external PLIC can be used for standard interrupt support.
 
@@ -44,7 +44,7 @@ This document describes Xh3pmpm version: 1.0
 
 This extension is enabled by: <<param-EXTENSION_XH3PMPM>>
 
-This extension adds a new M-mode CSR, <<reg-pmpcfgm0>>, which allows a PMP region to be enforced in M-mode without locking the region.
+This extension adds a new M-mode CSR, <<reg-h3.pmpcfgm0>>, which allows a PMP region to be enforced in M-mode without locking the region.
 
 This is useful when the PMP is used for non-security-related purposes such as stack guarding, or trapping and emulation of peripheral accesses.
 
@@ -55,11 +55,11 @@ This document describes Xh3power version: 1.0
 
 This extension is enabled by: <<param-EXTENSION_XH3POWER>>
 
-This extension adds a new M-mode CSR (<<reg-msleep>>), and two new hint instructions, `h3.block` and `h3.unblock`, in the `slt` nop-compatible custom hint space.
+This extension adds a new M-mode CSR (<<reg-h3.msleep>>), and two new hint instructions, `h3.block` and `h3.unblock`, in the `slt` nop-compatible custom hint space.
 
-The `msleep` CSR controls how deeply the processor sleeps in the WFI sleep state. By default, a WFI is implemented as a normal pipeline stall. By configuring `msleep` appropriately, the processor can gate its own clock when asleep or, with a simple 4-phase req/ack handshake, negotiate power up/down of external hardware with an external power controller. These options can improve the sleep current at the cost of greater wakeup latency.
+The `h3.msleep` CSR controls how deeply the processor sleeps in the WFI sleep state. By default, a WFI is implemented as a normal pipeline stall. By configuring `h3.msleep` appropriately, the processor can gate its own clock when asleep or, with a simple 4-phase req/ack handshake, negotiate with an external power controller for power up/down of external hardware. These options can improve the sleep current at the cost of greater wakeup latency.
 
-The hints allow processors to sleep until woken by other processors in a multiprocessor environment. They are implemented on top of the standard WFI state, which means they interact in the same way with external debug, and benefit from the same deep sleep states in `msleep`.
+The hints allow processors to sleep until woken by other processors in a multiprocessor environment. They are implemented on top of the standard WFI state, which means they interact in the same way with external debug, and benefit from the same deep sleep states in `h3.msleep`.
 
 ==== h3.block
 

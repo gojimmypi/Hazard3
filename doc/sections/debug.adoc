@@ -152,7 +152,7 @@ The core behaves as follows:
 * Branch, `jal`, `jalr` and `auipc` are illegal in debug mode, because they observe PC: attempting to execute will halt Program Buffer execution and report an exception in `abstractcs.cmderr`
 * The `dret` instruction is not implemented (a special purpose DM-to-core signal is used to signal resume)
 * The `dscratch` CSRs are not implemented
-* The DM's `data0` register is mapped into the core as a CSR, <<reg-dmdata0>>, address `0xbff`.
+* The DM's `data0` register is mapped into the core as a CSR, <<reg-h3.dmdata0>>, address `0xbff`.
 ** Raises an illegal instruction exception when accessed outside of Debug Mode
 ** The DM ignores attempted core writes to the CSR, unless the DM is currently executing an abstract command on that core
 ** Used by the DM to implement abstract GPR access, by injecting CSR read/write instructions

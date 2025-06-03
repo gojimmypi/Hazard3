@@ -64,8 +64,8 @@ NOTE: Hazard3 adopts the convention that all signals are active-high, with the e
 
 When <<param-RESET_REGFILE>> is one, this input also resets the register file. You should avoid resetting the register file on FPGA, as this can prevent the register file being implemented with block RAM or LUT RAM primitives.
 4+| **Power control signals**
-4+| These signals are used in the implementation of internal sleep states as configured by the <<reg-msleep>> csr. They are used only when the Xh3power extension is enabled.
-| 1          | Out | `pwrup_req`                  | Power-up request. Disconnect if Xh3power is not configured. Part of a four-phase (Gray code) req/ack handshake for negotiating power or clocks with your system power controller. The processor releases `pwrup_req` on entering a sufficiently deep `wfi` or `h3.block` state, as configured by the `msleep` CSR. It then waits for deassertion of `pwrup_ack` before taking further action.
+4+| These signals are used in the implementation of internal sleep states as configured by the <<reg-h3.msleep>> csr. They are used only when the Xh3power extension is enabled.
+| 1          | Out | `pwrup_req`                  | Power-up request. Disconnect if Xh3power is not configured. Part of a four-phase (Gray code) req/ack handshake for negotiating power or clocks with your system power controller. The processor releases `pwrup_req` on entering a sufficiently deep `wfi` or `h3.block` state, as configured by the `h3.msleep` CSR. It then waits for deassertion of `pwrup_ack` before taking further action.
 
 The processor asserts `pwrup_req` when it intends to wake from its low-power state. It then waits for `pwrup_ack` before fetching the first instruction from the bus.
 | 1          | In  | `pwrup_ack`                  | Power-up acknowledged. Tie back to `pwrup_req` if Xh3power is not configured, or if there is no external system power controller. The processor does not access the bus when either `pwrup_req` or `pwrup_ack` is low.
@@ -353,7 +353,7 @@ Default value: `0`
 [[param-EXTENSION_XH3POWER]]
 ===== EXTENSION_XH3POWER
 
-Custom power management controls for Hazard3. This adds the <<reg-msleep>> CSR, and the `h3.block` and `h3.unblock` hint instructions. See <<extension-xh3power-section>>
+Custom power management controls for Hazard3. This adds the <<reg-h3.msleep>> CSR, and the `h3.block` and `h3.unblock` hint instructions. See <<extension-xh3power-section>>
 
 Default value: `0`
 
@@ -539,7 +539,7 @@ Default value: `1`
 
 IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt in
 the internal interrupt controller described in <<extension-xh3irq-section>>.
-The <<reg-meipra>> array CSR configures the individual priorities.
+The <<reg-h3.meipra>> array CSR configures the individual priorities.
 
 The number of distinct levels is `(1 << IRQ_PRIORITY_BITS)`. The minimum value
 is `0` (1 level), and the maximum value is `4` (16 levels).  Note that
