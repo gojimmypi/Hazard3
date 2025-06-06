@@ -2,7 +2,7 @@
 
 === Hazard3 Source Files
 
-Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/master/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3.
+Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/stable/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3.
 
 For more information on the Verilog 2005 language, refer to IEEE 1364-2005 (a PDF can be found online).
 
@@ -35,11 +35,11 @@ Hazard3 supports FPGA synthesis using tools such as Yosys. You should set <<para
 
 You should synchronise the `rst_n` reset input externally. An example reset synchroniser is included in the example SoC file, but the details depend on your FPGA synthesis flow and your platform-level reset requirements.
 
-It's recommended to tie `clk` and `clk_always_on` to the exact same clock net to conserve global buffer resources. Clock gating _is_ supported on FPGA, but you must consult your toolchain documentation for the correct primitives or infererence techniques.
+It's recommended to tie `clk` and `clk_always_on` to the exact same clock net to conserve global buffer resources. Clock gating _is_ supported on FPGA, but you must consult your toolchain documentation for the correct primitives or inference techniques.
 
 === ASIC Synthesis
 
-Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue if you find a compatibility issue with your tools.
+Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue https://https://github.com/Wren6991/Hazard3/issues[here] if you find a compatibility issue with your tools.
 
 When applying the `clk_en` clock enable signal to the `clk` input in conjunction with the Xh3power extension, you must instantiate an external clock gate cell appropriate to your platform (such as an AND-and-latch type). Do not use a behavioural AND gate to gate the clock.
 
@@ -75,13 +75,13 @@ The processor asserts `pwrup_req` when it intends to wake from its low-power sta
 4+| [[memory-ordering-signals]] **Memory Ordering Signals**
 | 1          | Out | `fence_i_vld`                | Indicates the core is executing a `fence.i` instruction. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_d_vld`.
 
-The core waits for all in-progress bus accesses (load/store and instruction fetch) to complete before asserting this signal.
+The core waits for all in-progress bus accesses (load/store and instruction fetch) to complete before asserting this signal, and does not issue further instruction fetches for as long as this signal is asserted.
 
 Once `fetch_rdy` is seen high, the core flushes its prefetch buffer to order the fetch of younger instructions against the fence. It then resumes normal execution.
 
 | 1          | Out | `fence_d_vld`                | Indicates the core is executing a non-instruction fence, such as `fence rw, rw`. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_i_vld`.
 
-The core waits for any in-progress load/store bus accesses to complete before asserting this signal.
+The core waits for any in-progress load/store bus accesses to complete before asserting this signal, and does not issue further loads/stores for as long as this signal is asserted.
 | 1          | In  | `fence_rdy`                  | Signal to the core that the memory subsystem has finished processing the fence requested by `fence_i_vld` or `fence_d_vld`.
 
 If no special handling of fences is required, tie this signal high.
@@ -116,6 +116,14 @@ If no special handling of fences is required, tie this signal high.
 If Xh3irq is configured, this is a vector of level-sensitive active-high system interrupt requests, which the core's internal interrupt controller can route through the `mip.meip` vector. Tie low if unused.
 | 1          | In  | `soft_irq`                   | This is the standard RISC-V software interrupt signal, `mip.msip`. It should be connected to a register accessible to M-mode software on your system bus. Tie low if unused.
 | 1          | In  | `timer_irq`                  | This is the standard RISC-V timer interrupt signal, `mip.mtip`. It should be connected to a standard RISC-V platform timer peripheral (`mtime`/`mtimecmp`) accessible to M-mode software on your system bus. Tie low if unused.
+4+| **Identification Signals**
+| 32         | In  | `mhartid_val`                | Set the value of the <<reg-mhartid>> CSR, which software uses to determine on which hart it is running. Hazard3 implements one hart per core, so this is effectively a per-core identification value.
+
+At least one hart must have the value of all-zeroes.
+| 4          | In  | `eco_version`                | Set the value of the `eco` version number in <<reg-h3.misa>>.
+
+On ASIC this should be connected to metal-programmable tie cells so that it can be incremented with metal changes. The initial value should be all-zeroes. On FPGA this should be tied to all-zeroes.
+
 |===
 
 ==== Interfaces for 1-port AHB5 CPU
@@ -270,18 +278,22 @@ Default value: `0`
 
 Support for Zbkb basic bit manipulation for cryptography.
 
-Requires: <<param-EXTENSION_ZBB>> = `1`. (Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.)
+Requires: <<param-EXTENSION_ZBB>> = `1`.
+
+NOTE: Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.
 
 Default value: `0`
 
 [[param-EXTENSION_ZCB]]
 ===== EXTENSION_ZCB:
 
-Support for Zcb basic additional compressed instructions
+Support for Zcb basic additional compressed instructions.
 
-Requires: <<param-EXTENSION_C>> = `1`. (Some Zcb instructions also require Zbb or M, as they are 16-bit aliases of 32-bit instructions present in those extensions.)
+Requires: <<param-EXTENSION_C>> = `1`, <<param-EXTENSION_M>> = `1` and <<param-EXTENSION_ZBB>> = `1`.
 
-Note Zca is equivalent to C, as we do not support the F extension.
+NOTE: The RISC-V specifications state that Zcb depends on Zca; on Hazard3, Zca is synonymous with C, as the F and D extensions are not supported.
+
+NOTE: Some of the 16-bit opcodes from Zcb are compressed aliases for 32-bit opcodes from M and Zbb, which is why those extensions must also be enabled.
 
 Default value: `0`
 
@@ -299,14 +311,14 @@ Support for Zcmp push/pop and double-move instructions.
 
 Requires: <<param-EXTENSION_C>> = `1`.
 
-Note Zca is equivalent to C, as we do not support the F extension.
+NOTE: The RISC-V specifications state that Zcmp depends on Zca; on Hazard3, Zca is synonymous with C, as the F and D extensions are not supported.
 
 Default value: `0`
 
 [[param-EXTENSION_ZIFENCEI]]
 ===== EXTENSION_ZIFENCEI
 
-Support for the fence.i instruction. When the branch predictor is not present,
+Support for the `fence.i` instruction. When the branch predictor is not present,
 this instruction is optional, since a plain branch/jump is sufficient to
 flush the instruction prefetch queue. When the branch predictor is enabled
 (<<param-BRANCH_PREDICTOR>> = 1), this instruction must be implemented.
@@ -590,15 +602,6 @@ Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
-[[param-MHARTID_VAL]]
-===== MHARTID_VAL
-
-Value of the <<reg-mhartid>> CSR. Each Hazard3 core has a single hardware thread. Multiple cores should have unique IDs.
-
-Requires: <<param-CSR_M_MANDATORY>> = `1`.
-
-Default value: all-zeroes.
-
 [[param-MCONFIGPTR_VAL]]
 ===== MCONFIGPTR_VAL
 
@@ -679,7 +682,7 @@ Default value: `1`
 
 Enable branch prediction. The branch predictor consists of a single BTB entry
 which is allocated on a taken backward branch, and cleared on a mispredicted
-nontaken branch, a fence.i or a trap. Successful prediction eliminates the
+nontaken branch, a `fence.i` or a trap. Successful prediction eliminates the
 1-cyle fetch bubble on a taken branch, usually making tight loops faster.
 
 Requires: <<param-EXTENSION_ZIFENCEI>> = `1`.

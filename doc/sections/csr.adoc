@@ -56,10 +56,12 @@ Address: `0xf14`
 
 Hart identification register. Read-only, configurable constant.
 
+The value of this register is configured by the `mhartid_val` input port. In a correctly configured system, the value of `mhartid` is unique on each hart, and one hart has an ID of all-zeroes. There is no strict requirement to assign hart IDs consecutively, but there may be performance or memory usage advantages to doing so on certain operating systems.
+
 [cols="10h,20h,~", options="header"]
 |===
 | Bits | Name | Description
-| 31:0 | - | Hazard3 cores possess only one hardware thread, so this is a unique per-core identifier, assigned consecutively from 0.
+| 31:0 | - | Hazard3 cores possess only one hardware thread, so this is a unique per-core identifier.
 |===
 
 [[reg-mconfigptr]]
@@ -861,11 +863,15 @@ The bit assignment is provided by the RISC-V C API documentation here: https://g
 |====
 | Extension | groupid | bit position
 | A | 0 | 0
+| B | 0 | 1
 | C | 0 | 2
 | D | 0 | 3
+| E | 0 | 4
 | F | 0 | 5
+| H | 0 | 7
 | I | 0 | 8
 | M | 0 | 12
+| Q | 0 | 16
 | V | 0 | 21
 | Zacas | 0 | 26
 | Zba | 0 | 27
@@ -963,7 +969,8 @@ Index `0x402` contains the Hazard3 version:
 | 27:24  | `major` |
 | 23:16  | `minor` |
 | 15:8   | `patch` |
-| 7:0    | `eco`   | Connected to external signals
+| 7:4    | `eco`   | Connected to external signals, initially zero
+| 3:0    | -       | RES0
 |===
 
 This should match the version of the Github release of the processor's source code. For example, version 1.0.2 would have a `major` of 1, `minor` of 0 and `patch` of 2. `eco` is a special field which is brought out to an input at the Hazard3 top level; you can connect this to metal tie cells in your integration so that you can increment the ECO (engineering change order) number with metal revisions that affect the processor, or you can simply tie it to 0.
