@@ -21,7 +21,7 @@ Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 * External debug support
 * Instruction address trigger unit (hardware breakpoints)
 
-This document describes Hazard3 version v1.1.
+This document describes Hazard3 version 1.1-rc1. See <<section-release-notes>> for changes introduced in this version.
 
 === Architectural Overview
 

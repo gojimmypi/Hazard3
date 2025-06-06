@@ -104,12 +104,12 @@ A consequence of the C extension is that 32-bit instructions can be non-naturall
 |===
 | Instruction | Cycles | Note
 3+| CSR Access
-| `csrrw rd, csr, rs1` | 1 |
-| `csrrc rd, csr, rs1` | 1 |
-| `csrrs rd, csr, rs1` | 1 |
-| `csrrwi rd, csr, imm` | 1 |
-| `csrrci rd, csr, imm` | 1 |
-| `csrrsi rd, csr, imm` | 1 |
+| `csrrw rd, csr, rs1` | 1footnote:csr_fetch_ordering[Writes to the following CSRs take 3 cycles, plus an additional 1 cycle if the following instruction is misaligned 32-bit: `pmpaddr*`, `pmpcfg*`, `tcontrol`, `tdata1`, `tdata2`. These CSRs require an instruction fetch flush to enforce CSR-write-to-fetch ordering.] |
+| `csrrc rd, csr, rs1` | 1footnote:csr_fetch_ordering[] |
+| `csrrs rd, csr, rs1` | 1footnote:csr_fetch_ordering[] |
+| `csrrwi rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
+| `csrrci rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
+| `csrrsi rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
 3+| Trap Request
 | `ecall` | 3 | Time given is for jumping to `mtvec`
 | `ebreak` | 3 | Time given is for jumping to `mtvec`
