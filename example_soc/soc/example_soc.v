@@ -255,6 +255,7 @@ hazard3_cpu_1port #(
 	// instantiation of example_soc():
 	.EXTENSION_A         (EXTENSION_A),
 	.EXTENSION_C         (EXTENSION_C),
+	.EXTENSION_E         (EXTENSION_E),
 	.EXTENSION_M         (EXTENSION_M),
 	.EXTENSION_ZBA       (EXTENSION_ZBA),
 	.EXTENSION_ZBB       (EXTENSION_ZBB),

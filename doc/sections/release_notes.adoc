@@ -16,12 +16,14 @@ New signals:
 
 New features:
 
-* Implement the Zilsd and Zclsd extensions (load/store pair and compressed load/store pair)
-* Implement the Zbkx extension (crossbar permutation)
+* Implement the Zilsd extension (load/store pair), enabled by <<param-EXTENSION_ZILSD>>
+* Implement the Zclsd extension (compressed load/store pair), enabled by <<param-EXTENSION_ZCLSD>>
+* Implement the Zbkx extension (crossbar permutation), enabled by <<param-EXTENSION_ZBKX>>
 * Implement TOR region support for PMP, enabled by <<param-PMP_MATCH_TOR>>
 ** NAPOT/NA4 matching is now optional, enabled by <<param-PMP_MATCH_NAPOT>>
 * Implement interrupt, exception and instruction count trigger in the <<section-trigger-module>>
 ** These triggers are present whenever debug support is enabled by <<param-DEBUG_SUPPORT>>
+* Implement the RV32E base extension, enabled by <<param-EXTENSION_E>>
 * Implement new custom extension: <<extension-xh3misa-section>>, for detecting processor ISA support at finer granularity than the standard `misa` register
 
 Fixed errata:

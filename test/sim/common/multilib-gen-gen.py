@@ -64,6 +64,11 @@ for i in range(2 ** len(options)):
 
 assert((base + abi) in l)
 
+# Bonus RV32E configs:
+l.append("rv32e_zicsr_zifencei-ilp32e--")
+l.append("rv32emac_zicsr_zifencei-ilp32e--")
+l.append("rv32ema_zicsr_zifencei_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp-ilp32e--")
+
 print(";".join(l))
 
 # print(len(l))

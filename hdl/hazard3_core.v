@@ -86,6 +86,7 @@ module hazard3_core #(
 );
 
 `include "hazard3_ops.vh"
+`include "rv_opcodes.vh"
 
 wire x_stall;
 wire m_stall;
@@ -93,6 +94,8 @@ wire m_stall;
 localparam HSIZE_WORD  = 3'd2;
 localparam HSIZE_HWORD = 3'd1;
 localparam HSIZE_BYTE  = 3'd0;
+
+localparam [4:0] REGADDR_MASK = {~|EXTENSION_E, 4'hf};
 
 wire debug_mode;
 assign dbg_halted = DEBUG_SUPPORT && debug_mode;
@@ -502,15 +505,17 @@ always @ (posedge clk or negedge rst_n) begin
 		d_rs1_predecoded <= {W_REGADDR{1'b0}};
 		d_rs2_predecoded <= {W_REGADDR{1'b0}};
 	end else if (d_starved || !x_stall) begin
-		d_rs1_predecoded <= f_rs1_fine;
-		d_rs2_predecoded <= f_rs2_fine;
+		d_rs1_predecoded <= f_rs1_fine & REGADDR_MASK;
+		d_rs2_predecoded <= f_rs2_fine & REGADDR_MASK;
 	end
 end
 
-wire [W_REGADDR-1:0] d_rs1_predecoded_nxt =
-	d_starved || !x_stall ? f_rs1_fine : d_rs1_predecoded;
-wire [W_REGADDR-1:0] d_rs2_predecoded_nxt =
-	d_starved || !x_stall ? f_rs2_fine : d_rs2_predecoded;
+wire [W_REGADDR-1:0] d_rs1_predecoded_nxt = REGADDR_MASK & (
+	d_starved || !x_stall ? f_rs1_fine : d_rs1_predecoded
+);
+wire [W_REGADDR-1:0] d_rs2_predecoded_nxt = REGADDR_MASK & (
+	d_starved || !x_stall ? f_rs2_fine : d_rs2_predecoded
+);
 
 wire [W_REGADDR-1:0] xm_rd_nxt;
 wire [W_REGADDR-1:0] mw_rd_nxt;
@@ -1049,8 +1054,9 @@ endgenerate
 
 // CSRs and Trap Handling
 
+// Use opcode bits directly because d_rs1 is masked when RVE is enabled:
 wire [W_DATA-1:0] x_csr_wdata = d_csr_w_imm ?
-	{{W_DATA-5{1'b0}}, d_rs1} : x_rs1_bypass;
+	{{W_DATA-5{1'b0}}, fd_cir[RV_RS1_LSB +: 5]} : x_rs1_bypass;
 
 wire [W_DATA-1:0] x_csr_rdata;
 wire              x_csr_illegal_access;
@@ -1216,9 +1222,10 @@ hazard3_csr #(
 
 // Pipe register
 
-assign xm_rd_nxt =
+assign xm_rd_nxt = REGADDR_MASK & (
 	m_stall                                   ? xm_rd :
-	x_stall || d_starved || m_trap_enter_soon ? 5'h0  : d_rd;
+	x_stall || d_starved || m_trap_enter_soon ? 5'h0  : d_rd
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1235,9 +1242,9 @@ always @ (posedge clk or negedge rst_n) begin
 	end else begin
 		unblock_out <= 1'b0;
 		if (!m_stall) begin
-			xm_rs1 <= d_rs1;
-			xm_rs2 <= d_rs2;
-			xm_rd <= d_rd;
+			xm_rs1 <= REGADDR_MASK & d_rs1;
+			xm_rs2 <= REGADDR_MASK & d_rs2;
+			xm_rd  <= REGADDR_MASK & d_rd;
 			// PC increment is suppressed non-final micro-ops, only needed for Zcmp:
 			xm_no_pc_increment <= d_no_pc_increment && |EXTENSION_ZCMP;
 			// If some X-sourced exception has squashed the address phase, need to squash the data phase too.
@@ -1515,7 +1522,9 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
-assign mw_rd_nxt = m_reg_wen_if_nonzero ? xm_rd : mw_rd;
+assign mw_rd_nxt = REGADDR_MASK & (
+	m_reg_wen_if_nonzero ? xm_rd : mw_rd
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1527,15 +1536,14 @@ always @ (posedge clk or negedge rst_n) begin
 			$finish;
 		end
 `endif
-		if (m_reg_wen_if_nonzero)
-			mw_rd <= xm_rd;
+		if (m_reg_wen_if_nonzero) begin
+			mw_rd <= REGADDR_MASK & xm_rd;
+		end
 	end
 end
 
 hazard3_regfile_1w2r #(
-	.RESET_REGS (RESET_REGFILE),
-	.N_REGS     (32),
-	.W_DATA     (W_DATA)
+`include "hazard3_config_inst.vh"
 ) regs (
 	.clk    (clk),
 	.rst_n  (rst_n),

@@ -238,6 +238,13 @@ Support for the C extension: compressed (variable-width). `0` for disable, `1` f
 
 Default value: `1`
 
+[[param-EXTENSION_E]]
+===== EXTENSION_E
+
+Implement the RV32E base extension rather than RV32I. RV32E reduces the number of integer registers from 31 to 15. Set `1` to select RV32E, `0` to select RV32I.
+
+Default value: `0`
+
 [[param-EXTENSION_M]]
 ===== EXTENSION_M
 

@@ -5,6 +5,7 @@ localparam RESET_VECTOR        = 32'h40;
 localparam MTVEC_INIT          = 32'h0;
 localparam EXTENSION_A         = 0;
 localparam EXTENSION_C         = 0;
+localparam EXTENSION_E         = 0;
 localparam EXTENSION_M         = 0;
 localparam EXTENSION_ZBA       = 0;
 localparam EXTENSION_ZBB       = 0;

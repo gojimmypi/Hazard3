@@ -134,6 +134,7 @@ assign df_uop_step = uop_ctr;
 // The offset from current sp value to the lowest-addressed saved register, +64.
 wire [3:0] zcmp_rlist = instr_in[7:4];
 wire [3:0] zcmp_n_regs = zcmp_rlist == 4'hf ? 4'hd : zcmp_rlist - 4'h3;
+wire       zcmp_rlist_invalid = zcmp_rlist < 4'h4 || (|EXTENSION_E && zcmp_rlist > 4'h6);
 
 wire [11:0] zcmp_stack_adj_base =
 	zcmp_rlist == 4'hf ? 12'h040 :
@@ -172,6 +173,8 @@ wire [31:0] zcmp_pop_stack_adj_instr = `RVOPC_NOZ_ADDI | rfmt_rd(5'd2) | rfmt_rs
 
 wire [4:0] zcmp_sa01_r1s = {|instr_in[9:8], ~|instr_in[9:8], instr_in[9:7]};
 wire [4:0] zcmp_sa01_r2s = {|instr_in[4:3], ~|instr_in[4:3], instr_in[4:2]};
+
+wire       zcmp_sa01_invalid = |EXTENSION_E && |{instr_in[9:8], instr_in[4:3]};
 
 // ----------------------------------------------------------------------------
 
@@ -326,7 +329,7 @@ end else begin: instr_decompress
 			end
 
 			// Optional Zcmp instructions:
-			`RVOPC_CM_PUSH: if (~|EXTENSION_ZCMP || zcmp_rlist < 4'h4) begin
+			`RVOPC_CM_PUSH: if (~|EXTENSION_ZCMP || zcmp_rlist_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'hf) begin
 				in_uop_seq = 1'b1;
@@ -342,7 +345,7 @@ end else begin: instr_decompress
 				end
 			end
 
-			`RVOPC_CM_POP: if (~|EXTENSION_ZCMP || zcmp_rlist < 4'h4) begin
+			`RVOPC_CM_POP: if (~|EXTENSION_ZCMP || zcmp_rlist_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'hf) begin
 				in_uop_seq = 1'b1;
@@ -358,7 +361,7 @@ end else begin: instr_decompress
 				end
 			end
 
-			`RVOPC_CM_POPRET: if (~|EXTENSION_ZCMP || zcmp_rlist < 4'h4) begin
+			`RVOPC_CM_POPRET: if (~|EXTENSION_ZCMP || zcmp_rlist_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'he) begin
 				// Note although this is only the first instruction in the uninterruptible sequence,
@@ -383,7 +386,7 @@ end else begin: instr_decompress
 				end
 			end
 
-			`RVOPC_CM_POPRETZ: if (~|EXTENSION_ZCMP || zcmp_rlist < 4'h4) begin
+			`RVOPC_CM_POPRETZ: if (~|EXTENSION_ZCMP || zcmp_rlist_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'hd) begin
 				in_uop_seq = 1'b1;
@@ -409,7 +412,7 @@ end else begin: instr_decompress
 				end
 			end
 
-			`RVOPC_CM_MVSA01: if (~|EXTENSION_ZCMP) begin
+			`RVOPC_CM_MVSA01: if (~|EXTENSION_ZCMP || zcmp_sa01_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'h0) begin
 				in_uop_seq = 1'b1;
@@ -422,7 +425,7 @@ end else begin: instr_decompress
 				instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(zcmp_sa01_r2s) | rfmt_rs1(5'd11);
 			end
 
-			`RVOPC_CM_MVA01S: if (~|EXTENSION_ZCMP) begin
+			`RVOPC_CM_MVA01S: if (~|EXTENSION_ZCMP || zcmp_sa01_invalid) begin
 				invalid = 1'b1;
 			end else if (uop_ctr == 4'h0) begin
 				in_uop_seq = 1'b1;

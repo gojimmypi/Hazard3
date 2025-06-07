@@ -9,27 +9,31 @@
 `default_nettype none
 
 module hazard3_regfile_1w2r #(
-	parameter RESET_REGS = 0,
-	parameter N_REGS = 32,
-	parameter W_DATA = 32,
-	parameter W_ADDR = $clog2(N_REGS) // Do not modify
+`include "hazard3_config.vh"
 ) (
 	input wire clk,
 	input wire rst_n,
 
-	input wire [W_ADDR-1:0] raddr1,
+	input wire [4:0]        raddr1,
 	output reg [W_DATA-1:0] rdata1,
 
-	input wire [W_ADDR-1:0] raddr2,
+	input wire [4:0]        raddr2,
 	output reg [W_DATA-1:0] rdata2,
 
-	input wire [W_ADDR-1:0] waddr,
+	input wire [4:0]        waddr,
 	input wire [W_DATA-1:0] wdata,
 	input wire              wen
 );
 
+localparam       N_REGS      = EXTENSION_E == 0 ? 32 : 16;
+localparam [4:0] REGNUM_MASK = {~|EXTENSION_E, 4'hf};
+
+wire [4:0] raddr1_masked = raddr1 & REGNUM_MASK;
+wire [4:0] raddr2_masked = raddr2 & REGNUM_MASK;
+wire [4:0] waddr_masked  = waddr  & REGNUM_MASK;
+
 generate
-if (RESET_REGS) begin: real_dualport_reset
+if (RESET_REGFILE) begin: real_dualport_reset
 	// This will presumably always be implemented with flops
 	reg [W_DATA-1:0] mem [0:N_REGS-1];
 
@@ -43,10 +47,10 @@ if (RESET_REGS) begin: real_dualport_reset
 			rdata2 <= {W_DATA{1'b0}};
 		end else begin
 			if (wen) begin
-				mem[waddr] <= wdata;
+				mem[waddr_masked] <= wdata;
 			end
-			rdata1 <= mem[raddr1];
-			rdata2 <= mem[raddr2];
+			rdata1 <= mem[raddr1_masked];
+			rdata2 <= mem[raddr2_masked];
 		end
 	end
 end else begin: real_dualport_noreset
@@ -61,10 +65,10 @@ end else begin: real_dualport_noreset
 
 	always @ (posedge clk) begin
 		if (wen) begin
-			mem[waddr] <= wdata;
+			mem[waddr_masked] <= wdata;
 		end
-		rdata1 <= mem[raddr1];
-		rdata2 <= mem[raddr2];
+		rdata1 <= mem[raddr1_masked];
+		rdata2 <= mem[raddr2_masked];
 	end
 end
 endgenerate

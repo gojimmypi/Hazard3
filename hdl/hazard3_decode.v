@@ -490,17 +490,23 @@ always @ (*) begin
 
 	default:          begin d_invalid_32bit = 1'b1; end
 	endcase
+
+	if (|EXTENSION_E && (raw_rd[4] || raw_rs1[4] || raw_rs2[4])) begin
+		d_invalid_32bit = 1'b1;
+	end
 end
 
 // Then gate key signals based on CIR fullness, fetch faults etc. The split
 // helps to avoid an event scheduling feedback loop that makes simulators
 // unhappy and slow, particularly verilator
 
+localparam [4:0] REGADDR_MASK = {~|EXTENSION_E, 4'hf};
+
 always @ (*) begin
 	// Pass through by default
-	d_rs1             = raw_rs1;
-	d_rs2             = raw_rs2;
-	d_rd              = raw_rd;
+	d_rs1             = raw_rs1 & REGADDR_MASK;
+	d_rs2             = raw_rs2 & REGADDR_MASK;
+	d_rd              = raw_rd  & REGADDR_MASK;
 	d_imm             = raw_imm;
 	d_alusrc_a        = raw_alusrc_a;
 	d_alusrc_b        = raw_alusrc_b;

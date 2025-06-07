@@ -1,6 +1,6 @@
 # Hazard3
 
-Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` instruction set and the following optional extensions:
+Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instruction set and the following optional extensions:
 
 * `M`: integer multiply/divide/modulo
 * `A` : atomic memory operations, with AHB5 global exclusives

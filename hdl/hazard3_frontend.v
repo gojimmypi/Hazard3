@@ -783,6 +783,13 @@ always @ (*) begin
 	default:                                     predecode_rs2_fine = predecode_rs2_coarse;
 	endcase
 
+	if (|EXTENSION_E) begin
+		predecode_rs1_coarse[4] = 1'b0;
+		predecode_rs2_coarse[4] = 1'b0;
+		predecode_rs1_fine[4] = 1'b0;
+		predecode_rs2_fine[4] = 1'b0;
+	end
+
 end
 
 // ----------------------------------------------------------------------------

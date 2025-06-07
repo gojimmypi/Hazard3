@@ -426,6 +426,7 @@ assign pwr_allow_clkgate = msleep_deepsleep;
 // mulhsu executed on the sequential multiply/divide circuit.
 localparam [0:0]   EXTENSION_ZKT = !(|EXTENSION_M && !(|MUL_FAST && |MULH_FAST));
 localparam [0:0]   EXTENSION_B   = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
+localparam [0:0]   EXTENSION_I   = ~|EXTENSION_E;
 
 localparam [31:0]  h3misa_standard_len = 32'd76;
 
@@ -433,7 +434,8 @@ localparam [127:0] h3misa_standard_extensions =
 	({127'd0, |EXTENSION_A       } << 0 ) | // A
 	({127'd0, |EXTENSION_B       } << 1 ) | // B
 	({127'd0, |EXTENSION_C       } << 2 ) | // C
-	({127'd0, 1'b1               } << 8 ) | // I
+	({127'd0, |EXTENSION_E       } << 4 ) | // E
+	({127'd0, |EXTENSION_I       } << 8 ) | // I
 	({127'd0, |EXTENSION_M       } << 12) | // M
 	({127'd0, |EXTENSION_ZBA     } << 27) | // Zba
 	({127'd0, |EXTENSION_ZBB     } << 28) | // Zbb
@@ -652,10 +654,12 @@ always @ (*) begin
 			7'd0,              // T...N, no
 			|EXTENSION_M,
 			3'd0,              // L...J, no
-			1'b1,              // Integer ISA
-			5'd0,              // H...D, no
+			~|EXTENSION_E,     // RVI base ISA
+			3'd0,              // H, G, F, no
+			|EXTENSION_E,      // RVE base ISA
+			1'b0,              // D, no
 			|EXTENSION_C,
-			&{                 // B is now defined as ZbaZbbZbs
+			&{                 // B is defined as ZbaZbbZbs
 				|EXTENSION_ZBA,
 				|EXTENSION_ZBB,
 				|EXTENSION_ZBS

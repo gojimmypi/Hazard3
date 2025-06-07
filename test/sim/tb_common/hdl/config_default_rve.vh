@@ -1,10 +1,10 @@
-// Default Hazard3 config for testbench: all ISA features
+// All ISA features (but RVE)
 
 localparam RESET_VECTOR        = 32'h40;
 localparam MTVEC_INIT          = 32'h0;
 localparam EXTENSION_A         = 1;
 localparam EXTENSION_C         = 1;
-localparam EXTENSION_E         = 0;
+localparam EXTENSION_E         = 1;
 localparam EXTENSION_M         = 1;
 localparam EXTENSION_ZBA       = 1;
 localparam EXTENSION_ZBB       = 1;
@@ -25,7 +25,7 @@ localparam CSR_M_MANDATORY     = 1;
 localparam CSR_M_TRAP          = 1;
 localparam CSR_COUNTER         = 1;
 localparam U_MODE              = 1;
-localparam PMP_REGIONS         = 16;
+localparam PMP_REGIONS         = 4;
 localparam PMP_GRAIN           = 0;
 localparam PMP_MATCH_NAPOT     = 1;
 localparam PMP_MATCH_TOR       = 1;

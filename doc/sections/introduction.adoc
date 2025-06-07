@@ -2,7 +2,7 @@
 
 Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 
-* `RV32I`: 32-bit base instruction set
+* `RV32I` or `RV32E`: 32-bit base instruction set
 * `M`: integer multiply/divide/modulo
 * `A`: atomic memory operations, with AHB5 global exclusives
 * `C`: compressed instructions
