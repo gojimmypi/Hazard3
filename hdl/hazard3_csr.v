@@ -440,6 +440,7 @@ localparam [127:0] h3misa_standard_extensions =
 	({127'd0, |EXTENSION_ZBC     } << 29) | // Zbc
 	({127'd0, |EXTENSION_ZBKB    } << 30) | // Zbkb
 	({127'd0, |EXTENSION_ZBC     } << 31) | // Zbkc, subset of Zbc
+	({127'd0, |EXTENSION_ZBKX    } << 32) | // Zbkx
 	({127'd0, |EXTENSION_ZBS     } << 33) | // Zbs
 	({127'd0, |EXTENSION_ZKT     } << 46) | // Zkt
 	({127'd0, |EXTENSION_C       } << 66) | // Zca, subset of C

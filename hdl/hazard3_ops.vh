@@ -52,6 +52,8 @@ localparam ALUOP_UNZIP   = 6'h3d;
 
 localparam ALUOP_BEXTM   = 6'h3e;
 
+localparam ALUOP_XPERM   = 6'h3f;
+
 // Parameters to control ALU input muxes. Bypass mux paths are
 // controlled by X, so D has no parameters to choose these.
 

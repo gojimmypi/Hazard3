@@ -17,6 +17,7 @@ New signals:
 New features:
 
 * Implement the Zilsd and Zclsd extensions (load/store pair and compressed load/store pair)
+* Implement the Zbkx extension (crossbar permutation)
 * Implement TOR region support for PMP, enabled by <<param-PMP_MATCH_TOR>>
 ** NAPOT/NA4 matching is now optional, enabled by <<param-PMP_MATCH_NAPOT>>
 * Implement interrupt, exception and instruction count trigger in the <<section-trigger-module>>

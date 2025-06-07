@@ -51,12 +51,15 @@ parameter EXTENSION_ZBB       = 0,
 // EXTENSION_ZBC: Support for Zbc carry-less multiplication instructions
 parameter EXTENSION_ZBC       = 0,
 
-// EXTENSION_ZBS: Support for Zbs single-bit manipulation instructions
-parameter EXTENSION_ZBS       = 0,
-
 // EXTENSION_ZBKB: Support for Zbkb basic bit manipulation for cryptography
 // Requires: Zbb. (This flag enables instructions in Zbkb which aren't in Zbb.)
 parameter EXTENSION_ZBKB      = 0,
+
+// EXTENSION_ZBKX: support for Zbkx crossbar permutation instructions
+parameter EXTENSION_ZBKX      = 0,
+
+// EXTENSION_ZBS: Support for Zbs single-bit manipulation instructions
+parameter EXTENSION_ZBS       = 0,
 
 // EXTENSION_ZCB: Support for Zcb basic additional compressed instructions
 // Requires: EXTENSION_C. (Some Zcb instructions also require Zbb or M.)

@@ -467,6 +467,9 @@ always @ (*) begin
 	`RVOPC_UNZIP:     if (EXTENSION_ZBKB) begin raw_aluop = ALUOP_UNZIP;  raw_rs2 = X0;                                                end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_ZIP:       if (EXTENSION_ZBKB) begin raw_aluop = ALUOP_ZIP;    raw_rs2 = X0;                                                end else begin d_invalid_32bit = 1'b1; end
 
+	`RVOPC_XPERM8:    if (EXTENSION_ZBKX) begin raw_aluop = ALUOP_XPERM;                                                               end else begin d_invalid_32bit = 1'b1; end
+	`RVOPC_XPERM4:    if (EXTENSION_ZBKX) begin raw_aluop = ALUOP_XPERM;                                                               end else begin d_invalid_32bit = 1'b1; end
+
 	`RVOPC_H3_BEXTM:  if (EXTENSION_XH3BEXTM) begin
 	                                           raw_aluop = ALUOP_BEXTM;                                                                end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_H3_BEXTMI: if (EXTENSION_XH3BEXTM) begin

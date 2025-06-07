@@ -227,49 +227,42 @@ Default value: all-zeroes.
 [[param-EXTENSION_A]]
 ===== EXTENSION_A
 
-Support for the A extension: atomic read/modify/write. 0 for disable, 1 for enable.
+Support for the A extension: atomic read/modify/write. `0` for disable, `1` for enable.
 
 Default value: `1`
 
 [[param-EXTENSION_C]]
 ===== EXTENSION_C
 
-Support for the C extension: compressed (variable-width). 0 for disable, 1 for enable.
+Support for the C extension: compressed (variable-width). `0` for disable, `1` for enable.
 
 Default value: `1`
 
 [[param-EXTENSION_M]]
 ===== EXTENSION_M
 
-Support for the M extension: hardware multiply/divide/modulo. 0 for disable, 1 for enable.
+Support for the M extension: hardware multiply/divide/modulo. `0` for disable, `1` for enable.
 
 Default value: `1`
 
 [[param-EXTENSION_ZBA]]
 ===== EXTENSION_ZBA
 
-Support for Zba address generation instructions. 0 for disable, 1 for enable.
+Support for Zba address generation instructions. `0` for disable, `1` for enable.
 
 Default value: `0`
 
 [[param-EXTENSION_ZBB]]
 ===== EXTENSION_ZBB
 
-Support for Zbb basic bit manipulation instructions. 0 for disable, 1 for enable.
+Support for Zbb basic bit manipulation instructions. `0` for disable, `1` for enable.
 
 Default value: `0`
 
 [[param-EXTENSION_ZBC]]
 ===== EXTENSION_ZBC
 
-Support for Zbc carry-less multiplication instructions. 0 for disable, 1 for enable.
-
-Default value: `0`
-
-[[param-EXTENSION_ZBS]]
-===== EXTENSION_ZBS
-
-Support for Zbs single-bit manipulation instructions. 0 for disable, 1 for enable.
+Support for Zbc carry-less multiplication instructions. `0` for disable, `1` for enable.
 
 Default value: `0`
 
@@ -281,6 +274,21 @@ Support for Zbkb basic bit manipulation for cryptography.
 Requires: <<param-EXTENSION_ZBB>> = `1`.
 
 NOTE: Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.
+
+Default value: `0`
+
+[[param-EXTENSION_ZBKX]]
+===== EXTENSION_ZBKX
+
+Support for Zbkx crossbar permutation instructions. `0` for disable, `1` for enable.
+
+Default value: `0`
+
+
+[[param-EXTENSION_ZBS]]
+===== EXTENSION_ZBS
+
+Support for Zbs single-bit manipulation instructions. `0` for disable, `1` for enable.
 
 Default value: `0`
 
@@ -304,6 +312,8 @@ Default value: `0`
 Support for Zclsd compressed load/store pair instructions.
 
 Requires: <<param-EXTENSION_ZILSD>> = `1` and <<param-EXTENSION_C>> = `1`.
+
+Default value: `0`
 
 [[param-EXTENSION_ZCMP]]
 ===== EXTENSION_ZCMP

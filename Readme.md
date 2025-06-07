@@ -12,6 +12,7 @@ Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` instruction set 
 * `Zbc`: carry-less multiplication
 * `Zbs`: single-bit manipulation
 * `Zbkb`: basic bit manipulation for scalar cryptography
+* `Zbkx`: crossbar permutation instructions
 * `Zcb`: basic additional compressed instructions
 * `Zclsd`: compressed load/store pair instructions
 * `Zcmp`: push/pop instructions
@@ -47,6 +48,7 @@ These are links to the ratified versions of the extensions.
 | `Zbc` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbs` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
 | `Zbkb` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
+| `Zbkx` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
 | `Zcb` v1.0 | [Code Size Reduction extensions v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
 | `Zclsd` v1.0 | [Zilsd and Zclsd v1.0](https://github.com/riscv/riscv-zilsd/releases/download/v1.0/riscv-zilsd-v1.0.pdf) |
 | `Zcmp` v1.0 | [Code Size Reduction extensions v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
