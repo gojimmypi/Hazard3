@@ -224,8 +224,6 @@ wire unblock_out_cpu0;
 wire unblock_out_cpu1;
 
 hazard3_cpu_1port #(
-	.MHARTID_VAL (32'h0000_0000),
-`define HAZARD3_CONFIG_INST_NO_MHARTID
 `include "hazard3_config_inst.vh"
 ) cpu0 (
 	.clk                        (clk),
@@ -283,14 +281,15 @@ hazard3_cpu_1port #(
 	.dbg_sbus_wdata             (32'h0),
 	.dbg_sbus_rdata             (),
 
+	.mhartid_val                (32'd0),
+	.eco_version                (4'd0),
+
 	.irq                        (irq),
 	.soft_irq                   (soft_irq[0]),
 	.timer_irq                  (timer_irq[0])
 );
 
 hazard3_cpu_1port #(
-	.MHARTID_VAL (32'h0000_0001),
-`define HAZARD3_CONFIG_INST_NO_MHARTID
 `include "hazard3_config_inst.vh"
 ) cpu1 (
 	.clk                        (clk),
@@ -346,6 +345,9 @@ hazard3_cpu_1port #(
 	.dbg_sbus_err               (sbus_err),
 	.dbg_sbus_wdata             (sbus_wdata),
 	.dbg_sbus_rdata             (sbus_rdata),
+
+	.mhartid_val                (32'd1),
+	.eco_version                (4'd0),
 
 	.irq                        (irq),
 	.soft_irq                   (soft_irq[1]),

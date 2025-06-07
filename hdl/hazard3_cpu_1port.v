@@ -76,6 +76,10 @@ module hazard3_cpu_1port #(
 	input  wire [W_DATA-1:0]  dbg_sbus_wdata,
 	output wire [W_DATA-1:0]  dbg_sbus_rdata,
 
+	// Identification CSR values
+	input  wire [W_DATA-1:0]  mhartid_val,
+	input  wire [3:0]         eco_version,
+
 	// Level-sensitive interrupt sources
 	input wire [NUM_IRQS-1:0] irq,       // -> mip.meip
 	input wire                soft_irq,  // -> mip.msip
@@ -172,7 +176,8 @@ hazard3_core #(
 	.dbg_instr_caught_exception (dbg_instr_caught_exception),
 	.dbg_instr_caught_ebreak    (dbg_instr_caught_ebreak),
 
-
+	.mhartid_val                (mhartid_val),
+	.eco_version                (eco_version),
 
 	.irq                        (irq),
 	.soft_irq                   (soft_irq),

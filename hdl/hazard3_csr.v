@@ -129,7 +129,9 @@ module hazard3_csr #(
 	// Other CSR-specific signalling
 	output wire                clear_excl_on_trap_exit,
 	output wire                trap_wfi,
-	input  wire                instr_ret
+	input  wire                instr_ret,
+	input  wire [W_DATA-1:0]   mhartid_val,
+	input  wire [3:0]          eco_version
 );
 
 `include "hazard3_ops.vh"
@@ -418,6 +420,65 @@ assign pwr_allow_power_down = msleep_powerdown;
 assign pwr_allow_clkgate = msleep_deepsleep;
 
 // ----------------------------------------------------------------------------
+// Custom identification CSRs
+
+// TODO Zifencei is missing -- needs upstream bit assignment
+
+// We have data-independent timing for all Zkt instructions except for mulh,
+// mulhsu executed on the sequential multiply/divide circuit.
+localparam [0:0]   EXTENSION_ZKT = !(|EXTENSION_M && !(|MUL_FAST && |MULH_FAST));
+localparam [0:0]   EXTENSION_B   = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
+
+localparam [31:0]  h3misa_standard_len = 32'd75;
+
+localparam [127:0] h3misa_standard_extensions =
+	({127'd0, |EXTENSION_A    } << 0 ) | // A
+	({127'd0, |EXTENSION_B    } << 1 ) | // B
+	({127'd0, |EXTENSION_C    } << 2 ) | // C
+	({127'd0, 1'b1            } << 8 ) | // I
+	({127'd0, |EXTENSION_M    } << 12) | // M
+	({127'd0, |EXTENSION_ZBA  } << 27) | // Zba
+	({127'd0, |EXTENSION_ZBB  } << 28) | // Zbb
+	({127'd0, |EXTENSION_ZBC  } << 29) | // Zbc
+	({127'd0, |EXTENSION_ZBKB } << 30) | // Zbkb
+	({127'd0, |EXTENSION_ZBC  } << 31) | // Zbkc, subset of Zbc
+	({127'd0, |EXTENSION_ZBS  } << 33) | // Zbs
+	({127'd0, |EXTENSION_ZKT  } << 46) | // Zkt
+	({127'd0, |EXTENSION_C    } << 66) | // Zca, subset of C
+	({127'd0, |EXTENSION_ZCB  } << 67) | // Zcb
+	({127'd0, |EXTENSION_ZILSD} << 72) | // Zilsd
+	({127'd0, |EXTENSION_ZCLSD} << 73) | // Zclsd
+	({127'd0, |EXTENSION_ZCMP } << 74) | // Zcmp
+	128'd0;
+
+localparam [31:0]  h3misa_custom_len = 32'd5;
+
+localparam [255:0] h3misa_custom_extensions = {
+	32'd0,                                       // Reserved
+	32'd0,                                       // Reserved
+	32'd0,                                       // Reserved
+	32'h01_00_00_00 & {32{|EXTENSION_XH3BEXTM}}, // Xh3bextm
+	32'h01_00_00_00 & {32{|EXTENSION_XH3POWER}}, // Xh3power
+	32'h01_00_00_00 & {32{|EXTENSION_XH3PMPM}},  // Xh3pmpm
+	32'h01_00_00_00 & {32{|EXTENSION_XH3IRQ}},   // Xh3irq
+	32'h01_00_00_00 & {32{|CSR_M_MANDATORY}}     // Xh3misa
+};
+
+localparam [23:0]  h3misa_hazard3_version = 24'h01_01_00;
+
+wire [127:0] h3misa_info = {
+	32'd0, // Reserved
+	{h3misa_hazard3_version, eco_version, 4'h0},
+	h3misa_custom_len,
+	h3misa_standard_len
+};
+
+wire [31:0]  h3misa_rdata =
+	!wdata[10] ? h3misa_standard_extensions[32 * wdata[1:0] +: 32] :
+	!wdata[8]  ? h3misa_info               [32 * wdata[1:0] +: 32] :
+	             h3misa_custom_extensions  [32 * wdata[2:0] +: 32];
+
+// ----------------------------------------------------------------------------
 // Counters
 
 reg mcountinhibit_cy;
@@ -585,12 +646,7 @@ always @ (*) begin
 			{XLEN-28{1'b0}},   // WLRL
 
 			2'd0,              // Z, Y, no
-			|{                 // X is set for any custom extensions
-				|EXTENSION_XH3BEXTM,
-				|EXTENSION_XH3IRQ,
-				|EXTENSION_XH3PMPM,
-				|EXTENSION_XH3POWER
-			},
+			1'b1,              // X is always set due to (at least) Xh3misa
 			2'd0,              // V, W, no
 			|U_MODE,
 			7'd0,              // T...N, no
@@ -622,7 +678,7 @@ always @ (*) begin
 	end
 	MHARTID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
-		rdata = MHARTID_VAL;
+		rdata = mhartid_val;
 	end
 
 	MCONFIGPTR: if (CSR_M_MANDATORY) begin
@@ -1113,6 +1169,11 @@ always @ (*) begin
 			msleep_powerdown,
 			msleep_deepsleep
 		};
+	end
+
+	H3MISA: if (CSR_M_MANDATORY) begin
+		decode_match = match_mrw;
+		rdata = h3misa_rdata;
 	end
 
 	default: begin end

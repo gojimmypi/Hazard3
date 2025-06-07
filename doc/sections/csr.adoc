@@ -941,7 +941,7 @@ The following is an example of testing for an extension based on the `groupid` a
 ----
 uint32_t h3_misa_read(uint32_t index) {
 	uint32_t ret;
-	asm volatile (
+	asm (
 		"csrrw %0, 0xbf1, %1\n"
 		: "=r" (ret)
 		: "r" (index)

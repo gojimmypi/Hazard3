@@ -277,7 +277,6 @@ hazard3_cpu_1port #(
 	.BREAKPOINT_TRIGGERS (BREAKPOINT_TRIGGERS),
 	.IRQ_PRIORITY_BITS   (IRQ_PRIORITY_BITS),
 	.MIMPID_VAL          (MIMPID_VAL),
-	.MHARTID_VAL         (MHARTID_VAL),
 	.REDUCED_BYPASS      (REDUCED_BYPASS),
 	.MULDIV_UNROLL       (MULDIV_UNROLL),
 	.MUL_FAST            (MUL_FAST),
@@ -335,6 +334,9 @@ hazard3_cpu_1port #(
 	.dbg_sbus_err               (sbus_err),
 	.dbg_sbus_wdata             (sbus_wdata),
 	.dbg_sbus_rdata             (sbus_rdata),
+
+	.mhartid_val                (32'd0),
+	.eco_version                (4'd0),
 
 	.irq                        (uart_irq),
 

@@ -75,6 +75,10 @@ module hazard3_core #(
 	output wire                dbg_instr_caught_exception,
 	output wire                dbg_instr_caught_ebreak,
 
+	// Identification CSR values
+	input  wire [W_DATA-1:0]   mhartid_val,
+	input  wire [3:0]          eco_version,
+
 	// Level-sensitive interrupt sources
 	input  wire [NUM_IRQS-1:0] irq,       // -> mip.meip
 	input  wire                soft_irq,  // -> mip.msip
@@ -1205,7 +1209,9 @@ hazard3_csr #(
 	// Other CSR-specific signalling
 	.clear_excl_on_trap_exit    (m_clear_excl_on_trap_exit),
 	.trap_wfi                   (x_trap_wfi),
-	.instr_ret                  (x_instr_ret)
+	.instr_ret                  (x_instr_ret),
+	.mhartid_val                (mhartid_val),
+	.eco_version                (eco_version)
 );
 
 // Pipe register

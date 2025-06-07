@@ -169,6 +169,7 @@ localparam MEINEXT        = 12'hbe4; // Next external interrupt
 localparam MEICONTEXT     = 12'hbe5; // External interrupt context register
 
 localparam MSLEEP         = 12'hbf0; // M-mode sleep control register
+localparam H3MISA         = 12'hbf1; // Hazard3 M-mode ISA identification register
 
 // ----------------------------------------------------------------------------
 // U-mode CSRs
