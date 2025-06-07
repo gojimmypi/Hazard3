@@ -422,33 +422,32 @@ assign pwr_allow_clkgate = msleep_deepsleep;
 // ----------------------------------------------------------------------------
 // Custom identification CSRs
 
-// TODO Zifencei is missing -- needs upstream bit assignment
-
 // We have data-independent timing for all Zkt instructions except for mulh,
 // mulhsu executed on the sequential multiply/divide circuit.
 localparam [0:0]   EXTENSION_ZKT = !(|EXTENSION_M && !(|MUL_FAST && |MULH_FAST));
 localparam [0:0]   EXTENSION_B   = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
 
-localparam [31:0]  h3misa_standard_len = 32'd75;
+localparam [31:0]  h3misa_standard_len = 32'd76;
 
 localparam [127:0] h3misa_standard_extensions =
-	({127'd0, |EXTENSION_A    } << 0 ) | // A
-	({127'd0, |EXTENSION_B    } << 1 ) | // B
-	({127'd0, |EXTENSION_C    } << 2 ) | // C
-	({127'd0, 1'b1            } << 8 ) | // I
-	({127'd0, |EXTENSION_M    } << 12) | // M
-	({127'd0, |EXTENSION_ZBA  } << 27) | // Zba
-	({127'd0, |EXTENSION_ZBB  } << 28) | // Zbb
-	({127'd0, |EXTENSION_ZBC  } << 29) | // Zbc
-	({127'd0, |EXTENSION_ZBKB } << 30) | // Zbkb
-	({127'd0, |EXTENSION_ZBC  } << 31) | // Zbkc, subset of Zbc
-	({127'd0, |EXTENSION_ZBS  } << 33) | // Zbs
-	({127'd0, |EXTENSION_ZKT  } << 46) | // Zkt
-	({127'd0, |EXTENSION_C    } << 66) | // Zca, subset of C
-	({127'd0, |EXTENSION_ZCB  } << 67) | // Zcb
-	({127'd0, |EXTENSION_ZILSD} << 72) | // Zilsd
-	({127'd0, |EXTENSION_ZCLSD} << 73) | // Zclsd
-	({127'd0, |EXTENSION_ZCMP } << 74) | // Zcmp
+	({127'd0, |EXTENSION_A       } << 0 ) | // A
+	({127'd0, |EXTENSION_B       } << 1 ) | // B
+	({127'd0, |EXTENSION_C       } << 2 ) | // C
+	({127'd0, 1'b1               } << 8 ) | // I
+	({127'd0, |EXTENSION_M       } << 12) | // M
+	({127'd0, |EXTENSION_ZBA     } << 27) | // Zba
+	({127'd0, |EXTENSION_ZBB     } << 28) | // Zbb
+	({127'd0, |EXTENSION_ZBC     } << 29) | // Zbc
+	({127'd0, |EXTENSION_ZBKB    } << 30) | // Zbkb
+	({127'd0, |EXTENSION_ZBC     } << 31) | // Zbkc, subset of Zbc
+	({127'd0, |EXTENSION_ZBS     } << 33) | // Zbs
+	({127'd0, |EXTENSION_ZKT     } << 46) | // Zkt
+	({127'd0, |EXTENSION_C       } << 66) | // Zca, subset of C
+	({127'd0, |EXTENSION_ZCB     } << 67) | // Zcb
+	({127'd0, |EXTENSION_ZILSD   } << 72) | // Zilsd
+	({127'd0, |EXTENSION_ZCLSD   } << 73) | // Zclsd
+	({127'd0, |EXTENSION_ZCMP    } << 74) | // Zcmp
+	({127'd0, |EXTENSION_ZIFENCEI} << 75) | // Zifencei
 	128'd0;
 
 localparam [31:0]  h3misa_custom_len = 32'd5;

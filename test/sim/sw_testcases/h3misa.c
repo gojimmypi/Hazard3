@@ -20,6 +20,7 @@ Zcb
 Zilsd
 Zclsd
 Zcmp
+Zifencei
 
 *******************************************************************************/
 
@@ -84,6 +85,7 @@ const struct {const char *name; int groupid; int bit;} c_api_bitmap[] = {
 	{"Zilsd",       1, 8 },
 	{"Zclsd",       1, 9 },
 	{"Zcmp",        1, 10},
+	{"Zifencei",    1, 11},
 };
 
 static inline uint32_t h3_misa_read(uint32_t index) {
