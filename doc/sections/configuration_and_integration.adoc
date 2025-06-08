@@ -120,7 +120,7 @@ If Xh3irq is configured, this is a vector of level-sensitive active-high system 
 | 32         | In  | `mhartid_val`                | Set the value of the <<reg-mhartid>> CSR, which software uses to determine on which hart it is running. Hazard3 implements one hart per core, so this is effectively a per-core identification value.
 
 At least one hart must have the value of all-zeroes.
-| 4          | In  | `eco_version`                | Set the value of the `eco` version number in <<reg-h3.misa>>.
+| 4          | In  | `eco_version`                | Set the value of the `eco` version number in <<reg-mimpid>>.
 
 On ASIC this should be connected to metal-programmable tie cells so that it can be incremented with metal changes. The initial value should be all-zeroes. On FPGA this should be tied to all-zeroes.
 

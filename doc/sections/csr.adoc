@@ -974,7 +974,7 @@ bool h3_misa_extension_supported(unsigned int groupid, unsigned int bit_position
 
 Index `0x401` contains the length in _words_ of the custom extension listing, which starts from index `0x500`.
 
-Indices `0x500` onward contain versions of custom Hazard3 extensions, with the same `major.minor.patch` format. A value of all-zeroes indicates the extension is not implemented.
+Indices `0x500` onward contain versions of custom Hazard3 extensions:
 
 [options="header"]
 |===
@@ -985,6 +985,21 @@ Indices `0x500` onward contain versions of custom Hazard3 extensions, with the s
 | `0x503` | Xh3power
 | `0x504` | Xh3bextm
 |===
+
+The custom extension entries have the same `major.minor.patch` format as <<reg-mimpid>>:
+
+[cols="10h,20h,~", options="header"]
+|===
+| Bits   | Name       | Description
+| 31:28  | -          | RES0
+| 27:24  | `major`    | Major release version, i.e. the `1` in `v1.2.3`
+| 23:16  | `minor`    | Minor release version, i.e. the `2` in `v1.2.3`
+| 15:8   | `patch`    | Patch version, i.e. the `3` in `v1.2.3`
+| 7:0    | -          | RES0
+|===
+
+
+A value of all-zeroes indicates the custom extension is not implemented.
 
 
 
