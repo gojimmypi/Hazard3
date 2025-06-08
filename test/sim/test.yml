@@ -17,25 +17,20 @@ simulators:
     march:     rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp_zicsr_zifencei
     excluded_tests:
       # Exclude anything with explicit use of x16..x31
-      - amo_fault
       - ecall_simple
-      - zclsd_fault
       - zclsd_irq
-      - zclsd_memcpy
       - zclsd_sp_range
       - zcmp_irq_kill
-      - zcmp_irq_kill_popret
-      - zcmp_irq_kill_popretz
       - zcmp_irq_mvsa_mvas
       - zcmp_mva01s
       - zcmp_mvsa01
       - zcmp_pop
       - zcmp_push
-      - zilsd_fault
       - zilsd_irq
       - zilsd_memcpy
       # Reports E instead of I, so fails:
       - h3misa
+      - csr_id
   cxxrtl_min:
     make_dir:  tb_cxxrtl
     make_args: CONFIG=min
