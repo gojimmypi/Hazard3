@@ -16,12 +16,14 @@ isr_external_irq:
 	sw a3, 28(sp)
 	sw a4, 32(sp)
 	sw a5, 36(sp)
+#if __riscv_i
 	sw a6, 40(sp)
 	sw a7, 44(sp)
 	sw t3, 48(sp)
 	sw t4, 52(sp)
 	sw t5, 56(sp)
 	sw t6, 60(sp)
+#endif
 
 	// Update a count of the number of external IRQ vector entries (just for
 	// use in tests)
@@ -81,12 +83,14 @@ no_more_irqs:
 	lw a3, 28(sp)
 	lw a4, 32(sp)
 	lw a5, 36(sp)
+#if __riscv_i
 	lw a6, 40(sp)
 	lw a7, 44(sp)
 	lw t3, 48(sp)
 	lw t4, 52(sp)
 	lw t5, 56(sp)
 	lw t6, 60(sp)
+#endif
 	addi sp, sp, 80
 	mret
 

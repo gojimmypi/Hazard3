@@ -10,17 +10,59 @@ simulators:
     make_args: CONFIG=default
     exec:      tb_verilator/tb
     march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+  cxxrtl_default_rve:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=default_rve
+    exec:      tb_cxxrtl/tb-default_rve
+    march:     rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp_zicsr_zifencei
+    excluded_tests:
+      # Exclude anything with explicit use of x16..x31
+      - amo_fault
+      - ecall_simple
+      - zclsd_fault
+      - zclsd_irq
+      - zclsd_memcpy
+      - zclsd_sp_range
+      - zcmp_irq_kill
+      - zcmp_irq_kill_popret
+      - zcmp_irq_kill_popretz
+      - zcmp_irq_mvsa_mvas
+      - zcmp_mva01s
+      - zcmp_mvsa01
+      - zcmp_pop
+      - zcmp_push
+      - zilsd_fault
+      - zilsd_irq
+      - zilsd_memcpy
+      # Reports E instead of I, so fails:
+      - h3misa
   cxxrtl_min:
     make_dir:  tb_cxxrtl
     make_args: CONFIG=min
     exec:      tb_cxxrtl/tb-min
     march:     rv32i_zicsr_zifencei
-    tests:     hellow
+    tests:
+      - hellow
   cxxrtl_min_debug:
     make_dir:  tb_cxxrtl
     make_args: CONFIG=min_debug
     exec:      tb_cxxrtl/tb-min_debug
     march:     rv32i_zicsr_zifencei
-    tests:     ecall_simple hellow instr_access_fault load_misalign_halfword load_misalign_word load_store_fault pmp_u_rw pmp_write_and_lock soft_irq store_misalign_halfword store_misalign_word trigger_step_m_u umode_mret umode_wfi wfi_loop 
+    tests:
+      - ecall_simple
+      - hellow
+      - instr_access_fault
+      - load_misalign_halfword
+      - load_misalign_word
+      - load_store_fault
+      - pmp_u_rw
+      - pmp_write_and_lock
+      - soft_irq
+      - store_misalign_halfword
+      - store_misalign_word
+      - trigger_step_m_u
+      - umode_mret
+      - umode_wfi
+      - wfi_loop
 
 

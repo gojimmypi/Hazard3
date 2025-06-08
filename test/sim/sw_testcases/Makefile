@@ -1,9 +1,15 @@
 # Usually provided by passing --march=xxx to ./runtests
 MARCH      ?= rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs
 
+ifeq (,$(findstring rv32e,$(MARCH)))
+    MABI := ilp32
+else
+    MABI := ilp32e
+endif
+
 APP        := hellow
 SRCS        = ../common/init.S $(APP).c $(EXTRA_SRCS_$(APP))
-CCFLAGS    := -march=$(MARCH) -Os
+CCFLAGS    := -march=$(MARCH) -mabi=$(MABI) -Os
 MAX_CYCLES := 1000000
 INCDIR     := include ../common
 

@@ -150,37 +150,37 @@ progname:
 // so the CPU will print some basic diagnostics on any unhandled trap
 // (assuming the processor is not internally completely broken)
 
-// argument in x28, return in x27, trashes x28...x30
+// argument in t0, return in tp, trashes t0...t2
 _tb_puts:
-	li x29, IO_PRINT_CHAR
+	li t1, IO_PRINT_CHAR
 1:
-	lbu x30, (x28)
-	addi x28, x28, 1
-	beqz x30, 2f
-	sw x30, (x29)
+	lbu t2, (t0)
+	addi t0, t0, 1
+	beqz t2, 2f
+	sw t2, (t1)
 	j 1b
 2:
-	jr x27
+	jr tp
 
 .macro print_reg str reg
-	la x28, \str
-	jal x27, _tb_puts
-	sw \reg, (x31)
+	la t0, \str
+	jal tp, _tb_puts
+	sw \reg, (gp)
 .endm
 
-_weak_handler_name_in_x31:
-	la x28, _str_unhandled_trap
-	jal x27, _tb_puts
-	mv x28, x31
-	jal x27, _tb_puts
-	la x28, _str_at_mepc
-	jal x27, _tb_puts
-	li x31, IO_PRINT_U32
-	csrr x28, mepc
-	sw x28, (x31)
-	csrr x26, mcause
-	bltz x26, 1f
-	print_reg _str_mcause x26
+_weak_handler_name_in_gp:
+	la t0, _str_unhandled_trap
+	jal tp, _tb_puts
+	mv t0, gp
+	jal tp, _tb_puts
+	la t0, _str_at_mepc
+	jal tp, _tb_puts
+	li gp, IO_PRINT_U32
+	csrr t0, mepc
+	sw t0, (gp)
+	csrr gp, mcause
+	bltz gp, 1f
+	print_reg _str_mcause gp
 1:
 	print_reg _str_s0 s0
 	print_reg _str_s1 s1
@@ -192,9 +192,9 @@ _weak_handler_name_in_x31:
 	print_reg _str_a5 a5
 	print_reg _str_ra ra
 	print_reg _str_sp sp
-	li x31, IO_EXIT
-	li x30, -1
-	sw x30, (x31)
+	li t1, IO_EXIT
+	li t2, -1
+	sw t2, (t1)
 	// Should be unreachable:
 	j .halt
 
@@ -221,8 +221,8 @@ _str_sp:             .asciz "sp: "
 .global \name
 .weak \name
 \name:
-	la x31, _str_\name
-	j _weak_handler_name_in_x31
+	la gp, _str_\name
+	j _weak_handler_name_in_gp
 _str_\name:
 	.asciz "\name"
 .endm

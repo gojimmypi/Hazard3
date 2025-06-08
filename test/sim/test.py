@@ -74,6 +74,16 @@ for k in cfg["simulators"]:
 		"--no-tb-build"
 	]
 	if "tests" in sim_cfg:
-		cmdline.extend(shlex.split(sim_cfg["tests"]))
+		testlist = sim_cfg["tests"]
+	elif "excluded_tests" in sim_cfg:
+		testlist = []
+		for path in os.listdir("sw_testcases"):
+			excluded = path[:-2] in sim_cfg["excluded_tests"]
+			if not excluded and path.endswith(".c"):
+				testlist.append(path[:-2])
+	else:
+		testlist = []
+	cmdline.extend(testlist)
+
 	result = subprocess.run(cmdline, cwd="sw_testcases")
 
