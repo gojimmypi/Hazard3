@@ -342,6 +342,58 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 // ----------------------------------------------------------------------------
+// Standard identification CSRs
+
+// mimpid records the Hazard3 release version. This is updated manually with
+// each release.
+
+// Set to 1 if this RTL has not been released to the stable branch:
+localparam [0:0] MIMPID_PRERELEASE = 1'b1;
+
+// Major version, e.g the 1 in v1.2.3:
+localparam [3:0] MIMPID_MAJOR      = 4'd1;
+// Minor version, e.g. the 2 in v1.2.3:
+localparam [7:0] MIMPID_MINOR      = 8'd1;
+// Patch version, e.g. the 3 in v1.2.3:
+localparam [7:0] MIMPID_PATCH      = 8'd0;
+
+// Note the eco_version field is connected externally -- on ASIC this may be
+// connected to tie cells so it can be incremented following a metal ECO.
+wire [31:0] mimpid_rdata = {
+	MIMPID_PRERELEASE,
+	3'd0,
+	MIMPID_MAJOR,
+	MIMPID_MINOR,
+	MIMPID_PATCH,
+	eco_version,
+	4'h0
+};
+
+localparam [31:0] MISA_VAL = {
+	2'h1,              // MXL: 32-bit
+	{XLEN-28{1'b0}},   // WLRL
+
+	2'd0,              // Z, Y, no
+	1'b1,              // X is always set due to (at least) Xh3misa
+	2'd0,              // V, W, no
+	|U_MODE,
+	7'd0,              // T...N, no
+	|EXTENSION_M,
+	3'd0,              // L...J, no
+	~|EXTENSION_E,     // RVI base ISA
+	3'd0,              // H, G, F, no
+	|EXTENSION_E,      // RVE base ISA
+	1'b0,              // D, no
+	|EXTENSION_C,
+	&{                 // B is defined as ZbaZbbZbs
+		|EXTENSION_ZBA,
+		|EXTENSION_ZBB,
+		|EXTENSION_ZBS
+	},
+	|EXTENSION_A
+};
+
+// ----------------------------------------------------------------------------
 // Custom external IRQ controller
 
 wire [XLEN-1:0] irq_ctrl_rdata;
@@ -422,7 +474,7 @@ assign pwr_allow_clkgate = msleep_deepsleep;
 // ----------------------------------------------------------------------------
 // Custom identification CSRs
 
-// Derive implied extensions.
+// Derive implied extensions:
 
 // B is a shorthand for ZbaZbbZbs:
 localparam [0:0]   EXTENSION_B     = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
@@ -477,18 +529,14 @@ localparam [255:0] h3misa_custom_extensions = {
 	32'h01_00_00_00 & {32{|CSR_M_MANDATORY}}     // Xh3misa
 };
 
-localparam [23:0]  h3misa_hazard3_version = 24'h01_01_00;
-
-wire [127:0] h3misa_info = {
-	32'd0, // Reserved
-	{h3misa_hazard3_version, eco_version, 4'h0},
+wire [63:0] h3misa_info = {
 	h3misa_custom_len,
 	h3misa_standard_len
 };
 
 wire [31:0]  h3misa_rdata =
 	!wdata[10] ? h3misa_standard_extensions[32 * wdata[1:0] +: 32] :
-	!wdata[8]  ? h3misa_info               [32 * wdata[1:0] +: 32] :
+	!wdata[8]  ? h3misa_info               [32 * wdata[  0] +: 32] :
 	             h3misa_custom_extensions  [32 * wdata[2:0] +: 32];
 
 // ----------------------------------------------------------------------------
@@ -654,29 +702,7 @@ always @ (*) begin
 	MISA: if (CSR_M_MANDATORY) begin
 		// WARL, so it is legal to be tied constant
 		decode_match = match_mrw;
-		rdata = {
-			2'h1,              // MXL: 32-bit
-			{XLEN-28{1'b0}},   // WLRL
-
-			2'd0,              // Z, Y, no
-			1'b1,              // X is always set due to (at least) Xh3misa
-			2'd0,              // V, W, no
-			|U_MODE,
-			7'd0,              // T...N, no
-			|EXTENSION_M,
-			3'd0,              // L...J, no
-			~|EXTENSION_E,     // RVI base ISA
-			3'd0,              // H, G, F, no
-			|EXTENSION_E,      // RVE base ISA
-			1'b0,              // D, no
-			|EXTENSION_C,
-			&{                 // B is defined as ZbaZbbZbs
-				|EXTENSION_ZBA,
-				|EXTENSION_ZBB,
-				|EXTENSION_ZBS
-			},
-			|EXTENSION_A
-		};
+		rdata = MISA_VAL;
 	end
 	MVENDORID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
@@ -689,7 +715,7 @@ always @ (*) begin
 	end
 	MIMPID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
-		rdata = MIMPID_VAL;
+		rdata = mimpid_rdata;
 	end
 	MHARTID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;

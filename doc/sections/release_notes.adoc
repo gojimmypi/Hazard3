@@ -7,12 +7,14 @@
 Incompatible changes:
 
 * The `MHARTID_VAL` parameter has been removed, and replaced with the `mhartid_val` port
+* The `MIMPID_VAL` parameter has been removed
+* The <<reg-mimpid>> CSR has been redefined to contain the hardcoded Hazard3 release version
 
 New signals:
 
 * `fence_i_vld`, `fence_d_vld` and `fence_rdy` allow external hardware to enforce memory orderings or trigger cache flushes (see <<memory-ordering-signals,Memory Ordering Signals>>)
 * `mhartid_val` allows a dynamic `mhartid` CSR value
-* `eco_version` allows part of the processor's reported version number to be driven externally (see <<reg-h3.misa>>)
+* `eco_version` allows modifying part of the processor's reported version number (see <<reg-mimpid>>)
 
 New features:
 
@@ -32,6 +34,7 @@ Fixed errata:
 * Fix local monitor flag being cleared by trap entry as well as trap exit (only `xRET` should clear it)
 ** This behaviour continues to not affect entry/exit to Debug Mode, so LR/SC sequences can be single-stepped
 * Fix the Debug Module PROGBUF1 register being writable when an abstract command is executing, and not setting `abstracts.cmderr` to `busy` when written.
+* Fix spurious dependency of CSR instructions on `rs2`, causing read-after-write stall
 
 PPA optimisations:
 

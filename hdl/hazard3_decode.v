@@ -416,7 +416,6 @@ always @ (*) begin
 	`RVOPC_AMOOR_W:   if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_OR;   end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMIN_W:  if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MIN;  end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMAX_W:  if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MAX;  end else begin d_invalid_32bit = 1'b1; end
-
 	`RVOPC_AMOMINU_W: if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MINU; end else begin d_invalid_32bit = 1'b1; end
 	`RVOPC_AMOMAXU_W: if (EXTENSION_A) begin raw_addr_is_regoffs = 1'b1; raw_memop = MEMOP_AMO;  raw_aluop = ALUOP_MAXU; end else begin d_invalid_32bit = 1'b1; end
 

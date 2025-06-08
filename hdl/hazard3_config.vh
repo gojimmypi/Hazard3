@@ -196,9 +196,6 @@ parameter IRQ_INPUT_BYPASS    = {(NUM_IRQS > 0 ? NUM_IRQS : 1){1'b0}},
 // 31:7 is continuation code count, 6:0 is ID. Parity bit is not stored.
 parameter MVENDORID_VAL       = 32'h0,
 
-// Implementation ID for this specific version of Hazard3. Git hash is perfect.
-parameter MIMPID_VAL          = 32'h0,
-
 // Pointer to configuration structure blob, or all-zeroes. Must be at least
 // 4-byte-aligned.
 parameter MCONFIGPTR_VAL      = 32'h0,

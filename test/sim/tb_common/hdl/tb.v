@@ -329,7 +329,7 @@ hazard3_cpu_2port #(
 	.dbg_sbus_rdata             (sbus_rdata),
 
 	.mhartid_val                (32'd0),
-	.eco_version                (4'd0),
+	.eco_version                (4'ha),
 
 	.irq                        (irq),
 	.soft_irq                   (soft_irq[0]),

@@ -39,7 +39,6 @@ localparam NUM_IRQS            = 32;
 localparam IRQ_PRIORITY_BITS   = 0;
 localparam IRQ_INPUT_BYPASS    = {NUM_IRQS{1'b0}};
 localparam MVENDORID_VAL       = 32'hdeadbeef;
-localparam MIMPID_VAL          = 32'h12345678;
 localparam MCONFIGPTR_VAL      = 32'h9abcdef0;
 localparam REDUCED_BYPASS      = 1;
 localparam MULDIV_UNROLL       = 1;

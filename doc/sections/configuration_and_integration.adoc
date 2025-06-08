@@ -610,15 +610,6 @@ Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
-[[param-MIMPID_VAL]]
-===== MIMPID_VAL
-
-Value of the <<reg-mimpid>> CSR. Implementation ID for this specific version of Hazard3. Should be a git hash, or all-zeroes.
-
-Requires: <<param-CSR_M_MANDATORY>> = `1`.
-
-Default value: all-zeroes.
-
 [[param-MCONFIGPTR_VAL]]
 ===== MCONFIGPTR_VAL
 
