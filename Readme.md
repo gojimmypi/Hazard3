@@ -387,17 +387,19 @@ riscv-openocd -f ../ulx3s-openocd.cfg
 
 # Performance
 
-The RP2350 configuration of Hazard3 achieves 3.81 CoreMark/MHz.
+## RP2350
+
+The RP2350 configuration of Hazard3 achieves 4.15 CoreMark/MHz.
 
 ```
 2K performance run parameters for coremark.
 CoreMark Size    : 666
-Total ticks      : 15758494
-Total time (secs): 15.758494
-Iterations/Sec   : 3.807470
+Total ticks      : 14440822
+Total time (secs): 14.440822
+Iterations/Sec   : 4.154888
 Iterations       : 60
-Compiler version : GCC14.2.1 20240807
-Compiler flags   : -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1
+Compiler version : GCC15.1.0
+Compiler flags   : -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1  
 Memory location  : STACK
 seedcrc          : 0xe9f5
 [0]crclist       : 0xe714
@@ -405,11 +407,56 @@ seedcrc          : 0xe9f5
 [0]crcstate      : 0x8e3a
 [0]crcfinal      : 0xa14c
 Correct operation validated. See README.md for run and reporting rules.
-CoreMark 1.0 : 3.807470 / GCC14.2.1 20240807 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1   / STACK
+CoreMark 1.0 : 4.154888 / GCC15.1.0 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1   / STACK
 ```
 
 To reproduce this in the RTL simulator, use the top-level Makefile in [test/sim/coremark](test/sim/coremark) after you have followed all the steps to get set up for running a "Hello, world!" binary above.
 
-The default flags are appropriate for the non-multilib toolchain build, and achieve 3.74 CoreMark/MHz. To achieve the full 3.81 CoreMark/MHz, change the ISA variant in `core_portme.mak` to `rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs`. See the comments in that file for an explanation of why this makes a difference.
+The default flags are appropriate for the non-multilib toolchain build, and achieve 4.10 CoreMark/MHz. To achieve the full 4.15 CoreMark/MHz, change the ISA variant in `core_portme.mak` to `rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs`. See the comments in that file for an explanation of why this makes a difference.
 
 See the RP2350 datasheet for details of the Hazard3 configuration used by that chip. The default `tb_cxxrtl` build uses the same configuration as RP2350, except that it also enables the Zbc extension (which is not emitted by GCC 14 as it is not useful for general-purpose code).
+
+## Maximum
+
+As of GCC 15, GCC can infer `clmul` and `clmulh` instructions in the CoreMark CRC function. The Zbc extension was dropped from the RP2350 configuration as compilers were not able to exploit it at the time. Enabling Zbc increases the score to 4.25 CoreMark/MHz.
+
+```
+CoreMark Size    : 666
+Total ticks      : 14121622
+Total time (secs): 14.121622
+Iterations/Sec   : 4.248804
+Iterations       : 60
+Compiler version : GCC15.1.0
+Compiler flags   : -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs_zbc -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1  
+Memory location  : STACK
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xa14c
+Correct operation validated. See README.md for run and reporting rules.
+CoreMark 1.0 : 4.248804 / GCC15.1.0 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs_zbc -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1   / STACK
+```
+
+## RV32E
+
+Reducing the number of GPRs from 31 to 15 carries around a 5% penalty, at 4.02 CoreMark/MHz.
+
+```
+2K performance run parameters for coremark.
+CoreMark Size    : 666
+Total ticks      : 14908801
+Total time (secs): 14.908801
+Iterations/Sec   : 4.024469
+Iterations       : 60
+Compiler version : GCC15.1.0
+Compiler flags   : -O3 -g -march=rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zicsr_zifencei -mabi=ilp32e -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1  
+Memory location  : STACK
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xa14c
+Correct operation validated. See README.md for run and reporting rules.
+CoreMark 1.0 : 4.024469 / GCC15.1.0 -O3 -g -march=rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zicsr_zifencei -mabi=ilp32e -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1   / STACK
+```
