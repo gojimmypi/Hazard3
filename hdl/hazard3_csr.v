@@ -240,6 +240,20 @@ always @ (posedge clk or negedge rst_n) begin
 			// is halted for debug.)
 			m_mode <= wdata_update[1];
 		end
+		if (!U_MODE) begin
+			// Explicitly tie-off to constant; some synthesis tools don't like
+			// it when variables are only sensitive to the reset.
+			m_mode <= 1'b1;
+			mstatus_mpp <= 1'b1;
+		end
+	end else begin
+		// Explicitly tie-off to constant when !CSR_M_TRAP
+		m_mode <= 1'b1;
+		mstatus_mpie <= 1'b0;
+		mstatus_mie <= 1'b0;
+		mstatus_mpp <= 1'b1;
+		mstatus_mprv <= 1'b0;
+		mstatus_tw <= 1'b0;
 	end
 end
 
