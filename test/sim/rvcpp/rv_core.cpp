@@ -141,6 +141,7 @@ static inline uint zcmp_s_mapping(uint s_raw) {
 void RVCore::step(bool trace) {
 
 	std::optional<ux_t> rd_wdata;
+	std::optional<ux_t> rd_pair_wdata;
 	std::optional<ux_t> pc_wdata;
 	std::optional<uint> exception_cause;
 	uint regnum_rd = 0;
@@ -404,7 +405,7 @@ void RVCore::step(bool trace) {
 
 		case OPC_LOAD: {
 			ux_t load_addr = rs1 + imm_i(instr);
-			ux_t align_mask = ~(-1u << (funct3 & 0x3));
+			ux_t align_mask = ~(-1u << (funct3 & 0x3 & ~(funct3 >> 1)));
 			bool misalign = load_addr & align_mask;
 			if (funct3 == 0b011 || funct3 > 0b101) {
 				exception_cause = XCAUSE_INSTR_ILLEGAL;
@@ -439,13 +440,22 @@ void RVCore::step(bool trace) {
 				if (!rd_wdata) {
 					exception_cause = XCAUSE_LOAD_FAULT;
 				}
+			} else if (funct3 == 0b011 && !(regnum_rd & 0x2)) {
+				auto w0 = r32(load_addr);
+				auto w1 = r32(load_addr);
+				if (w0 && w1) {
+					rd_wdata = w0;
+					rd_pair_wdata = w1;
+				} else {
+					exception_cause = XCAUSE_LOAD_FAULT;
+				}
 			}
 			break;
 		}
 
 		case OPC_STORE: {
 			ux_t store_addr = rs1 + imm_s(instr);
-			ux_t align_mask = ~(-1u << (funct3 & 0x3));
+			ux_t align_mask = ~(-1u << (funct3 & 0x3 & ~(funct3 >> 1)));
 			bool misalign = store_addr & align_mask;
 			if (funct3 > 0b010) {
 				exception_cause = XCAUSE_INSTR_ILLEGAL;
@@ -462,6 +472,12 @@ void RVCore::step(bool trace) {
 					}
 				} else if (funct3 == 0b010) {
 					if (!w32(store_addr, rs2)) {
+						exception_cause = XCAUSE_STORE_FAULT;
+					}
+				} else if (funct3 == 0b011 && !(regnum_rs1 & 0x1)) {
+					if (!w32(store_addr, rs2)) {
+						exception_cause = XCAUSE_STORE_FAULT;
+					} else if (!w32(store_addr + 4, regs[regnum_rs2 + 1])) {
 						exception_cause = XCAUSE_STORE_FAULT;
 					}
 				}
@@ -648,16 +664,22 @@ void RVCore::step(bool trace) {
 				+ (GETBIT(instr, 6) << 2)
 				+ (GETBITS(instr, 12, 10) << 3)
 				+ (GETBIT(instr, 5) << 6);
-			rd_wdata = r32(addr);
-			if (!rd_wdata) {
-				exception_cause = XCAUSE_LOAD_FAULT;
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_LOAD_ALIGN;
+			} else {
+				rd_wdata = r32(addr);
+				if (!rd_wdata) {
+					exception_cause = XCAUSE_LOAD_FAULT;
+				}
 			}
 		} else if (RVOPC_MATCH(instr, C_SW)) {
 			uint32_t addr = regs[c_rs1_s(instr)]
 				+ (GETBIT(instr, 6) << 2)
 				+ (GETBITS(instr, 12, 10) << 3)
 				+ (GETBIT(instr, 5) << 6);
-			if (!w32(addr, regs[c_rs2_s(instr)])) {
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_STORE_ALIGN;
+			} else if (!w32(addr, regs[c_rs2_s(instr)])) {
 				exception_cause = XCAUSE_STORE_FAULT;
 			}
 		} else if (RVOPC_MATCH(instr, C_LBU)) {
@@ -694,6 +716,23 @@ void RVCore::step(bool trace) {
 					exception_cause = XCAUSE_LOAD_FAULT;
 				}
 			}
+		} else if (RVOPC_MATCH(instr, C_LD)) {
+			regnum_rd = c_rs2_s(instr);
+			uint32_t addr = regs[c_rs1_s(instr)]
+				+ (GETBITS(instr, 12, 10) << 3)
+				+ (GETBITS(instr, 6, 5) << 6);
+			if (addr & 0x3u) {
+				exception_cause = XCAUSE_LOAD_ALIGN;
+			} else {
+				auto w0 = r32(addr);
+				auto w1 = r32(addr + 4);
+				if (w0 && w1) {
+					rd_wdata = w0;
+					rd_pair_wdata = w1;
+				} else {
+					exception_cause = XCAUSE_LOAD_FAULT;
+				}
+			}
 		} else if (RVOPC_MATCH(instr, C_SB)) {
 			uint32_t addr = regs[c_rs1_s(instr)]
 				+ (GETBIT(instr, 6) << 0)
@@ -704,8 +743,19 @@ void RVCore::step(bool trace) {
 		} else if (RVOPC_MATCH(instr, C_SH)) {
 			uint32_t addr = regs[c_rs1_s(instr)] + (GETBIT(instr, 5) << 1);
 			if (addr & 0x1u) {
-				exception_cause = XCAUSE_LOAD_ALIGN;
+				exception_cause = XCAUSE_STORE_ALIGN;
 			} else if (!w16(addr, regs[c_rs2_s(instr)])) {
+				exception_cause = XCAUSE_STORE_FAULT;
+			}
+		} else if (RVOPC_MATCH(instr, C_SD)) {
+			uint32_t addr = regs[c_rs1_s(instr)]
+				+ (GETBITS(instr, 12, 10) << 3)
+				+ (GETBITS(instr, 6, 5) << 6);
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_STORE_ALIGN;
+			} else if (!w32(addr, regs[c_rs2_s(instr)])) {
+				exception_cause = XCAUSE_STORE_FAULT;
+			} else if (!w32(addr, regs[c_rs2_s(instr) + 1])) {
 				exception_cause = XCAUSE_STORE_FAULT;
 			}
 		} else {
@@ -825,56 +875,68 @@ void RVCore::step(bool trace) {
 				+ (GETBITS(instr, 6, 4) << 2)
 				+ (GETBITS(instr, 3, 2) << 6);
 			rd_wdata = r32(addr);
-			if (!rd_wdata) {
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_LOAD_ALIGN;
+			} else if (!rd_wdata) {
 				exception_cause = XCAUSE_LOAD_FAULT;
 			}
 		} else if (RVOPC_MATCH(instr, C_SWSP)) {
 			ux_t addr = regs[2]
 				+ (GETBITS(instr, 12, 9) << 2)
 				+ (GETBITS(instr, 8, 7) << 6);
-			if (!w32(addr, regs[c_rs2_l(instr)])) {
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_STORE_ALIGN;
+			} else if (!w32(addr, regs[c_rs2_l(instr)])) {
 				exception_cause = XCAUSE_STORE_FAULT;
 			}
 		// Zcmp:
 		} else if (RVOPC_MATCH(instr, CM_PUSH)) {
 			ux_t addr = regs[2];
-			bool fail = false;
-			for (uint i = 31; i > 0 && !fail; --i) {
-				if (zcmp_reg_mask(instr) & (1u << i)) {
-					addr -= 4;
-					fail = fail || !w32(addr, regs[i]);
-				}
-			}
-			if (fail) {
-				exception_cause = XCAUSE_STORE_FAULT;
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_STORE_ALIGN;
 			} else {
-				regnum_rd = 2;
-				rd_wdata = regs[2] - zcmp_stack_adj(instr);
+				bool fail = false;
+				for (uint i = 31; i > 0 && !fail; --i) {
+					if (zcmp_reg_mask(instr) & (1u << i)) {
+						addr -= 4;
+						fail = fail || !w32(addr, regs[i]);
+					}
+				}
+				if (fail) {
+					exception_cause = XCAUSE_STORE_FAULT;
+				} else {
+					regnum_rd = 2;
+					rd_wdata = regs[2] - zcmp_stack_adj(instr);
+				}
 			}
 		} else if (RVOPC_MATCH(instr, CM_POP) || RVOPC_MATCH(instr, CM_POPRET) || RVOPC_MATCH(instr, CM_POPRETZ)) {
 			bool clear_a0 = RVOPC_MATCH(instr, CM_POPRETZ);
 			bool ret = clear_a0 || RVOPC_MATCH(instr, CM_POPRET);
 			ux_t addr = regs[2] + zcmp_stack_adj(instr);
-			bool fail = false;
-			for (uint i = 31; i > 0 && !fail; --i) {
-				if (zcmp_reg_mask(instr) & (1u << i)) {
-					addr -= 4;
-					std::optional<ux_t> load_result = r32(addr);
-					fail = fail || !load_result;
-					if (load_result) {
-						regs[i] = *load_result;
+			if (addr & 0x3) {
+				exception_cause = XCAUSE_LOAD_ALIGN;
+			} else {
+				bool fail = false;
+				for (uint i = 31; i > 0 && !fail; --i) {
+					if (zcmp_reg_mask(instr) & (1u << i)) {
+						addr -= 4;
+						std::optional<ux_t> load_result = r32(addr);
+						fail = fail || !load_result;
+						if (load_result) {
+							regs[i] = *load_result;
+						}
 					}
 				}
-			}
-			if (fail) {
-				exception_cause = XCAUSE_LOAD_FAULT;
-			} else {
-				if (clear_a0)
-					regs[10] = 0;
-				if (ret)
-					pc_wdata = regs[1];
-				regnum_rd = 2;
-				rd_wdata = regs[2] + zcmp_stack_adj(instr);
+				if (fail) {
+					exception_cause = XCAUSE_LOAD_FAULT;
+				} else {
+					if (clear_a0)
+						regs[10] = 0;
+					if (ret)
+						pc_wdata = regs[1];
+					regnum_rd = 2;
+					rd_wdata = regs[2] + zcmp_stack_adj(instr);
+				}
 			}
 		} else if (RVOPC_MATCH(instr, CM_MVSA01)) {
 			regs[zcmp_s_mapping(GETBITS(instr, 9, 7))] = regs[10];
@@ -882,6 +944,36 @@ void RVCore::step(bool trace) {
 		} else if (RVOPC_MATCH(instr, CM_MVA01S)) {
 			regs[10] = regs[zcmp_s_mapping(GETBITS(instr, 9, 7))];
 			regs[11] = regs[zcmp_s_mapping(GETBITS(instr, 4, 2))];
+		} else if (RVOPC_MATCH(instr, C_LDSP)) {
+			regnum_rd = c_rs1_l(instr);
+			uint32_t addr = regs[2]
+				+ (GETBITS(instr, 6, 5) << 3)
+				+ (GETBITS(instr, 12, 12) << 5)
+				+ (GETBITS(instr, 4, 2) << 6);
+			if (addr & 0x3u) {
+				exception_cause = XCAUSE_LOAD_ALIGN;
+			} else {
+				auto w0 = r32(addr);
+				auto w1 = r32(addr + 4);
+				if (w0 && w1) {
+					rd_wdata = w0;
+					rd_pair_wdata = w1;
+				} else {
+					exception_cause = XCAUSE_LOAD_FAULT;
+				}
+			}
+		} else if (RVOPC_MATCH(instr, C_SDSP)) {
+			ux_t regnum_rs2 = c_rs2_l(instr);
+			uint32_t addr = regs[2]
+				+ (GETBITS(instr, 12, 10) << 3)
+				+ (GETBITS(instr, 9, 7) << 6);
+			if (addr & 0x3u) {
+				exception_cause = XCAUSE_STORE_ALIGN;
+			} else if (!w32(addr, regs[regnum_rs2])) {
+				exception_cause = XCAUSE_STORE_FAULT;
+			} else if (!w32(addr + 4, regs[regnum_rs2 + 1])) {
+				exception_cause = XCAUSE_STORE_FAULT;
+			}
 		} else {
 			exception_cause = XCAUSE_INSTR_ILLEGAL;
 		}
@@ -939,4 +1031,6 @@ void RVCore::step(bool trace) {
 		pc = pc + ((instr & 0x3) == 0x3 ? 4 : 2);
 	if (rd_wdata && regnum_rd != 0)
 		regs[regnum_rd] = *rd_wdata;
+	if (rd_pair_wdata && regnum_rd != 0)
+		regs[regnum_rd + 1] = *rd_pair_wdata;
 }
