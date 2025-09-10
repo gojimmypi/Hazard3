@@ -50,16 +50,16 @@ if (TICK_IS_NRZ) begin: edge_detect
 	hazard3_sync_1bit tick_sync_u (
 		.clk    (clk),
 		.rst_n  (rst_n),
-		.i      (tick_nrz),
+		.i      (tick),
 		.o      (tick_nrz_sync)
 	);
 
-	reg tick_nrz_prev;
+	reg tick_nrz_sync_prev;
 	always @ (posedge clk or negedge rst_n) begin
 		if (!rst_n) begin
-			tick_nrz_prev <= 1'b0;
+			tick_nrz_sync_prev <= 1'b0;
 		end else begin
-			tick_nrz_prev <= tick_nrz_sync;
+			tick_nrz_sync_prev <= tick_nrz_sync;
 		end
 	end
 
