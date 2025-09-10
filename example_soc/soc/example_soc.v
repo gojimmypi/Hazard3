@@ -226,6 +226,7 @@ wire [2:0]        proc_hsize;
 wire [2:0]        proc_hburst;
 wire [3:0]        proc_hprot;
 wire              proc_hmastlock;
+wire [7:0]        proc_hmaster;
 wire              proc_hexcl;
 wire              proc_hready;
 wire              proc_hresp;
@@ -300,12 +301,17 @@ hazard3_cpu_1port #(
 	.hburst                     (proc_hburst),
 	.hprot                      (proc_hprot),
 	.hmastlock                  (proc_hmastlock),
+	.hmaster                    (proc_hmaster),
 	.hexcl                      (proc_hexcl),
 	.hready                     (proc_hready),
 	.hresp                      (proc_hresp),
 	.hexokay                    (proc_hexokay),
 	.hwdata                     (proc_hwdata),
 	.hrdata                     (proc_hrdata),
+
+	.fence_i_vld                (/* unused */),
+	.fence_d_vld                (/* unused */),
+	.fence_rdy                  (1'b1),
 
 	.dbg_req_halt               (hart_req_halt),
 	.dbg_req_halt_on_reset      (hart_req_halt_on_reset),
