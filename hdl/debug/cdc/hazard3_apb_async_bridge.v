@@ -169,6 +169,7 @@ always @ (posedge clk_dst or negedge rst_n_dst) begin
     if (!rst_n_dst) begin
         dst_psel_r <= 1'b0;
         dst_penable_r <= 1'b0;
+        dst_paddr_pwdata_pwrite <= {W_ADDR + W_DATA + 1{1'b0}};
     end else if (dst_req && !dst_ack) begin
         dst_psel_r <= 1'b1;
         // Note this assignment is cross-domain. The src register has been
