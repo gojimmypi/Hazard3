@@ -15,6 +15,11 @@ struct RVCore {
 	MemBase32 &mem;
 	bool stalled_on_wfi;
 
+	// Performance tracking
+	std::optional<uint> load_dependency;
+	std::optional<ux_t> predicted_branch;
+	bool pc_first_in_block;
+
 	// A single flat RAM is handled as a special case, in addition to whatever
 	// is in `mem`, because this avoids virtual calls for the majority of
 	// memory accesses. This RAM takes precedence over whatever is mapped at
@@ -32,6 +37,9 @@ struct RVCore {
 		ram_base = ram_base_;
 		ram_top = ram_base_ + ram_size_;
 		ram = new ux_t[ram_size_ / sizeof(ux_t)];
+		load_dependency = std::nullopt;
+		predicted_branch = std::nullopt;
+		pc_first_in_block = false;
 		assert(ram);
 		assert(!(ram_base_ & 0x3));
 		assert(!(ram_size_ & 0x3));

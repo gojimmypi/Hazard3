@@ -149,6 +149,8 @@ void RVCore::step(bool trace) {
 	std::optional<ux_t> trace_csr_addr;
 	std::optional<uint> trace_priv;
 
+	uint64_t cycle_cost = 1u;
+
 	std::optional<uint16_t> fetch0 = r16(pc, 0x4u);
 	std::optional<uint16_t> fetch1 = r16(pc + 2, 0x4u);
 	uint32_t instr = *fetch0 | ((uint32_t)*fetch1 << 16);
@@ -237,6 +239,7 @@ void RVCore::step(bool trace) {
 					else if (funct3 == 0b111) {
 						rd_wdata = rs2 ? rs1 % rs2 : rs1;
 					}
+					cycle_cost += 18u;
 				}
 			} else if (funct7 == 0b01'00000) {
 				if (funct3 == 0b000)
@@ -398,8 +401,18 @@ void RVCore::step(bool trace) {
 				exception_cause = XCAUSE_INSTR_ILLEGAL;
 			if (!exception_cause && funct3 & 0b001)
 				taken = !taken;
-			if (taken)
+			bool this_branch_predicted = predicted_branch && pc == *predicted_branch;
+			if (taken) {
+				if (this_branch_predicted) {
+					--cycle_cost;
+				}
 				pc_wdata = target;
+				if ((sx_t)imm_b(instr) < 0) {
+					predicted_branch = pc;
+				}
+			} else if (this_branch_predicted) {
+				++cycle_cost;
+			}
 			break;
 		}
 
@@ -733,6 +746,7 @@ void RVCore::step(bool trace) {
 					exception_cause = XCAUSE_LOAD_FAULT;
 				}
 			}
+			++cycle_cost;
 		} else if (RVOPC_MATCH(instr, C_SB)) {
 			uint32_t addr = regs[c_rs1_s(instr)]
 				+ (GETBIT(instr, 6) << 0)
@@ -758,6 +772,7 @@ void RVCore::step(bool trace) {
 			} else if (!w32(addr, regs[c_rs2_s(instr) + 1])) {
 				exception_cause = XCAUSE_STORE_FAULT;
 			}
+			++cycle_cost;
 		} else {
 			exception_cause = XCAUSE_INSTR_ILLEGAL;
 		}
@@ -810,13 +825,22 @@ void RVCore::step(bool trace) {
 			rd_wdata = regs[c_rs1_s(instr)] & regs[c_rs2_s(instr)];
 		} else if (RVOPC_MATCH(instr, C_J)) {
 			pc_wdata = pc + imm_cj(instr);
-		} else if (RVOPC_MATCH(instr, C_BEQZ)) {
-			if (regs[c_rs1_s(instr)] == 0) {
-				pc_wdata = pc + imm_cb(instr);
+		} else if (RVOPC_MATCH(instr, C_BEQZ) || RVOPC_MATCH(instr, C_BNEZ)) {
+			bool taken = regs[c_rs1_s(instr)] == 0;
+			if (RVOPC_MATCH(instr, C_BNEZ)) {
+				taken = !taken;
 			}
-		} else if (RVOPC_MATCH(instr, C_BNEZ)) {
-			if (regs[c_rs1_s(instr)] != 0) {
+			bool this_branch_predicted = predicted_branch && pc == *predicted_branch;
+			if (taken) {
+				if (this_branch_predicted) {
+					--cycle_cost;
+				}
+				if ((sx_t)imm_cb(instr) < 0) {
+					predicted_branch = pc;
+				}
 				pc_wdata = pc + imm_cb(instr);
+			} else if (this_branch_predicted) {
+				++cycle_cost;
 			}
 		} else if (RVOPC_MATCH(instr, C_ZEXT_B)) {
 			// Zcb:
@@ -900,6 +924,7 @@ void RVCore::step(bool trace) {
 					if (zcmp_reg_mask(instr) & (1u << i)) {
 						addr -= 4;
 						fail = fail || !w32(addr, regs[i]);
+						++cycle_cost;
 					}
 				}
 				if (fail) {
@@ -925,15 +950,22 @@ void RVCore::step(bool trace) {
 						if (load_result) {
 							regs[i] = *load_result;
 						}
+						++cycle_cost;
 					}
 				}
 				if (fail) {
 					exception_cause = XCAUSE_LOAD_FAULT;
 				} else {
-					if (clear_a0)
+					if (clear_a0) {
 						regs[10] = 0;
-					if (ret)
+						++cycle_cost;
+					}
+					if (ret) {
 						pc_wdata = regs[1];
+						if (zcmp_reg_mask(instr) != (1u << 1)) {
+							++cycle_cost;
+						}
+					}
 					regnum_rd = 2;
 					rd_wdata = regs[2] + zcmp_stack_adj(instr);
 				}
@@ -941,9 +973,11 @@ void RVCore::step(bool trace) {
 		} else if (RVOPC_MATCH(instr, CM_MVSA01)) {
 			regs[zcmp_s_mapping(GETBITS(instr, 9, 7))] = regs[10];
 			regs[zcmp_s_mapping(GETBITS(instr, 4, 2))] = regs[11];
+			++cycle_cost;
 		} else if (RVOPC_MATCH(instr, CM_MVA01S)) {
 			regs[10] = regs[zcmp_s_mapping(GETBITS(instr, 9, 7))];
 			regs[11] = regs[zcmp_s_mapping(GETBITS(instr, 4, 2))];
+			++cycle_cost;
 		} else if (RVOPC_MATCH(instr, C_LDSP)) {
 			regnum_rd = c_rs1_l(instr);
 			uint32_t addr = regs[2]
@@ -962,6 +996,7 @@ void RVCore::step(bool trace) {
 					exception_cause = XCAUSE_LOAD_FAULT;
 				}
 			}
+			++cycle_cost;
 		} else if (RVOPC_MATCH(instr, C_SDSP)) {
 			ux_t regnum_rs2 = c_rs2_l(instr);
 			uint32_t addr = regs[2]
@@ -974,14 +1009,23 @@ void RVCore::step(bool trace) {
 			} else if (!w32(addr + 4, regs[regnum_rs2 + 1])) {
 				exception_cause = XCAUSE_STORE_FAULT;
 			}
+			++cycle_cost;
 		} else {
 			exception_cause = XCAUSE_INSTR_ILLEGAL;
 		}
 	}
 
+	if (pc_wdata) {
+		++cycle_cost;
+	}
+	if (pc_first_in_block && (instr & 0x3) == 0x3 && (pc & 0x1)) {
+		++cycle_cost;
+	}
+	pc_first_in_block = (bool)pc_wdata;
+
 	// Ensure pending CSR writes are applied before checking IRQ conditions,
 	// and before reading back the CSR value for tracing
-	csr.step();
+	csr.step(cycle_cost);
 
 	if (trace && !irq_target_pc) {
 		printf("%08x: ", pc);

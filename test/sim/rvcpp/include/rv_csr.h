@@ -90,7 +90,7 @@ public:
 		}
 	}
 
-	void step();
+	void step(uint64_t cycles);
 
 	// Returns None on permission/decode fail
 	std::optional<ux_t> read(uint16_t addr, bool side_effect=true);

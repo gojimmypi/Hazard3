@@ -18,11 +18,11 @@ ux_t RVCSR::get_effective_xip() {
 		(irq_e ? MIP_MEIP : 0);
 }
 
-void RVCSR::step() {
+void RVCSR::step(uint64_t cycles) {
 	uint64_t mcycle_64 = ((uint64_t)mcycleh << 32) | mcycle;
 	uint64_t minstret_64 = ((uint64_t)minstreth << 32) | minstret;
 	if (!(mcountinhibit & 0x1u)) {
-		++mcycle_64;
+		mcycle_64 += cycles;
 	}
 	if (!(mcountinhibit & 0x4u)) {
 		++minstret_64;
