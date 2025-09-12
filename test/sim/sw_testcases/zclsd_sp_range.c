@@ -14,7 +14,10 @@ int main() {
 	// immediate values reachable by c.sdsp (but not all combinations)
 
 	asm volatile (
-		// save gp as well as sp because gcc seems to ignore the clobber?
+		// avoid gp relaxation while gp is modified
+		".option push\n"
+		".option norelax\n"
+		// save gp/tp as well as sp because gcc seems to ignore the clobber?
 		"addi sp, sp, -8\n"
 		"sw gp, 0(sp)\n"
 		"sw tp, 4(sp)\n"
@@ -74,6 +77,7 @@ int main() {
 		"lw gp, 0(sp)\n"
 		"lw tp, 4(sp)\n"
 		"addi sp, sp, 8\n"
+		".option pop\n"
 		:
 		:
 		: "x1", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
@@ -105,7 +109,8 @@ int main() {
 
 
 	asm volatile (
-		// save gp as well as sp because gcc seems to ignore the clobber?
+		".option push\n"
+		".option norelax\n"
 		"addi sp, sp, -8\n"
 		"sw gp, 0(sp)\n"
 		"sw tp, 4(sp)\n"
@@ -169,6 +174,7 @@ int main() {
 		"lw gp, 0(sp)\n"
 		"lw tp, 4(sp)\n"
 		"addi sp, sp, 8\n"
+		".option pop\n"
 		:
 		:
 		: "x1", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
