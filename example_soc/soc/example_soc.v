@@ -9,7 +9,7 @@
 `default_nettype none
 
 module example_soc #(
-	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG" or "ECP5"
+	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
 
@@ -96,6 +96,26 @@ end else if (DTM_TYPE == "ECP5") begin
 	assign tdo = 1'b0;
 
 	hazard3_ecp5_jtag_dtm dtm_u (
+		.dmihardreset_req (dmihardreset_req),
+
+		.clk_dmi          (clk),
+		.rst_n_dmi        (rst_n_dmi),
+
+		.dmi_psel         (dmi_psel),
+		.dmi_penable      (dmi_penable),
+		.dmi_pwrite       (dmi_pwrite),
+		.dmi_paddr        (dmi_paddr),
+		.dmi_pwdata       (dmi_pwdata),
+		.dmi_prdata       (dmi_prdata),
+		.dmi_pready       (dmi_pready),
+		.dmi_pslverr      (dmi_pslverr)
+	);
+
+end else if (DTM_TYPE == "XILINX7") begin
+
+	assign tdo = 1'b0;
+
+	hazard3_xilinx7_jtag_dtm dtm_u (
 		.dmihardreset_req (dmihardreset_req),
 
 		.clk_dmi          (clk),
@@ -258,9 +278,14 @@ hazard3_cpu_1port #(
 	.EXTENSION_ZBA       (EXTENSION_ZBA),
 	.EXTENSION_ZBB       (EXTENSION_ZBB),
 	.EXTENSION_ZBC       (EXTENSION_ZBC),
-	.EXTENSION_ZBS       (EXTENSION_ZBS),
 	.EXTENSION_ZBKB      (EXTENSION_ZBKB),
+	.EXTENSION_ZBKX      (EXTENSION_ZBKX),
+	.EXTENSION_ZBS       (EXTENSION_ZBS),
+	.EXTENSION_ZCB       (EXTENSION_ZCB),
+	.EXTENSION_ZCLSD     (EXTENSION_ZCLSD),
+	.EXTENSION_ZCMP      (EXTENSION_ZCMP),
 	.EXTENSION_ZIFENCEI  (EXTENSION_ZIFENCEI),
+	.EXTENSION_ZILSD     (EXTENSION_ZILSD),
 	.EXTENSION_XH3BEXTM  (EXTENSION_XH3BEXTM),
 	.EXTENSION_XH3IRQ    (EXTENSION_XH3IRQ),
 	.EXTENSION_XH3PMPM   (EXTENSION_XH3PMPM),
