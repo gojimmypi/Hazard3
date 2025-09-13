@@ -23,17 +23,17 @@ BUFG bufg_clkfbout (
 	.O (clkfbout_buf)
 );
 
-// Configured for 100 -> 75 MHz
+// Configured for 100 -> 80 MHz
 MMCME2_ADV #(
 	.BANDWIDTH            ("OPTIMIZED"),
 	.CLKOUT4_CASCADE      ("FALSE"),
 	.COMPENSATION         ("ZHOLD"),
 	.STARTUP_WAIT         ("FALSE"),
-	.DIVCLK_DIVIDE        (4),
-	.CLKFBOUT_MULT_F      (40.125),
+	.DIVCLK_DIVIDE        (1),
+	.CLKFBOUT_MULT_F      (10.000),
 	.CLKFBOUT_PHASE       (0.000),
 	.CLKFBOUT_USE_FINE_PS ("FALSE"),
-	.CLKOUT0_DIVIDE_F     (13.375),
+	.CLKOUT0_DIVIDE_F     (12.500),
 	.CLKOUT0_PHASE        (0.000),
 	.CLKOUT0_DUTY_CYCLE   (0.500),
 	.CLKOUT0_USE_FINE_PS  ("FALSE"),
@@ -88,7 +88,7 @@ blinky #(
 );
 
 blinky #(
-	.CLK_HZ (75_000_000),
+	.CLK_HZ (80_000_000),
 	.BLINK_HZ (2)
 ) blinky_clk_sys (
 	.clk (clk_sys),
@@ -108,20 +108,27 @@ fpga_reset #(
 example_soc #(
 	.DTM_TYPE            ("XILINX7"),
 
-	.CLK_MHZ             (75),
+	.SRAM_DEPTH          (1 << 15),
 
-	.EXTENSION_A         (0),
-	.EXTENSION_C         (1),
+	.CLK_MHZ             (80),
+
+	.EXTENSION_A         (1),
+	.EXTENSION_C         (0),
 	.EXTENSION_M         (1),
 	.EXTENSION_ZBA       (0),
 	.EXTENSION_ZBB       (0),
 	.EXTENSION_ZBC       (0),
 	.EXTENSION_ZBS       (0),
 	.EXTENSION_ZBKB      (0),
+	.EXTENSION_ZCMP      (0),
+	.EXTENSION_ZCLSD     (0),
+	.EXTENSION_ZCB       (0),
+	.EXTENSION_ZILSD     (0),
 	.EXTENSION_ZIFENCEI  (0),
 	.EXTENSION_XH3BEXTM  (0),
 	.EXTENSION_XH3PMPM   (0),
 	.EXTENSION_XH3POWER  (0),
+
 	.CSR_COUNTER         (0),
 	.U_MODE              (0),
 	.PMP_REGIONS         (0),

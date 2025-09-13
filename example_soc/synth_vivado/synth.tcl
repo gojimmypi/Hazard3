@@ -14,14 +14,16 @@ add_files $FILES
 read_xdc constraints_timing.xdc
 
 synth_design -include_dirs $INCDIRS -part $PART -top $TOP \
-	-verilog_define HAZARD3_REGFILE_RAM_STYLE_DISTRIBUTED
+	-verilog_define HAZARD3_REGFILE_RAM_STYLE_DISTRIBUTED \
+	-directive PerformanceOptimized
 checkpoint_and_report synth
 
 read_xdc constraints_io.xdc
-place_design
+place_design -directive Explore
 checkpoint_and_report place
 
-route_design
+route_design -directive Explore
+phys_opt_design -directive Explore
 checkpoint_and_report route
 
 write_bitstream -force fpga.bit

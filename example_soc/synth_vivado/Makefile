@@ -9,7 +9,7 @@ INCDIRS=$(shell HDL=$(HDL) $(SCRIPTS)/listfiles -f flati $(DOTF))
 
 bit: fpga.bit
 
-fpga.bit: $(FILES) $(INCDIR) $(wildcard *.xdc)
+fpga.bit: $(FILES) $(INCDIR) $(wildcard *.xdc) synth.tcl
 	@echo "set FILES {$(FILES)}" > filelist.tcl
 	@echo "set INCDIRS {$(INCDIRS)}" >> filelist.tcl
 	vivado -mode batch -source synth.tcl 2>&1 | tee synth.log
