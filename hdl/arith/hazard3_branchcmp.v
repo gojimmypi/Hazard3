@@ -18,7 +18,7 @@ module hazard3_branchcmp #(
 ,
 `include "hazard3_width_const.vh"
 ) (
-	input  wire [W_ALUOP-1:0] aluop,
+	input  wire [31:0]        cir,
 	input  wire [W_DATA-1:0]  op_a,
 	input  wire [W_DATA-1:0]  op_b,
 	output wire               cmp
@@ -28,14 +28,22 @@ module hazard3_branchcmp #(
 
 wire [W_DATA-1:0] diff = op_a - op_b;
 
-wire cmp_is_unsigned = aluop[2]; // aluop == ALUOP_LTU;
+// funct3 instruction
+// ------------------
+// 000    BEQ
+// 001    BNE
+// 100    BLT
+// 101    BGE
+// 110    BLTU
+// 111    BGEU
+
+wire cmp_is_unsigned = cir[13];
 
 wire lt = op_a[W_DATA-1] == op_b[W_DATA-1] ? diff[W_DATA-1] :
           cmp_is_unsigned                  ? op_b[W_DATA-1] :
                                              op_a[W_DATA-1] ;
 
-// ALUOP_SUB is used for equality check by main ALU
-assign cmp = aluop[0] ? op_a != op_b : lt;
+assign cmp = cir[14] ? lt : op_a != op_b;
 
 endmodule
 

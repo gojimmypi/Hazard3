@@ -909,7 +909,7 @@ end else begin: fast_branchcmp
 	hazard3_branchcmp #(
 	`include "hazard3_config_inst.vh"
 	) branchcmp_u (
-		.aluop (d_aluop),
+		.cir   (fd_cir),
 		.op_a  (x_rs1_bypass),
 		.op_b  (x_rs2_bypass),
 		.cmp   (x_branch_cmp_noinvert)
