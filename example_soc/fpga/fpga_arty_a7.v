@@ -10,19 +10,9 @@ module fpga (
 
 	output wire [3:0] led,
 
-	output wire       mirror_tck,
-	output wire       mirror_tms,
-	output wire       mirror_tdi,
-	output wire       mirror_tdo,
-
 	output wire       uart_tx,
 	input  wire       uart_rx
 );
-
-assign mirror_tck = 1'b0;
-assign mirror_tms = 1'b0;
-assign mirror_tdi = 1'b0;
-assign mirror_tdo = 1'b0;
 
 wire clk_sys;
 wire locked;

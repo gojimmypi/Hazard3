@@ -343,22 +343,26 @@ make tb
 
 # Building an Example SoC
 
-There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on both iCEBreaker and ULX3S. The SoC contains:
+There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on iCEBreaker, ULX3S and Arty A7-100T boards. The SoC contains:
 
 - A Hazard3 processor, in a single-ported RV32IMA configuration, with debug support
 - A Debug Transport Module and Debug Module to access Hazard3's debug interface
 - 128 kB of RAM (fits in UP5k SPRAMs)
 - A UART
 
-On iCEBreaker (a iCE40 UP5k development board), the processor can be debugged using the onboard FT2232H bridge, through a standard RISCV-V JTAG-DTM exposed on four IO pins. Connecting JTAG requires two solder jumpers to be bridged on the back to connect the JTAG -- see the comments in the [pin constraints file](example_soc/synth/fpga_icebreaker.pcf). FT2232H is a dual-channel FTDI device, so the UART and JTAG can be accessed simultaneously for a very civilised debug experience, with JTAG running at the full 30 MHz supported by the FTDI.
-
-ULX3S is based on a much larger ECP5 FPGA. Thanks to [this ECP5 JTAG adapter](hdl/debug/dtm/hazard3_ecp5_jtag_dtm.v), it is possible to attach the guts of a RISC-V JTAG-DTM to the custom DR hooks in ECP5's chip TAP. With the right config file you can then convince OpenOCD that the FPGA's own TAP *is* a JTAG-DTM. You can debug Hazard3 on ULX3S using the same micro USB cable you use to load the bitstream, no soldering required. The downside is that the FT231X device on the ULX3S is actually a UART bridge which supports JTAG by bitbanging the auxiliary UART signals, which is incredibly slow. The UART cannot be used simultaneously with JTAG access.
-
-For these reasons -- much faster JTAG, and simultaneous UART access -- iCEBreaker is currently a more pleasant platform to debug if you don't have any external JTAG probe.
-
 Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. All very much WIP. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
 
+## Comparison of Supported Boards
+
+On [iCEBreaker](https://1bitsquared.com/products/icebreaker) (a iCE40 UP5k development board), the processor can be debugged using the onboard FT2232H bridge, through a standard RISCV-V JTAG-DTM exposed on four IO pins. Connecting JTAG requires two solder jumpers to be bridged on the back to connect the JTAG -- see the comments in the [pin constraints file](example_soc/synth/fpga_icebreaker.pcf). FT2232H is a dual-channel FTDI device, so the UART and JTAG can be accessed simultaneously for a very civilised debug experience, with JTAG running at the full 30 MHz supported by the FTDI.
+
+[ULX3S](https://radiona.org/ulx3s/) is based on a much larger ECP5 FPGA. Thanks to [this ECP5 JTAG adapter](hdl/debug/dtm/hazard3_ecp5_jtag_dtm.v), it is possible to attach the guts of a RISC-V JTAG-DTM to the custom DR hooks in ECP5's chip TAP. With the right config file you can then convince OpenOCD that the FPGA's own TAP *is* a JTAG-DTM. You can debug Hazard3 on ULX3S using the same micro USB cable you use to load the bitstream, no soldering required. The downside is that the FT231X device on the ULX3S is actually a UART bridge which supports JTAG by bitbanging the auxiliary UART signals, which is incredibly slow. The UART cannot be used simultaneously with JTAG access. The debugging experience is worse than iCEBreaker because of this.
+
+Arty A7-100T uses an Artix-7 FPGA. This is the fastest and most capacious of the boards supported by this example SoC integration, but it's also the most expensive. The board has an FT2232H debug probe, similar to iCEBreaker. The probe is intended for programming the FPGA, or for Xilinx debug functionality like ILA. Using the probe, you can tunnel RISC-V debug traffic through the Artix-7 chip TAP [in a similar way](hdl/debug/dtm/hazard3_xilinx7_jtag_dtm.v) to ECP5, using the `BSCANE2` primitive. There is no performance cost to this tunnelling as the DTM registers are exposed directly as DRs on the FPGA chip TAP, so this is an excellent combination of a fast FPGA and a fast debug interface.
+
 ## Building for iCEBreaker
+
+You must have `nextpnr-ice40`, `yosys`, and `iceprog` (from icestorm) on your PATH.
 
 ```bash
 cd hazard3
@@ -370,6 +374,8 @@ riscv-openocd -f ../icebreaker-openocd.cfg
 
 ## Building for ULX3S
 
+You must have `nextpnr-ecp5`, `yosys` and [ujprog](https://github.com/f32c/tools/blob/master/ujprog/README.md) on your PATH.
+
 ```bash
 cd hazard3
 cd example_soc/synth
@@ -377,6 +383,20 @@ make -f ULX3S.mk flash
 # Should be able to attach to the processor
 riscv-openocd -f ../ulx3s-openocd.cfg
 ```
+
+## Building for Arty A7-100T
+
+These scripts use Vivado to build and load the bitstream. You must have `vivado` on your `PATH`; I used version 2025.1. The free version of Vivado supports the A7-100T, so just type some swear words into AMD's export compliance form and away you go.
+
+```bash
+cd hazard3
+cd example_soc/synth_vivado
+make prog
+# Should be able to attach to the processor
+riscv-openocd -f ../arty7-openocd.cfg
+```
+
+Vivado and OpenOCD cannot simultaneously connect to the FTDI. If OpenOCD is connected then Vivado will fail to reprogram the FPGA.
 
 # Performance
 

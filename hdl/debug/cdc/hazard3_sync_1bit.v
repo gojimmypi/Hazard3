@@ -8,7 +8,7 @@
 // FPGA/process
 
 `ifndef HAZARD3_REG_KEEP_ATTRIBUTE
-`define HAZARD3_REG_KEEP_ATTRIBUTE (* keep = 1'b1 *)
+`define HAZARD3_REG_KEEP_ATTRIBUTE (* keep = 1'b1 *) (* async_reg *)
 `endif
 
 `default_nettype none

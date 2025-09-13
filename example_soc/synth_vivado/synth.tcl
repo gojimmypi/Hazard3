@@ -11,11 +11,13 @@ proc checkpoint_and_report {stage} {
 }
 
 add_files $FILES
-read_xdc hazard3.xdc
+read_xdc constraints_timing.xdc
 
-synth_design -include_dirs $INCDIRS -part $PART -top $TOP
+synth_design -include_dirs $INCDIRS -part $PART -top $TOP \
+	-verilog_define HAZARD3_REGFILE_RAM_STYLE_DISTRIBUTED
 checkpoint_and_report synth
 
+read_xdc constraints_io.xdc
 place_design
 checkpoint_and_report place
 

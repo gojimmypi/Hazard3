@@ -1,35 +1,3 @@
-### Timing
-
-# 100 MHz board oscillator
-create_clock -add -name clk_osc -period 10.00 -waveform {0 5} [get_ports { clk_osc }];
-# 30 MHz JTAG input
-create_clock -add -name tck -period 33.333 [get_pins soc_u/dtm_u/bscan_dtmcs/TCK]
-# Label the PLL output for constraints
-create_generated_clock -name clk_sys [get_nets clk_sys]
-
-# These paths should all be handled by bus CDC in DTM, so 2-dest-cycle maxdelay is sufficient
-set_max_delay -datapath_only -from [get_clocks tck]     -to [get_clocks clk_sys] 26.666
-set_max_delay -datapath_only -from [get_clocks clk_sys] -to [get_clocks tck]     66.666
-
-# Unimportant as it's asynchronous
-set_false_path -through [get_ports uart_rx]
-set_false_path -through [get_ports uart_tx]
-
-# Status outputs -- don't care
-set_false_path -through [get_ports mirror_tck]
-set_false_path -through [get_ports mirror_tms]
-set_false_path -through [get_ports mirror_tdi]
-set_false_path -through [get_ports mirror_tdo]
-set_false_path -through [get_ports led]
-
-# JTAG inputs; FTDI launches the data half a TCK cycle before it launches the
-# TCK rising edge, so the delay is 1/2 clk +- some margin.
-set_input_delay -clock [get_clocks tck] -min 11.111 [get_ports {tdi tms}]
-set_input_delay -clock [get_clocks tck] -max 22.222 [get_ports {tdi tms}]
-# JTAG output: just keep it reasonably tight
-set_output_delay -clock [get_clocks tck] -min 5.0 [get_ports tdo]
-set_output_delay -clock [get_clocks tck] -max 5.0 [get_ports tdo]
-
 ### IO Placement
 
 ## Clock signal (100 MHz)
@@ -46,11 +14,10 @@ set_property -dict { PACKAGE_PIN T9    IOSTANDARD LVCMOS33 } [get_ports { led[2]
 set_property -dict { PACKAGE_PIN T10   IOSTANDARD LVCMOS33 } [get_ports { led[3] }]; #IO_L24N_T3_A00_D16_14 Sch=led[7]
 
 ## ChipKit SPI
-set_property -dict { PACKAGE_PIN G1    IOSTANDARD LVCMOS33 } [get_ports { mirror_tck }]; #IO_L17N_T2_35 Sch=ck_miso
-set_property -dict { PACKAGE_PIN H1    IOSTANDARD LVCMOS33 } [get_ports { mirror_tms }]; #IO_L17P_T2_35 Sch=ck_mosi
-set_property -dict { PACKAGE_PIN F1    IOSTANDARD LVCMOS33 } [get_ports { mirror_tdi }]; #IO_L18P_T2_35 Sch=ck_sck
-set_property -dict { PACKAGE_PIN C1    IOSTANDARD LVCMOS33 } [get_ports { mirror_tdo }]; #IO_L16N_T2_35 Sch=ck_ss
-
+# set_property -dict { PACKAGE_PIN G1    IOSTANDARD LVCMOS33 } [get_ports { ck_miso }]; #IO_L17N_T2_35 Sch=ck_miso
+# set_property -dict { PACKAGE_PIN H1    IOSTANDARD LVCMOS33 } [get_ports { ck_mosi }]; #IO_L17P_T2_35 Sch=ck_mosi
+# set_property -dict { PACKAGE_PIN F1    IOSTANDARD LVCMOS33 } [get_ports { ck_sck }]; #IO_L18P_T2_35 Sch=ck_sck
+# set_property -dict { PACKAGE_PIN C1    IOSTANDARD LVCMOS33 } [get_ports { ck_ss }]; #IO_L16N_T2_35 Sch=ck_ss
 
 ## Pmod Header JA
 #set_property -dict { PACKAGE_PIN G13   IOSTANDARD LVCMOS33 } [get_ports { ja[0] }]; #IO_0_15 Sch=ja[1]

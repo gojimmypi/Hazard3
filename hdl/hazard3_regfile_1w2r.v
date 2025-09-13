@@ -61,6 +61,10 @@ end else begin: real_dualport_noreset
 	(* no_rw_check *)
 	`endif
 	`endif
+	// Optionally force use of distributed RAM on Xilinx for better timing
+	`ifdef HAZARD3_REGFILE_RAM_STYLE_DISTRIBUTED
+	(* ram_style = "distributed" *)
+	`endif
 	reg [W_DATA-1:0] mem [0:N_REGS-1];
 
 	always @ (posedge clk) begin
