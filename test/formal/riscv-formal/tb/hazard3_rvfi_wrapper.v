@@ -113,7 +113,7 @@ hazard3_cpu_2port #(
 	.RESET_VECTOR       (0),
 
 	.EXTENSION_M        (1),
-	.EXTENSION_A        (0), // FIXME
+	.EXTENSION_A        (0), // FIXME -- requires riscv-formal to support these bus access types
 	.EXTENSION_C        (1),
 
 	.EXTENSION_ZBA      (0),
@@ -126,7 +126,7 @@ hazard3_cpu_2port #(
 	.CSR_COUNTER        (1),
 	.DEBUG_SUPPORT      (0), // FIXME
 
-	.NUM_IRQ            (32),
+	.NUM_IRQS           (32),
 
 	.EXTENSION_ZIFENCEI (1),
 

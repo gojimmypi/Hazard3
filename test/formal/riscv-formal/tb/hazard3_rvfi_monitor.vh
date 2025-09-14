@@ -16,7 +16,7 @@
 
 // TODO fix all the redundant RVFI registers in a nice way
 
-wire rvfm_x_valid = fd_cir_vld >= 2 || (fd_cir_vld >= 1 && fd_cir[1:0] != 2'b11);
+wire rvfm_x_valid = fd_cir_vld >= 2 || (fd_cir_vld >= 1 && fd_cir_raw[1:0] != 2'b11);
 
 reg rvfm_m_valid;
 reg [31:0] rvfm_m_instr;
@@ -49,7 +49,7 @@ always @ (posedge clk or negedge rst_n) begin
 				d_except == EXCEPT_INSTR_FAULT ||
 				d_except == EXCEPT_INSTR_MISALIGN
 			);
-			rvfm_m_instr <= {fd_cir[31:16] & {16{df_cir_use[1]}}, fd_cir[15:0]};
+			rvfm_m_instr <= {fd_cir_raw[31:16] & {16{df_cir_use[1]}}, fd_cir_raw[15:0]};
 		end else if (!m_stall) begin
 			rvfm_m_valid <= 1'b0;
 		end
@@ -58,13 +58,15 @@ always @ (posedge clk or negedge rst_n) begin
 		rvfi_trap_r <= rvfm_m_trap;
 
 		rvfm_entered_intr <= rvfm_entered_intr && !rvfi_valid;
-
-		// Sanity checks
-		if (d_rd != 5'h0)
-			assert(rvfm_x_valid);
-		if (xm_rd != 5'h0)
-			assert(rvfm_m_valid);
 	end
+end
+
+always @ (posedge clk) if (rst_n) begin
+	// Sanity checks for above
+	if (d_rd != 5'h0)
+		assert(rvfm_x_valid);
+	if (xm_rd != 5'h0)
+		assert(rvfm_m_valid);
 end
 
 // Hazard3 is an in-order core:
@@ -86,14 +88,20 @@ assign rvfi_halt = 1'b0; // TODO
 reg [31:0] rvfm_xm_pc;
 reg [31:0] rvfm_xm_pc_next;
 
-// Get a strange error from Yosys with $past() on this signal (possibly due to
-// comb terms), so just flop it explicitly
-reg rvfm_past_df_cir_lock;
-always @ (posedge clk or negedge rst_n)
-	if (!rst_n)
-		rvfm_past_df_cir_lock <= 1'b0;
-	else
-		rvfm_past_df_cir_lock <= df_cir_lock;
+// Record a jump target that was issued while stalled
+reg        rvfm_x_saw_f_jump;
+reg [31:0] rvfm_x_saw_f_jump_target;
+always @ (posedge clk or negedge rst_n) begin
+	if (!rst_n) begin
+		rvfm_x_saw_f_jump <= 1'b0;
+		rvfm_x_saw_f_jump_target <= 32'd0;
+	end else if (f_jump_now && x_stall) begin
+		rvfm_x_saw_f_jump <= 1'b1;
+		rvfm_x_saw_f_jump_target <= f_jump_target;
+	end else if (!x_stall) begin
+		rvfm_x_saw_f_jump <= 1'b0;
+	end
+end
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -102,7 +110,10 @@ always @ (posedge clk or negedge rst_n) begin
 	end else begin
 		if (!x_stall) begin
 			rvfm_xm_pc <= d_pc;
-			rvfm_xm_pc_next <= f_jump_now || rvfm_past_df_cir_lock ? x_jump_target : d_pc + (fd_cir[1:0] == 2'b11 ? 32'h4 : 32'h2);
+			rvfm_xm_pc_next <=
+				f_jump_now        ? f_jump_target            :
+				rvfm_x_saw_f_jump ? rvfm_x_saw_f_jump_target :
+				                    d_pc + (fd_cir_raw[1:0] == 2'b11 ? 32'h4 : 32'h2);
 		end
 	end
 end
