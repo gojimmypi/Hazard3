@@ -62,15 +62,15 @@ assign expect_cir[31:16] = instr_mem[(d_pc + 2) / 4] >> (d_pc[1] ? 0  : 16);
 
 // Note also following a predicted branch the upper half of CIR may be
 // nonsequential, so we can't check it.
-wire allow_upper_half_mismatch = fd_cir[15:0] == expect_cir[15:0] && (
-	fd_cir[1:0] != 2'b11 || fd_cir_predbranch[0]
+wire allow_upper_half_mismatch = fd_cir_raw[15:0] == expect_cir[15:0] && (
+	fd_cir_raw[1:0] != 2'b11 || fd_cir_predbranch[0]
 );
 
 always @ (posedge clk) if (rst_n) begin
 	if (fd_cir_vld >= 2'd1)
-		assert(fd_cir[15:0] == expect_cir[15:0]);
+		assert(fd_cir_raw[15:0] == expect_cir[15:0]);
 	if (fd_cir_vld >= 2'd2 && d_pc <= MEM_SIZE_BYTES - 4 && !allow_upper_half_mismatch)
-		assert(fd_cir[31:16] == expect_cir[31:16]);
+		assert(fd_cir_raw[31:16] == expect_cir[31:16]);
 end
 
 

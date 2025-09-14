@@ -47,7 +47,8 @@ module hazard3_frontend #(
 	output wire [W_ADDR-1:0] btb_target_addr_out,
 
 	// Interface to Decode
-	output reg  [31:0]       cir,
+	output reg  [31:0]       cir,                  // Current instruction register; pre-expanded to 32-bit
+	output wire [31:0]       cir_raw,              // Unexpanded instruction data
 	output reg  [1:0]        cir_vld,              // number of valid halfwords in CIR
 	input  wire [1:0]        cir_use,              // number of halfwords D intends to consume
 	                                               // *may* be a function of hready
@@ -886,6 +887,11 @@ end else begin: have_decompress
 
 end
 endgenerate
+
+assign cir_raw = {
+	buf_contents[1 * W_SLOT +: W_BUNDLE],
+	buf_contents[0 * W_SLOT +: W_BUNDLE]
+};
 
 endmodule
 

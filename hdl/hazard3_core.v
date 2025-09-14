@@ -119,6 +119,7 @@ wire [W_REGADDR-1:0] f_rs1_fine;
 wire [W_REGADDR-1:0] f_rs2_fine;
 
 wire [31:0]          fd_cir;
+wire [31:0]          fd_cir_raw;
 wire [1:0]           fd_cir_err;
 wire                 fd_cir_break_any;
 wire                 fd_cir_break_d_mode;
@@ -189,6 +190,7 @@ hazard3_frontend #(
 	.btb_target_addr_out  (d_btb_target_addr),
 
 	.cir                  (fd_cir),
+	.cir_raw              (fd_cir_raw),
 	.cir_err              (fd_cir_err),
 	.cir_predbranch       (fd_cir_predbranch),
 	.cir_break_any        (fd_cir_break_any),
