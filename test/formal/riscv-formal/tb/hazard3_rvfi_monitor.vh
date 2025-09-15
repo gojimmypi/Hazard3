@@ -95,7 +95,7 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		rvfm_x_saw_f_jump <= 1'b0;
 		rvfm_x_saw_f_jump_target <= 32'd0;
-	end else if (f_jump_now && x_stall) begin
+	end else if (f_jump_now && !m_trap_enter_vld && x_stall) begin
 		rvfm_x_saw_f_jump <= 1'b1;
 		rvfm_x_saw_f_jump_target <= f_jump_target;
 	end else if (!x_stall) begin
