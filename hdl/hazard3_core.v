@@ -788,8 +788,14 @@ assign x_stall_on_fence =
 	(d_fence_i && !(fence_rdy && !m_dphase_in_flight && f_frontend_pwrdown_ok)) ||
 	(d_fence_d && !(fence_rdy && !m_dphase_in_flight));
 
-assign fence_i_vld = d_fence_i && !m_dphase_in_flight && f_frontend_pwrdown_ok;
-assign fence_d_vld = d_fence_d && !m_dphase_in_flight;
+wire x_fence_mask =
+	x_trig_break ||
+	m_dphase_in_flight ||
+	m_trap_enter_soon ||
+	((xm_sleep_wfi || xm_sleep_block) && !m_sleep_stall_release);
+
+assign fence_i_vld = d_fence_i && !x_fence_mask && f_frontend_pwrdown_ok;
+assign fence_d_vld = d_fence_d && !x_fence_mask;
 
 // Multiply/divide
 
@@ -1088,6 +1094,8 @@ always @ (posedge clk or negedge rst_n) begin
 				x_amo_phase == 3'h3 && bus_dph_ready_d && !bus_dph_err_d ||
 				// Read reservation failure failure also generates error
 				x_amo_phase == 3'h1 && bus_dph_ready_d && !bus_dph_err_d && bus_dph_exokay_d
+			) || (
+				(fence_i_vld || fence_d_vld) && !fence_rdy
 			);
 
 		if (!x_stall)

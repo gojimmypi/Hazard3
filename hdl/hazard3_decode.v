@@ -537,6 +537,8 @@ always @ (*) begin
 		d_sleep_wfi       = 1'b0;
 		d_sleep_block     = 1'b0;
 		d_sleep_unblock   = 1'b0;
+		d_fence_i         = 1'b0;
+		d_fence_d         = 1'b0;
 
 		if (EXTENSION_M)
 			d_aluop = ALUOP_ADD;

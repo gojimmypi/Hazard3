@@ -216,6 +216,12 @@ always @ (posedge clk) if (rst_n) begin
 	// It should be impossible to execute both an instruction and data fence simultaneously
 	assert(!(fence_i_vld && fence_d_vld));
 
+	// Fence assertion is stable until completion
+	if ($past((fence_i_vld || fence_d_vld) && !fence_rdy)) begin
+		assert(fence_i_vld == $past(fence_i_vld));
+		assert(fence_d_vld == $past(fence_d_vld));
+	end
+
 end
 
 // ----------------------------------------------------------------------------
