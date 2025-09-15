@@ -32,6 +32,10 @@ module rvfi_wrapper (
 (* keep *) wire               [31:0]  d_hwdata;
 (* keep *) `rvformal_rand_reg [31:0]  d_hrdata;
 
+(* keep *) wire                       fence_i_vld;
+(* keep *) wire                       fence_d_vld;
+(* keep *) wire                       fence_rdy;
+
 `ifdef RISCV_FORMAL_FAIRNESS
 localparam MAX_BUS_STALL = 8;
 `else
@@ -79,6 +83,19 @@ ahbl_slave_assumptions #(
 	.dst_hrdata      (d_hrdata)
 );
 
+`ifdef RISCV_FORMAL_FAIRNESS
+reg [7:0] fence_stall_ctr;
+always @ (posedge clock) begin
+	if (reset) begin
+		fence_stall_ctr <= 8'h00;
+	end else if ((fence_i_vld || fence_d_vld) && !fence_rdy) begin
+		fence_stall_ctr <= fence_stall_ctr + 8'h01;
+		assume(fence_stall_ctr < MAX_BUS_STALL);
+	end else begin
+		fence_stall_ctr <= 8'h00;
+	end
+end
+`endif
 
 // ----------------------------------------------------------------------------
 // Device Under Test
@@ -110,31 +127,41 @@ localparam W_DATA = 32;
 (* keep *) wire              dbg_instr_caught_ebreak;
 
 hazard3_cpu_2port #(
-	.RESET_VECTOR       (0),
+	.RESET_VECTOR        (0),
 
-	.EXTENSION_M        (1),
-	.EXTENSION_A        (0), // FIXME -- requires riscv-formal to support these bus access types
-	.EXTENSION_C        (1),
+	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
+	.EXTENSION_C         (1),
+	.EXTENSION_E         (0),
+	.EXTENSION_M         (1),
 
-	.EXTENSION_ZBA      (0),
-	.EXTENSION_ZBB      (0),
-	.EXTENSION_ZBC      (0),
-	.EXTENSION_ZBS      (0),
+	.EXTENSION_ZBA       (1),
+	.EXTENSION_ZBB       (1),
+	.EXTENSION_ZBC       (1),
+	.EXTENSION_ZBKB      (1),
+	.EXTENSION_ZBKX      (1),
+	.EXTENSION_ZBS       (1),
+	.EXTENSION_ZCB       (1),
+	.EXTENSION_ZCLSD     (0), // UNSUPPORTED
+	.EXTENSION_ZCMP      (0), // UNSUPPORTED
+	.EXTENSION_ZIFENCEI  (1),
+	.EXTENSION_ZILSD     (0), // UNSUPPORTED
+	.EXTENSION_XH3BEXTM  (1),
+	.EXTENSION_XH3IRQ    (0),
+	.EXTENSION_XH3PMPM   (0),
+	.EXTENSION_XH3POWER  (0),
 
-	.CSR_M_MANDATORY    (1),
-	.CSR_M_TRAP         (1),
-	.CSR_COUNTER        (1),
-	.DEBUG_SUPPORT      (0), // FIXME
+	.CSR_M_MANDATORY     (1),
+	.CSR_M_TRAP          (1),
+	.CSR_COUNTER         (1),
+	.DEBUG_SUPPORT       (0), // FIXME
 
-	.NUM_IRQS           (32),
+	.NUM_IRQS            (32),
 
-	.EXTENSION_ZIFENCEI (1),
-
-	.REDUCED_BYPASS     (0),
-	.FAST_BRANCHCMP     (1),
-	.MUL_FAST           (1),
-	.MULH_FAST          (1),
-	.MULDIV_UNROLL      (2)
+	.REDUCED_BYPASS      (0),
+	.FAST_BRANCHCMP      (1),
+	.MUL_FAST            (1),
+	.MULH_FAST           (1),
+	.MULDIV_UNROLL       (2)
 ) dut (
 	.clk                        (clock),
 	.rst_n                      (!reset),
@@ -165,6 +192,10 @@ hazard3_cpu_2port #(
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
 
+	.fence_i_vld                (fence_i_vld),
+	.fence_d_vld                (fence_d_vld),
+	.fence_rdy                  (fence_rdy),
+
 	.dbg_req_halt               (dbg_req_halt),
 	.dbg_req_halt_on_reset      (dbg_req_halt_on_reset),
 	.dbg_req_resume             (dbg_req_resume),
@@ -178,6 +209,9 @@ hazard3_cpu_2port #(
 	.dbg_instr_data_rdy         (dbg_instr_data_rdy),
 	.dbg_instr_caught_exception (dbg_instr_caught_exception),
 	.dbg_instr_caught_ebreak    (dbg_instr_caught_ebreak),
+
+	.mhartid_val                (32'h0000_0000),
+	.eco_version                (4'd0),
 
 	.irq                        (irq),
 	.soft_irq                   (soft_irq),
