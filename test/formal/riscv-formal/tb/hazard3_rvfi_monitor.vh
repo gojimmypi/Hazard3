@@ -216,12 +216,17 @@ reg [3:0]  rvfi_mem_rmask_r;
 reg [31:0] rvfi_mem_rdata_r;
 reg [3:0]  rvfi_mem_wmask_r;
 reg [31:0] rvfi_mem_wdata_r;
+reg        rvfi_mem_fault_r;
 
 assign rvfi_mem_addr = rvfi_mem_addr_r;
-assign rvfi_mem_rmask = rvfi_mem_rmask_r;
 assign rvfi_mem_rdata = rvfi_mem_rdata_r;
-assign rvfi_mem_wmask = rvfi_mem_wmask_r;
 assign rvfi_mem_wdata = rvfi_mem_wdata_r;
+
+assign rvfi_mem_fault       = rvfi_mem_fault_r;
+assign rvfi_mem_wmask       = rvfi_mem_wmask_r & {4{!rvfi_mem_fault_r}};
+assign rvfi_mem_rmask       = rvfi_mem_rmask_r & {4{!rvfi_mem_fault_r}};
+assign rvfi_mem_fault_rmask = rvfi_mem_rmask_r & {4{ rvfi_mem_fault_r}};
+assign rvfi_mem_fault_wmask = rvfi_mem_wmask_r & {4{ rvfi_mem_fault_r}};
 
 always @ (posedge clk) begin
 	if (bus_dph_ready_d) begin
@@ -235,8 +240,13 @@ always @ (posedge clk) begin
 			rvfi_mem_rmask_r <= rvfm_mem_bytemask_dph;
 			rvfi_mem_rdata_r <= bus_rdata_d;
 		end
-	end else begin
-		// As far as RVFI is concerned nothing happens except final cycle of dphase
-		{rvfi_mem_rmask_r, rvfi_mem_wmask_r} <= 0;
+		rvfi_mem_fault_r <= bus_dph_err_d;
+	end else if (!m_stall) begin
+		// May have to hold the strobes for multiple cycles following a bus
+		// fault, as the trap entry may not go through immediately (depending
+		// on instruction-side bus stall)
+		rvfi_mem_rmask_r <= 4'h0;
+		rvfi_mem_wmask_r <= 4'h0;
+		rvfi_mem_fault_r <= 1'b0;
 	end
 end
