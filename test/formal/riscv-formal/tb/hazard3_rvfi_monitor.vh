@@ -133,8 +133,19 @@ end
 
 // ----------------------------------------------------------------------------
 // Register file monitor:
-assign rvfi_rd_addr = mw_rd;
-assign rvfi_rd_wdata = mw_rd ? mw_result : 32'h0;
+
+// When writeback is suppressed due to trap, the previous instruction is left
+// in the writeback buffer (and can be re-bypassed from there). Make sure not
+// to report this as a writeback on RVFI.
+reg rvfm_writeback_mask;
+always @ (posedge clk) begin
+	if (!m_stall) begin
+		rvfm_writeback_mask <= m_reg_wen_if_nonzero;
+	end
+end
+
+assign rvfi_rd_addr = mw_rd & {5{rvfm_writeback_mask}};
+assign rvfi_rd_wdata = |mw_rd && rvfm_writeback_mask ? mw_result : 32'h0;
 
 // Do not reimplement internal bypassing logic. Danger of implementing
 // it correctly here but incorrectly in core.
@@ -217,6 +228,10 @@ reg [31:0] rvfi_mem_rdata_r;
 reg [3:0]  rvfi_mem_wmask_r;
 reg [31:0] rvfi_mem_wdata_r;
 reg        rvfi_mem_fault_r;
+// May have to hold the strobes for multiple cycles following a bus
+// fault, as the trap entry may not go through immediately (depending
+// on instruction-side bus stall):
+reg        rvfm_mem_hold;
 
 assign rvfi_mem_addr = rvfi_mem_addr_r;
 assign rvfi_mem_rdata = rvfi_mem_rdata_r;
@@ -229,6 +244,7 @@ assign rvfi_mem_fault_rmask = rvfi_mem_rmask_r & {4{ rvfi_mem_fault_r}};
 assign rvfi_mem_fault_wmask = rvfi_mem_wmask_r & {4{ rvfi_mem_fault_r}};
 
 always @ (posedge clk) begin
+	rvfm_mem_hold <= (rvfm_mem_hold || (rvfm_htrans_dph && bus_dph_ready_d)) && m_stall;
 	if (bus_dph_ready_d) begin
 		// RVFI has an AXI-like concept of byte strobes, rather than AHB-like
 		rvfi_mem_addr_r <= rvfm_haddr_dph & 32'hffff_fffc;
@@ -241,10 +257,7 @@ always @ (posedge clk) begin
 			rvfi_mem_rdata_r <= bus_rdata_d;
 		end
 		rvfi_mem_fault_r <= bus_dph_err_d;
-	end else if (!m_stall) begin
-		// May have to hold the strobes for multiple cycles following a bus
-		// fault, as the trap entry may not go through immediately (depending
-		// on instruction-side bus stall)
+	end else if (!rvfm_mem_hold) begin
 		rvfi_mem_rmask_r <= 4'h0;
 		rvfi_mem_wmask_r <= 4'h0;
 		rvfi_mem_fault_r <= 1'b0;
