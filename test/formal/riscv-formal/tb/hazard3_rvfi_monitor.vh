@@ -42,19 +42,18 @@ always @ (posedge clk or negedge rst_n) begin
 	end else begin
 		if (!x_stall) begin
 			// X instruction squashed by any trap, as it's in the branch
-			// shadow. Also blank out instructions which experienced a fetch
-			// fault.(These shouldn't have side effects, and if they do, this
-			// will be revealed in consistency failures in other tests.)
-			rvfm_m_valid <= |df_cir_use && !m_trap_enter_vld && !(
-				d_except == EXCEPT_INSTR_FAULT ||
-				d_except == EXCEPT_INSTR_MISALIGN
-			);
+			// shadow.
+			rvfm_m_valid <= |df_cir_use && !m_trap_enter_vld;
 			rvfm_m_instr <= {fd_cir_raw[31:16] & {16{df_cir_use[1]}}, fd_cir_raw[15:0]};
 		end else if (!m_stall) begin
 			rvfm_m_valid <= 1'b0;
 		end
 		rvfi_valid_r <= rvfm_m_valid && !m_stall;
-		rvfi_insn_r <= rvfm_m_instr;
+		// Instructions which experienced fetch faults are reported as all-zeroes, per riscv-formal docs.
+		rvfi_insn_r <= rvfm_m_instr & {32{
+			xm_except != EXCEPT_INSTR_FAULT &&
+			xm_except != EXCEPT_INSTR_MISALIGN
+		}};
 		rvfi_trap_r <= rvfm_m_trap;
 
 		rvfm_entered_intr <= rvfm_entered_intr && !rvfi_valid;
