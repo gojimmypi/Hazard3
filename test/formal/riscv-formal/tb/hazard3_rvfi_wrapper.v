@@ -97,6 +97,13 @@ always @ (posedge clock) begin
 end
 `endif
 
+`ifdef RISCV_FORMAL_FAIRNESS
+// Disable bus faults for liveness check as the counterexamples aren't interesting
+// TODO maybe the solver can have a couple of bus faults, as a treat
+always assume(!i_hresp);
+always assume(!d_hresp);
+`endif
+
 // ----------------------------------------------------------------------------
 // Device Under Test
 // ----------------------------------------------------------------------------

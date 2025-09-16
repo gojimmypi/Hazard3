@@ -263,3 +263,25 @@ always @ (posedge clk) begin
 		rvfi_mem_fault_r <= 1'b0;
 	end
 end
+
+// ----------------------------------------------------------------------------
+// Constraints
+
+// Trying to keep internal constraints to a minimum.
+
+// Limit sleep duration for liveness checks
+// TODO is it possible to do this in a way that doesn't assume the wakeup logic is functional?
+`ifdef RISCV_FORMAL_FAIRNESS
+reg [7:0] rvfm_sleep_counter;
+always @ (posedge clk) begin
+	if (!rst_n) begin
+		rvfm_sleep_counter <= 8'd00;
+	end else if (xm_sleep_wfi || xm_sleep_block) begin
+		rvfm_sleep_counter <= rvfm_sleep_counter + 8'h01;
+		assume(rvfm_sleep_counter < 8'd5);
+	end else begin
+		rvfm_sleep_counter <= 8'd00;
+	end
+end
+`endif
+
