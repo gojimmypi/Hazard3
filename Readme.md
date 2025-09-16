@@ -349,6 +349,7 @@ There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on iCE
 - A Debug Transport Module and Debug Module to access Hazard3's debug interface
 - 128 kB of RAM (fits in UP5k SPRAMs)
 - A UART
+- A standard RISC-V platform timer
 
 Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. All very much WIP. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
 
