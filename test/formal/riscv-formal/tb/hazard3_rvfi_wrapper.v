@@ -47,6 +47,15 @@ module rvfi_wrapper (
 (* keep *) wire                       fence_d_vld;
 (* keep *) wire                       fence_rdy;
 
+(* keep *) `rvformal_rand_reg [31:0]  dbg_sbus_addr;
+(* keep *) `rvformal_rand_reg         dbg_sbus_write;
+(* keep *) `rvformal_rand_reg [1:0]   dbg_sbus_size;
+(* keep *) `rvformal_rand_reg         dbg_sbus_vld;
+(* keep *) wire                       dbg_sbus_rdy;
+(* keep *) wire                       dbg_sbus_err;
+(* keep *) `rvformal_rand_reg [31:0]  dbg_sbus_wdata;
+(* keep *) wire               [31:0]  dbg_sbus_rdata;
+
 `ifdef RISCV_FORMAL_FAIRNESS
 localparam MAX_BUS_STALL = 8;
 `else
@@ -73,7 +82,6 @@ ahbl_slave_assumptions #(
 	.dst_hrdata      (i_hrdata)
 );
 
-
 ahbl_slave_assumptions #(
 	.MAX_BUS_STALL (MAX_BUS_STALL)
 ) d_slave_assumptions (
@@ -92,6 +100,22 @@ ahbl_slave_assumptions #(
 	.dst_hmastlock   (d_hmastlock),
 	.dst_hwdata      (d_hwdata),
 	.dst_hrdata      (d_hrdata)
+);
+
+sbus_assumptions #(
+	.W_ADDR (32),
+	.W_DATA (32)
+) inst_sbus_assumptions (
+	.clk            (clock),
+	.rst_n          (!reset),
+	.dbg_sbus_addr  (dbg_sbus_addr),
+	.dbg_sbus_write (dbg_sbus_write),
+	.dbg_sbus_size  (dbg_sbus_size),
+	.dbg_sbus_vld   (dbg_sbus_vld),
+	.dbg_sbus_rdy   (dbg_sbus_rdy),
+	.dbg_sbus_err   (dbg_sbus_err),
+	.dbg_sbus_wdata (dbg_sbus_wdata),
+	.dbg_sbus_rdata (dbg_sbus_rdata)
 );
 
 `ifdef RISCV_FORMAL_FAIRNESS
@@ -113,6 +137,12 @@ end
 // TODO maybe the solver can have a couple of bus faults, as a treat
 always assume(!i_hresp);
 always assume(!d_hresp);
+`endif
+
+`ifdef RISCV_FORMAL_BUS
+// Need to disable SBA accesses as they come out through the load/store port
+// but cannot be cross-referenced with instruction execution
+always assume(!dbg_sbus_vld);
 `endif
 
 // ----------------------------------------------------------------------------
@@ -227,6 +257,15 @@ hazard3_cpu_2port #(
 	.dbg_instr_data_rdy         (dbg_instr_data_rdy),
 	.dbg_instr_caught_exception (dbg_instr_caught_exception),
 	.dbg_instr_caught_ebreak    (dbg_instr_caught_ebreak),
+
+	.dbg_sbus_addr              (dbg_sbus_addr),
+	.dbg_sbus_write             (dbg_sbus_write),
+	.dbg_sbus_size              (dbg_sbus_size),
+	.dbg_sbus_vld               (dbg_sbus_vld),
+	.dbg_sbus_rdy               (dbg_sbus_rdy),
+	.dbg_sbus_err               (dbg_sbus_err),
+	.dbg_sbus_wdata             (dbg_sbus_wdata),
+	.dbg_sbus_rdata             (dbg_sbus_rdata),
 
 	.mhartid_val                (32'h0000_0000),
 	.eco_version                (4'd0),
