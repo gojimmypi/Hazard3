@@ -1,7 +1,15 @@
+/*****************************************************************************\
+|                      Copyright (C) 2021-2025 Luke Wren                      |
+|                     SPDX-License-Identifier: Apache-2.0                     |
+\*****************************************************************************/
+
+`default_nettype none
+
 module rvfi_wrapper (
 	input wire clock,
 	input wire reset,
 	`RVFI_OUTPUTS
+	`RVFI_BUS_OUTPUTS
 );
 
 // ----------------------------------------------------------------------------
@@ -23,12 +31,15 @@ module rvfi_wrapper (
 (* keep *) wire               [31:0]  d_haddr;
 (* keep *) wire                       d_hwrite;
 (* keep *) wire               [1:0]   d_htrans;
+(* keep *) wire                       d_hexcl;
 (* keep *) wire               [2:0]   d_hsize;
 (* keep *) wire               [2:0]   d_hburst;
 (* keep *) wire               [3:0]   d_hprot;
 (* keep *) wire                       d_hmastlock;
+(* keep *) wire               [7:0]   d_hmaster;
 (* keep *) `rvformal_rand_reg         d_hready;
 (* keep *) `rvformal_rand_reg         d_hresp;
+(* keep *) `rvformal_rand_reg         d_hexokay;
 (* keep *) wire               [31:0]  d_hwdata;
 (* keep *) `rvformal_rand_reg [31:0]  d_hrdata;
 
@@ -137,7 +148,7 @@ hazard3_cpu_2port #(
 	.RESET_VECTOR        (0),
 
 	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
-	.EXTENSION_C         (1),
+	.EXTENSION_C         (0),
 	.EXTENSION_E         (0),
 	.EXTENSION_M         (1),
 
@@ -188,14 +199,14 @@ hazard3_cpu_2port #(
 	.d_haddr                    (d_haddr),
 	.d_hwrite                   (d_hwrite),
 	.d_htrans                   (d_htrans),
-	.d_hexcl                    (/* FIXME */),
+	.d_hexcl                    (d_hexcl),
 	.d_hsize                    (d_hsize),
 	.d_hburst                   (d_hburst),
 	.d_hprot                    (d_hprot),
 	.d_hmastlock                (d_hmastlock),
 	.d_hready                   (d_hready),
 	.d_hresp                    (d_hresp),
-	.d_hexokay                  (1'b1), // FIXME
+	.d_hexokay                  (d_hexcl),
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
 
@@ -227,4 +238,58 @@ hazard3_cpu_2port #(
 	`RVFI_CONN
 );
 
+`ifdef RISCV_FORMAL_BUS
+rvfi_bus_observer_ahb5 #(
+	.XLEN   (32),
+	.BUSLEN (32)
+) observer_i (
+	.clock          (clock),
+	.reset          (reset),
+
+	.ahb_haddr      (i_haddr),
+	.ahb_hwrite     (i_hwrite),
+	.ahb_htrans     (i_htrans),
+	.ahb_hsize      (i_hsize),
+	.ahb_hburst     (i_hburst),
+	.ahb_hprot      ({3'h0, i_hprot}),
+	.ahb_hmaster    (8'h00),
+	.ahb_hexcl      (1'b0),
+	.ahb_hready     (i_hready),
+	.ahb_hresp      (i_hresp),
+	.ahb_hexokay    (1'b0),
+	.ahb_hwdata     (i_hwdata),
+	.ahb_hrdata     (i_hrdata)
+
+	`RVFI_BUS_CHANNEL_CONN(0)
+);
+
+rvfi_bus_observer_ahb5 #(
+	.XLEN   (32),
+	.BUSLEN (32)
+) observer_d (
+	.clock          (clock),
+	.reset          (reset),
+
+	.ahb_haddr      (d_haddr),
+	.ahb_hwrite     (d_hwrite),
+	.ahb_htrans     (d_htrans),
+	.ahb_hsize      (d_hsize),
+	.ahb_hburst     (d_hburst),
+	.ahb_hprot      ({3'h0, d_hprot}),
+	.ahb_hmaster    (d_hmaster),
+	.ahb_hexcl      (d_hexcl),
+	.ahb_hready     (d_hready),
+	.ahb_hresp      (d_hresp),
+	.ahb_hexokay    (d_hexokay),
+	.ahb_hwdata     (d_hwdata),
+	.ahb_hrdata     (d_hrdata)
+
+	`RVFI_BUS_CHANNEL_CONN(1)
+);
+`endif
+
 endmodule
+
+`ifndef YOSYS
+`default_nettype wire
+`endif
