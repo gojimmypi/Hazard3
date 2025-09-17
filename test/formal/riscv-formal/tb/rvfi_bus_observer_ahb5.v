@@ -51,10 +51,10 @@ wire [BUSLEN/8-1:0] byte_mask_aph =
 // Validate address-phase signals
 
 always @ (posedge clock) begin
-	// HADDR should be aligned to transfer size; this is only strictly
-	// required when HEXCL=1, but practical bus implementations have this
+	// HADDR should be aligned to transfer size; only strictly required for
+	// bursts and exclusives, but practical bus implementations have this
 	// constraint for all transfers, and RVFI bus records are BUSLEN-aligned.
-	assert(~|(ahb_haddr & hsize_lsb_mask));
+	if (ahb_htrans[1]) assert(~|(ahb_haddr & hsize_lsb_mask));
 	// HSIZE should not indicate greater than bus-sized transfer
 	assert(ahb_hsize <= $clog2(BUSLEN / 8));
 end
