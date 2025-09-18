@@ -41,11 +41,9 @@ localparam HTRANS_SEQ  = 2'h3;
 
 wire [XLEN-1:0] hsize_lsb_mask = ~({XLEN{1'b1}} << ahb_hsize);
 
-wire [XLEN-1:0] haddr_aligned = ahb_haddr & ~hsize_lsb_mask;
-
 wire [BUSLEN/8-1:0] byte_mask_aph =
 	~({BUSLEN / 8{1'b1}} << (1 << ahb_hsize)) <<
-	(ahb_haddr & hsize_lsb_mask);
+	ahb_haddr[$clog2(BUSLEN/8)-1:0];
 
 // ----------------------------------------------------------------------------
 // Validate address-phase signals
@@ -81,7 +79,7 @@ always @ (posedge clock) begin
 		bus_valid_dph <= ahb_htrans[1];
 		bus_insn_dph  <= ahb_hprot[0];
 		bus_data_dph  <= !ahb_hprot[0];
-		bus_addr_dph  <= haddr_aligned;
+		bus_addr_dph  <= ahb_haddr & ({XLEN{1'b1}} << $clog2(BUSLEN / 8));
 		bus_rmask_dph <= byte_mask_aph & {BUSLEN/8{!ahb_hwrite}};
 		bus_wmask_dph <= byte_mask_aph & {BUSLEN/8{ ahb_hwrite}};
 	end
@@ -99,8 +97,6 @@ assign rvfi_bus_rmask = bus_rmask_dph & {BUSLEN/8{!ahb_hresp}};
 assign rvfi_bus_wmask = bus_wmask_dph & {BUSLEN/8{!ahb_hresp}};
 assign rvfi_bus_rdata = ahb_hrdata;
 assign rvfi_bus_wdata = ahb_hwdata;
-
-// ----------------------------------------------------------------------------
 
 endmodule
 
