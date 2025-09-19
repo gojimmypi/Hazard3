@@ -255,11 +255,15 @@ always @ (posedge clk) begin
 			rvfi_mem_rmask_r <= rvfm_mem_bytemask_dph;
 			rvfi_mem_rdata_r <= bus_rdata_d;
 		end
-		rvfi_mem_fault_r <= bus_dph_err_d || xm_except == EXCEPT_INSTR_FAULT;
+		rvfi_mem_fault_r <= bus_dph_err_d;
 	end else if (!rvfm_mem_hold) begin
 		rvfi_mem_rmask_r <= 4'h0;
 		rvfi_mem_wmask_r <= 4'h0;
 		rvfi_mem_fault_r <= 1'b0;
+	end
+	// Also need to report rvfi_mem_fault on a fetch fault
+	if (xm_except == EXCEPT_INSTR_FAULT && m_trap_enter_vld && m_trap_enter_rdy) begin
+		rvfi_mem_fault_r <= 1'b1;
 	end
 end
 
