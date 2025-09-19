@@ -255,7 +255,7 @@ always @ (posedge clk) begin
 			rvfi_mem_rmask_r <= rvfm_mem_bytemask_dph;
 			rvfi_mem_rdata_r <= bus_rdata_d;
 		end
-		rvfi_mem_fault_r <= bus_dph_err_d;
+		rvfi_mem_fault_r <= bus_dph_err_d || xm_except == EXCEPT_INSTR_FAULT;
 	end else if (!rvfm_mem_hold) begin
 		rvfi_mem_rmask_r <= 4'h0;
 		rvfi_mem_wmask_r <= 4'h0;
