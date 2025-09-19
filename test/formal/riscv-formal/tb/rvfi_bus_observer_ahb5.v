@@ -93,8 +93,8 @@ assign rvfi_bus_insn  = bus_insn_dph;
 assign rvfi_bus_data  = bus_data_dph;
 assign rvfi_bus_fault = ahb_hresp;
 assign rvfi_bus_addr  = bus_addr_dph;
-assign rvfi_bus_rmask = bus_rmask_dph & {BUSLEN/8{!ahb_hresp}};
-assign rvfi_bus_wmask = bus_wmask_dph & {BUSLEN/8{!ahb_hresp}};
+assign rvfi_bus_rmask = bus_rmask_dph;
+assign rvfi_bus_wmask = bus_wmask_dph;
 assign rvfi_bus_rdata = ahb_hrdata;
 assign rvfi_bus_wdata = ahb_hwdata;
 
