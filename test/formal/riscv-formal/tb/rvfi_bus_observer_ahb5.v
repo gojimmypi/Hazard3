@@ -77,8 +77,8 @@ always @ (posedge clock) begin
 		bus_wmask_dph <= {BUSLEN/8{1'b0}};
 	end else if (ahb_hready) begin
 		bus_valid_dph <= ahb_htrans[1];
-		bus_insn_dph  <= ahb_hprot[0];
-		bus_data_dph  <= !ahb_hprot[0];
+		bus_insn_dph  <= !ahb_hprot[0];
+		bus_data_dph  <= ahb_hprot[0];
 		bus_addr_dph  <= ahb_haddr & ({XLEN{1'b1}} << $clog2(BUSLEN / 8));
 		bus_rmask_dph <= byte_mask_aph & {BUSLEN/8{!ahb_hwrite}};
 		bus_wmask_dph <= byte_mask_aph & {BUSLEN/8{ ahb_hwrite}};

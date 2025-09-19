@@ -178,7 +178,7 @@ hazard3_cpu_2port #(
 	.RESET_VECTOR        (0),
 
 	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
-	.EXTENSION_C         (0),
+	.EXTENSION_C         (1),
 	.EXTENSION_E         (0),
 	.EXTENSION_M         (1),
 
