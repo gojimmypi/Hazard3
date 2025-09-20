@@ -65,7 +65,9 @@ localparam W_DATA = 32;
 (* keep *) wire              soft_irq;
 (* keep *) wire              timer_irq;
 
-hazard3_cpu_2port dut (
+hazard3_cpu_2port #(
+	.BRANCH_PREDICTOR (1)
+) dut (
 	.clk                        (clk),
 	.clk_always_on              (clk),
 	.rst_n                      (rst_n),
