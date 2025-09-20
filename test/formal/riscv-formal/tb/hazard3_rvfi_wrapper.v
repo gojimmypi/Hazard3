@@ -149,14 +149,9 @@ always assume(!dbg_sbus_vld);
 // Device Under Test
 // ----------------------------------------------------------------------------
 
-// FIXME IRQs are tied off because riscv-formal doesn't accept the
-// nonsequential pc_wdata when an instruction is followed by an interrupt
-// (and the rvfi_intr signal doesn't do anything)
-
-wire [31:0] irq = 0;
-wire        soft_irq = 0;
-wire        timer_irq = 0;
-// (* keep *) `rvformal_rand_reg [15:0] irq;
+(* keep *) `rvformal_rand_reg irq;
+(* keep *) `rvformal_rand_reg soft_irq;
+(* keep *) `rvformal_rand_reg timer_irq;
 
 localparam W_DATA = 32;
 
@@ -203,7 +198,7 @@ hazard3_cpu_2port #(
 	.CSR_COUNTER         (1),
 	.DEBUG_SUPPORT       (0), // FIXME
 
-	.NUM_IRQS            (32),
+	.NUM_IRQS            (1),
 
 	.REDUCED_BYPASS      (0),
 	.FAST_BRANCHCMP      (1),

@@ -14,15 +14,12 @@
 // Diagnose whether X, M contain valid in-flight instructions, to produce
 // rvfi_valid signal.
 
-// TODO fix all the redundant RVFI registers in a nice way
-
 wire rvfm_x_valid = fd_cir_vld >= 2 || (fd_cir_vld >= 1 && fd_cir_raw[1:0] != 2'b11);
 
 reg rvfm_m_valid;
 reg [31:0] rvfm_m_instr;
 
 wire rvfm_m_trap = xm_except != EXCEPT_NONE && xm_except != EXCEPT_MRET && m_trap_enter_rdy;
-reg rvfm_entered_intr;
 
 reg        rvfi_valid_r;
 reg [31:0] rvfi_insn_r;
@@ -35,7 +32,6 @@ assign rvfi_trap = rvfi_trap_r;
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		rvfm_m_valid <= 1'b0;
-		rvfm_entered_intr <= 1'b0;
 		rvfi_valid_r <= 1'b0;
 		rvfi_trap_r <= 1'b0;
 		rvfi_insn_r <= 32'h0;
@@ -49,14 +45,13 @@ always @ (posedge clk or negedge rst_n) begin
 			rvfm_m_valid <= 1'b0;
 		end
 		rvfi_valid_r <= rvfm_m_valid && !m_stall;
-		// Instructions which experienced fetch faults are reported as all-zeroes, per riscv-formal docs.
+		// Instructions which experienced fetch faults are reported as
+		// all-zeroes, per riscv-formal docs.
 		rvfi_insn_r <= rvfm_m_instr & {32{
 			xm_except != EXCEPT_INSTR_FAULT &&
 			xm_except != EXCEPT_INSTR_MISALIGN
 		}};
 		rvfi_trap_r <= rvfm_m_trap;
-
-		rvfm_entered_intr <= rvfm_entered_intr && !rvfi_valid;
 	end
 end
 
@@ -68,6 +63,30 @@ always @ (posedge clk) if (rst_n) begin
 		assert(rvfm_m_valid);
 end
 
+// Track whether an instruction is the first of an interrupt or exception;
+// when a trap happens, a flag is installed in stage X, and once a new
+// instruction arrives the flag travels alongside it down to the RVFI port.
+reg rvfm_x_intr;
+reg rvfm_m_intr;
+reg rvfi_intr_r;
+always @ (posedge clk) begin
+	if (!rst_n) begin
+		rvfm_x_intr <= 1'b0;
+		rvfm_m_intr <= 1'b0;
+		rvfi_intr_r <= 1'b0;
+	end else begin
+		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved)) ||
+			(m_trap_enter_vld && m_trap_enter_rdy);
+		if (!x_stall) begin
+			rvfm_m_intr <= rvfm_x_intr;
+		end
+		if (!m_stall) begin
+			rvfi_intr_r <= rvfm_m_intr;
+		end
+	end
+end
+
+
 // Hazard3 is an in-order core:
 reg [63:0] rvfm_retire_ctr;
 assign rvfi_order = rvfm_retire_ctr;
@@ -77,8 +96,8 @@ always @ (posedge clk or negedge rst_n)
 	else if (rvfi_valid)
 		rvfm_retire_ctr <= rvfm_retire_ctr + 1;
 
-assign rvfi_mode = 2'h3; // M-mode only
-assign rvfi_intr = rvfi_valid && rvfm_entered_intr;
+assign rvfi_mode = 2'h3; // FIXME: M-mode only?
+assign rvfi_intr = rvfi_intr_r && rvfi_valid;
 assign rvfi_halt = 1'b0; // TODO
 
 // ----------------------------------------------------------------------------
@@ -126,7 +145,9 @@ assign rvfi_pc_wdata = rvfi_pc_wdata_r;
 always @ (posedge clk) begin
 	if (!m_stall) begin
 		rvfi_pc_rdata_r <= rvfm_xm_pc;
-		rvfi_pc_wdata_r <= m_trap_enter_vld && m_trap_enter_rdy ? m_trap_addr : rvfm_xm_pc_next;
+		rvfi_pc_wdata_r <=
+			m_trap_enter_vld && m_trap_enter_rdy && xm_except != EXCEPT_NONE ?
+				m_trap_addr : rvfm_xm_pc_next;
 	end
 end
 
