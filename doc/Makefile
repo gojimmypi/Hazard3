@@ -4,8 +4,13 @@ TOP=hazard3
 
 all: spell $(TOP).pdf
 
+# `xdg-open` for Ubuntu and friends; `open` for MacOS
 view: all
+ifneq (,$(shell which xdg-open))
 	xdg-open $(TOP).pdf
+else
+	open $(TOP).pdf
+endif
 
 clean:
 	rm -f $(TOP).pdf
