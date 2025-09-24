@@ -45,6 +45,25 @@ When applying the `clk_en` clock enable signal to the `clk` input in conjunction
 
 You must synchronise resets externally according to your STA constraints and your system-level reset strategy. Hazard3 uses an asynchronous active-low reset internally, but this can be adapted to other types by inserting an appropriate synchroniser in your core integration.
 
+==== Register File Macros
+
+Generally the register file should be synthesised. Synthesised register files offer the best portability and the most flexibility during layout. However there may be an area advantage to implementing the register file using a hard layout macro.
+
+Hazard3 supports the use of register file or SRAM macros, by modifying `hazard3_regfile_1w2r.v` to instantiate the appropriate macros. The configuration should be one of the following:
+
+* One instance: two read ports, one write port
+* Two instances: one read port, one write port, with the write ports tied together
+
+The memory dimensions are:
+
+* 32 bits wide
+* 32 rows deep (RV32I) or 16 rows deep (RV32E) -- depends on configuration of <<param-EXTENSION_E>>
+* No requirement for bit write enable
+
+When a write and a read simultaneously occur at the same address, the write must succeed. The read data in this case is don't-care.
+
+The read data from address 0 is don't-care, because the special case for register `x0` is handled in the register bypass logic. This means a full 32-row or 16-row RAM can be used.
+
 === Interfaces (Top-level Ports)
 
 Most ports are common to the two top-level wrappers, `hazard3_cpu_1port` and `hazard3_cpu_2port`. The only difference is the number of AHB5 manager ports used to access the bus: `hazard3_cpu_1port` has a single port used for all accesses, whereas `hazard3_cpu_2port` adds a separate, dedicated port for instruction fetch.
