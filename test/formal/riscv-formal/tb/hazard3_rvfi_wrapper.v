@@ -57,7 +57,7 @@ module rvfi_wrapper (
 (* keep *) wire               [31:0]  dbg_sbus_rdata;
 
 `ifdef RISCV_FORMAL_FAIRNESS
-localparam MAX_BUS_STALL = 8;
+localparam MAX_BUS_STALL = 7;
 `else
 localparam MAX_BUS_STALL = -1;
 `endif
@@ -169,11 +169,19 @@ localparam W_DATA = 32;
 (* keep *) wire              dbg_instr_caught_exception;
 (* keep *) wire              dbg_instr_caught_ebreak;
 
+`ifdef NO_COMPRESSED_ISA
+// Must be disabled for some checks combinations: e.g. riscv-formal doesn't
+// currently support C + Zbb in the same test run (just a tooling issue)
+localparam COMPRESSED = 0;
+`else
+localparam COMPRESSED = 1;
+`endif
+
 hazard3_cpu_2port #(
 	.RESET_VECTOR        (0),
 
 	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
-	.EXTENSION_C         (1),
+	.EXTENSION_C         (COMPRESSED),
 	.EXTENSION_E         (0),
 	.EXTENSION_M         (1),
 
@@ -183,7 +191,7 @@ hazard3_cpu_2port #(
 	.EXTENSION_ZBKB      (1),
 	.EXTENSION_ZBKX      (1),
 	.EXTENSION_ZBS       (1),
-	.EXTENSION_ZCB       (1),
+	.EXTENSION_ZCB       (COMPRESSED),
 	.EXTENSION_ZCLSD     (0), // UNSUPPORTED
 	.EXTENSION_ZCMP      (0), // UNSUPPORTED
 	.EXTENSION_ZIFENCEI  (1),
@@ -204,7 +212,7 @@ hazard3_cpu_2port #(
 	.FAST_BRANCHCMP      (1),
 	.MUL_FAST            (1),
 	.MULH_FAST           (1),
-	.MULDIV_UNROLL       (2)
+	.MULDIV_UNROLL       (4)  // Increased so more divide instructions fit in BMC depth
 ) dut (
 	.clk                        (clock),
 	.rst_n                      (!reset),
