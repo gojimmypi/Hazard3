@@ -16,6 +16,7 @@ module rvfi_wrapper (
 // Memory Interface
 // ----------------------------------------------------------------------------
 
+`ifndef SINGLE_PORTED_CORE
 (* keep *) wire               [31:0]  i_haddr;
 (* keep *) wire                       i_hwrite;
 (* keep *) wire               [1:0]   i_htrans;
@@ -27,6 +28,7 @@ module rvfi_wrapper (
 (* keep *) `rvformal_rand_reg         i_hresp;
 (* keep *) wire               [31:0]  i_hwdata;
 (* keep *) `rvformal_rand_reg [31:0]  i_hrdata;
+`endif
 
 (* keep *) wire               [31:0]  d_haddr;
 (* keep *) wire                       d_hwrite;
@@ -62,6 +64,7 @@ localparam MAX_BUS_STALL = 7;
 localparam MAX_BUS_STALL = -1;
 `endif
 
+`ifndef SINGLE_PORTED_CORE
 ahbl_slave_assumptions #(
 	.MAX_BUS_STALL (MAX_BUS_STALL)
 ) i_slave_assumptions (
@@ -81,6 +84,7 @@ ahbl_slave_assumptions #(
 	.dst_hwdata      (i_hwdata),
 	.dst_hrdata      (i_hrdata)
 );
+`endif
 
 ahbl_slave_assumptions #(
 	.MAX_BUS_STALL (MAX_BUS_STALL)
@@ -135,7 +139,9 @@ end
 `ifdef RISCV_FORMAL_FAIRNESS
 // Disable bus faults for liveness check as the counterexamples aren't interesting
 // TODO maybe the solver can have a couple of bus faults, as a treat
+`ifndef SINGLE_PORTED_CORE
 always assume(!i_hresp);
+`endif
 always assume(!d_hresp);
 `endif
 
@@ -177,7 +183,11 @@ localparam COMPRESSED = 0;
 localparam COMPRESSED = 1;
 `endif
 
+`ifdef SINGLE_PORTED_CORE
+hazard3_cpu_1port #(
+`else
 hazard3_cpu_2port #(
+`endif
 	.RESET_VECTOR        (0),
 
 	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
@@ -217,6 +227,21 @@ hazard3_cpu_2port #(
 	.clk                        (clock),
 	.rst_n                      (!reset),
 
+`ifdef SINGLE_PORTED_CORE
+	.haddr                      (d_haddr),
+	.hwrite                     (d_hwrite),
+	.htrans                     (d_htrans),
+	.hexcl                      (d_hexcl),
+	.hsize                      (d_hsize),
+	.hburst                     (d_hburst),
+	.hprot                      (d_hprot),
+	.hmastlock                  (d_hmastlock),
+	.hready                     (d_hready),
+	.hresp                      (d_hresp),
+	.hexokay                    (d_hexcl),
+	.hwdata                     (d_hwdata),
+	.hrdata                     (d_hrdata),
+`else
 	.i_haddr                    (i_haddr),
 	.i_hwrite                   (i_hwrite),
 	.i_htrans                   (i_htrans),
@@ -242,6 +267,7 @@ hazard3_cpu_2port #(
 	.d_hexokay                  (d_hexcl),
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
+`endif
 
 	.fence_i_vld                (fence_i_vld),
 	.fence_d_vld                (fence_d_vld),
@@ -281,6 +307,7 @@ hazard3_cpu_2port #(
 );
 
 `ifdef RISCV_FORMAL_BUS
+`ifndef SINGLE_PORTED_CORE
 rvfi_bus_observer_ahb5 #(
 	.XLEN   (32),
 	.BUSLEN (32)
@@ -302,8 +329,9 @@ rvfi_bus_observer_ahb5 #(
 	.ahb_hwdata     (i_hwdata),
 	.ahb_hrdata     (i_hrdata)
 
-	`RVFI_BUS_CHANNEL_CONN(0)
+	`RVFI_BUS_CHANNEL_CONN(1)
 );
+`endif
 
 rvfi_bus_observer_ahb5 #(
 	.XLEN   (32),
@@ -326,7 +354,7 @@ rvfi_bus_observer_ahb5 #(
 	.ahb_hwdata     (d_hwdata),
 	.ahb_hrdata     (d_hrdata)
 
-	`RVFI_BUS_CHANNEL_CONN(1)
+	`RVFI_BUS_CHANNEL_CONN(0)
 );
 `endif
 
