@@ -1,3 +1,8 @@
+/*****************************************************************************\
+|                      Copyright (C) 2021-2025 Luke Wren                      |
+|                     SPDX-License-Identifier: Apache-2.0                     |
+\*****************************************************************************/
+
 // ----------------------------------------------------------------------------
 // RVFI Instrumentation
 // ----------------------------------------------------------------------------
@@ -55,6 +60,7 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
+`ifdef HAZARD3_ASSERTIONS
 always @ (posedge clk) if (rst_n) begin
 	// Sanity checks for above
 	if (d_rd != 5'h0)
@@ -62,6 +68,7 @@ always @ (posedge clk) if (rst_n) begin
 	if (xm_rd != 5'h0)
 		assert(rvfm_m_valid);
 end
+`endif
 
 // Track whether an instruction is the first of an interrupt or exception;
 // when a trap happens, a flag is installed in stage X, and once a new
@@ -226,8 +233,10 @@ end
 // Marshal up a description of the current data phase, and then register this
 // into the RVFI signals.
 
+`ifdef HAZARD3_ASSERTIONS
 `ifndef RISCV_FORMAL_ALIGNED_MEM
 initial $fatal;
+`endif
 `endif
 
 reg [31:0] rvfm_haddr_dph;
