@@ -105,16 +105,6 @@ always @ (posedge clk or negedge rst_n)
 
 assign rvfi_intr = rvfi_intr_r && rvfi_valid;
 
-// Note: Hazard3 does not have any instructions which irrversibly halt
-// execution. For the liveness check (RISCV_FORMAL_FAIRNESS is defined),
-// length of stalls is constrained and WFI is assumed to wake immediately
-// after going to sleep.
-assign rvfi_halt = 1'b0;
-
-// Note: this always reports M-mode, which is not correct if the U_MODE config
-// is set. However no riscv-formal checks currently use this signal.
-assign rvfi_mode = 2'h3;
-
 // ----------------------------------------------------------------------------
 // PC and jump monitor
 
@@ -325,4 +315,21 @@ always @ (posedge clk) begin
 	end
 end
 `endif
+
+// ----------------------------------------------------------------------------
+// Tie-offs
+
+// Note: Hazard3 does not have any instructions which irrversibly halt
+// execution. For the liveness check (RISCV_FORMAL_FAIRNESS is defined),
+// length of stalls is constrained and WFI is assumed to wake immediately
+// after going to sleep.
+assign rvfi_halt = 1'b0;
+
+// Note: this always reports M-mode, which is not correct if the U_MODE config
+// is set. However no riscv-formal checks currently use this signal.
+assign rvfi_mode = 2'h3;
+
+// Maximum XLEN is always 32 bits
+assign rvfi_ixl = 2'h1;
+
 

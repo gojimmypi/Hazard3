@@ -3,6 +3,10 @@
 |                     SPDX-License-Identifier: Apache-2.0                     |
 \*****************************************************************************/
 
+`ifdef HAZARD3_RVFI_STANDALONE
+`include "hazard3_rvfi_standalone_defs.vh"
+`endif
+
 `default_nettype none
 
 module hazard3_core #(

@@ -7,6 +7,10 @@
 // Hazard3 core, and interfaces its instruction fetch and load/store signals
 // to a pair of AHB5 master ports.
 
+`ifdef HAZARD3_RVFI_STANDALONE
+`include "hazard3_rvfi_standalone_defs.vh"
+`endif
+
 `default_nettype none
 
 module hazard3_cpu_2port #(
