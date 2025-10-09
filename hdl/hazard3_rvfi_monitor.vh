@@ -118,10 +118,13 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		rvfm_x_saw_f_jump <= 1'b0;
 		rvfm_x_saw_f_jump_target <= 32'd0;
-	end else if (f_jump_now && !m_trap_enter_vld && x_stall) begin
+	end else if (f_jump_now && !m_trap_enter_vld && (x_stall || (fd_cir_is_uop && fd_cir_uop_nonfinal))) begin
 		rvfm_x_saw_f_jump <= 1'b1;
 		rvfm_x_saw_f_jump_target <= f_jump_target;
-	end else if (!x_stall) begin
+	end else if (!x_stall && !(fd_cir_is_uop && !fd_cir_uop_nonfinal)) begin
+		rvfm_x_saw_f_jump <= 1'b0;
+	end else if (m_trap_enter_vld) begin
+		// E.g. trap during uop sequence
 		rvfm_x_saw_f_jump <= 1'b0;
 	end
 end
@@ -132,7 +135,11 @@ always @ (posedge clk or negedge rst_n) begin
 		rvfm_xm_pc_next <= 0;
 	end else begin
 		if (!x_stall) begin
-			rvfm_xm_pc <= d_pc;
+			// For cm.popret and cm.popretz the PC actually changes on the
+			// penultimate uop; ignore this and retain the initial PC.
+			if (!(fd_cir_is_uop && !fd_cir_uop_nonfinal)) begin
+				rvfm_xm_pc <= d_pc;
+			end
 			rvfm_xm_pc_next <=
 				f_jump_now        ? f_jump_target            :
 				rvfm_x_saw_f_jump ? rvfm_x_saw_f_jump_target :
