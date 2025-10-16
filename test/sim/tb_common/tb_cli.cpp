@@ -79,7 +79,7 @@ void tb_parse_args(int argc, char **argv, tb_cli_args &args) {
 			if (argc - i < 3)
 				exit_help("Option --dump requires 2 arguments\n");
 			uint32_t first = std::stoul(argv[i + 1], 0, 0);
-			uint32_t last = std::stoul(argv[i + 1], 0, 0);
+			uint32_t last = std::stoul(argv[i + 2], 0, 0);
 			if (first < MEM_BASE || last > MEM_BASE + MEM_SIZE || first > last) {
 				std::cerr << "Invalid memory range\n";
 				exit(-1);
