@@ -9,7 +9,8 @@ ENTRY(_start)
 SEARCH_DIR("/opt/riscv/gcc15/riscv32-unknown-elf/lib");
 SECTIONS
 {
-  PROVIDE(__stack_top = 1M);
+  . = 0x80000000;
+  PROVIDE(__stack_top = 0x80100000);
   /* Place the build-id as close to the ELF headers as possible.  This
      maximises the chance the build-id will be present in core files,
      which GDB can then use to locate the associated debuginfo file.  */

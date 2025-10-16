@@ -1,7 +1,7 @@
 // True minimum configuration -- enough to run hello world but no support for
 // traps, debug, or any non-mandatory ISA extensions.
 
-localparam RESET_VECTOR        = 32'h40;
+localparam RESET_VECTOR        = 32'h80000040;
 localparam MTVEC_INIT          = 32'h0;
 localparam EXTENSION_A         = 0;
 localparam EXTENSION_C         = 0;

@@ -1,7 +1,7 @@
 // Minimum performance and unprivileged ISA feature set, but enough privileged
 // ISA and debug support to run a more interesting test suite.
 
-localparam RESET_VECTOR        = 32'h40;
+localparam RESET_VECTOR        = 32'h80000040;
 localparam MTVEC_INIT          = 32'h0;
 localparam EXTENSION_A         = 0;
 localparam EXTENSION_C         = 0;

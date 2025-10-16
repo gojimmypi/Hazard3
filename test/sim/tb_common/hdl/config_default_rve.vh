@@ -1,6 +1,6 @@
 // All ISA features (but RVE)
 
-localparam RESET_VECTOR        = 32'h40;
+localparam RESET_VECTOR        = 32'h80000040;
 localparam MTVEC_INIT          = 32'h0;
 localparam EXTENSION_A         = 1;
 localparam EXTENSION_C         = 1;

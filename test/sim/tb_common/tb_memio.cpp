@@ -82,11 +82,11 @@ bus_response tb_mem_access(tb_top &tb, mem_io_state &memio, bus_request req) {
 			// Failed exclusive write; do nothing
 		} else if ((req.addr & -4u) == memio.poison_addr) {
 			resp.err = true;
-		} else if (req.addr <= MEM_SIZE - 4u) {
+		} else if (req.addr >= MEM_BASE && req.addr <= MEM_BASE + MEM_SIZE - (1u << (int)req.size)) {
 			unsigned int n_bytes = 1u << (int)req.size;
 			// Note we are relying on hazard3's byte lane replication
 			for (unsigned int i = 0; i < n_bytes; ++i) {
-				memio.mem[req.addr + i] = req.wdata >> (8 * i) & 0xffu;
+				memio.mem[req.addr + i - MEM_BASE] = req.wdata >> (8 * i) & 0xffu;
 			}
 		} else if (req.addr == IO_BASE + IO_PRINT_CHAR) {
 			fprintf(tb.logfile, "%c", (char)(req.wdata & 0xff));
@@ -131,8 +131,9 @@ bus_response tb_mem_access(tb_top &tb, mem_io_state &memio, bus_request req) {
 	} else {
 		if (req.addr == (memio.poison_addr & -4u)) {
 			resp.err = true;
-		} else if (req.addr <= MEM_SIZE - (1u << (int)req.size)) {
+		} else if (req.addr >= MEM_BASE && req.addr <= MEM_BASE + MEM_SIZE - (1u << (int)req.size)) {
 			req.addr &= ~0x3u;
+			req.addr -= MEM_BASE;
 			resp.rdata =
 				(uint32_t)memio.mem[req.addr] |
 				memio.mem[req.addr + 1] << 8 |

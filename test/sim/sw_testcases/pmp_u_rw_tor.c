@@ -11,13 +11,13 @@
 
 /*EXPECTED-OUTPUT***************************************************************
 Read with TOR
-Read address 00000000
+Read address 80000000
  -> 8
-Read address 00000004
+Read address 80000004
  -> 8
-Read address 00000008
+Read address 80000008
  -> 8
-Read address 0000000c
+Read address 8000000c
  -> 5
 *******************************************************************************/
 
@@ -113,9 +113,9 @@ int main() {
 	write_pmpcfg(2, 0);
 	write_pmpcfg(3, 0);
 
-	// Test the implicit 0 lower bound for region 0: grant read on the first 12 bytes
+	// Test the implicit 0 lower bound for region 0: grant read on the first 12 bytes of RAM
 	write_pmpcfg(0, PMPCFG_A_TOR << PMPCFG_A_LSB | PMPCFG_R_BITS);
-	write_pmpaddr(0, 0xc >> 2);
+	write_pmpaddr(0, 0x8000000c >> 2);
 
 	// Grant execute on just the function of interest
 	write_pmpaddr(2, (uintptr_t)do_lw >> 2);
@@ -124,7 +124,7 @@ int main() {
 
 	// First 3 succeed, last one faults
 	for (int i = 0; i < 4; ++i) {
-		uintptr_t addr = i << 2;
+		uintptr_t addr = 0x80000000 + (i << 2);
 		tb_printf("Read address %08x\n", addr);
 		write_csr(mcause, 0);
 		(void)call_umode((umode_func_2a_1r)&do_lw, addr, 0);

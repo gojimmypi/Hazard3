@@ -9,7 +9,7 @@
 // ----------------------------------------------------------------------------
 // Testbench IO hardware layout
 
-#define IO_BASE 0x80000000
+#define IO_BASE 0xc0000000
 
 typedef struct {
 	volatile uint32_t print_char;

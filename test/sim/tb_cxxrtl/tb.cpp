@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
 	for (auto r : args.dump_ranges) {
 		fprintf(tb.logfile, "Dumping memory from %08x to %08x:\n", r.first, r.second);
 		for (int i = 0; i < r.second - r.first; ++i)
-			fprintf(tb.logfile, "%02x%c", memio.mem[r.first + i], i % 16 == 15 ? '\n' : ' ');
+			fprintf(tb.logfile, "%02x%c", memio.mem[r.first + i - MEM_BASE], i % 16 == 15 ? '\n' : ' ');
 		fprintf(tb.logfile, "\n");
 	}
 
@@ -239,10 +239,10 @@ int main(int argc, char **argv) {
 				fprintf(
 					sigfile,
 					"%02x%02x%02x%02x\n",
-					memio.mem[r.first + i + 3],
-					memio.mem[r.first + i + 2],
-					memio.mem[r.first + i + 1],
-					memio.mem[r.first + i + 0]
+					memio.mem[r.first + i + 3 - MEM_BASE],
+					memio.mem[r.first + i + 2 - MEM_BASE],
+					memio.mem[r.first + i + 1 - MEM_BASE],
+					memio.mem[r.first + i + 0 - MEM_BASE]
 				);
 			}
 		}
