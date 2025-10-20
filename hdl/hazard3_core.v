@@ -643,7 +643,7 @@ always @ (posedge clk or negedge rst_n) begin
 		x_amo_phase <= 3'h0;
 	end else if (|EXTENSION_A && d_memop_is_amo && (
 		bus_aph_ready_d || bus_dph_ready_d ||
-		m_trap_enter_vld || x_unaligned_addr ||
+		m_trap_enter_vld || x_unaligned_addr || x_loadstore_pmp_fail ||
 		x_amo_phase == 3'h4
 	)) begin
 		if (m_trap_enter_vld) begin
@@ -657,7 +657,7 @@ always @ (posedge clk or negedge rst_n) begin
 			// Clear fault phase once it goes through to stage 3 and excepts
 			if (!x_stall)
 				x_amo_phase <= 3'h0;
-		end else if (x_unaligned_addr) begin
+		end else if (x_unaligned_addr || x_loadstore_pmp_fail) begin
 			x_amo_phase <= 3'h4;
 		end else if (x_amo_phase == 3'h1 && !bus_dph_exokay_d) begin
 			// Load reserve fail indicates the memory region does not support
