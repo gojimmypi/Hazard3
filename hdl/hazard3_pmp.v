@@ -236,7 +236,6 @@ if (PMP_MATCH_TOR != 0) begin: have_tor
 	reg [PMP_REGIONS-1:0] d_match_tor_r;
 	reg [PMP_REGIONS-1:0] i_match_tor_r;
 	reg [W_ADDR-1:0]      watermark [0:PMP_REGIONS-1];
-	reg [W_ADDR:0]        d_sum [0:PMP_REGIONS-1];
 	reg [PMP_REGIONS-1:0] d_lt;
 	reg [PMP_REGIONS-1:0] i_lt;
 
@@ -250,13 +249,10 @@ if (PMP_MATCH_TOR != 0) begin: have_tor
 				pmpaddr[i][W_ADDR-3:0] & (~30'h0 << PMP_GRAIN),
 				2'b00
 			};
-			// Explicit 4-way sum to encourage carry-save
-			d_sum[i] =
-				 {1'b0, d_addr_addend_rs1} +
-				 {1'b0, d_addr_addend_imm} +
-				 {1'b0, d_addr_addend_lspair_offs & {32{|EXTENSION_ZILSD}}} +
-				-{1'b0, watermark[i]};
-			d_lt[i] = d_sum[i][W_ADDR];
+			// Bring terms in separately to try to encourage adder merging
+			d_lt[i] = (
+				d_addr_addend_rs1 + d_addr_addend_imm + d_addr_addend_lspair_offs
+			) < watermark[i];
 			i_lt[i] = i_addr < watermark[i];
 		end
 	end
