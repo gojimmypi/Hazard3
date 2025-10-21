@@ -118,6 +118,9 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 				end
 			end
 			if (cfg_addr == PMPADDR0 + i[11:0] && !pmpcfg_l[i]) begin
+				// This implements one bit too many when G > 0 and only
+				// PMP_MATCH_TOR is enabled, however that bit is ignored for
+				// both rdata and address matching, so should be trimmed.
 				if (PMP_GRAIN > 1) begin
 					pmpaddr[i] <= cfg_wdata[W_ADDR-3:0] | ~(~30'h0 << (PMP_GRAIN - 1));
 				end else begin
@@ -146,13 +149,12 @@ always @ (*) begin: cfg_read
 				pmpcfg_r[i]
 			};
 		end else if (cfg_addr == PMPADDR0 + i[11:0]) begin
-			// If G > 1, the G-1 LSBs of pmpaddr_i are read-only-zero when
-			// region is OFF (0) or TOR (1), and read-only-one when region is
-			// NAPOT (3) or NA4 (2).
-			if (PMP_GRAIN > 1 && !PMP_HARDWIRED[i]) begin
-				cfg_rdata[W_ADDR-3:0] = pmpaddr[i] & ~(
-					{30{!pmpcfg_a[i][1]}} & ~(~30'h0 << (PMP_GRAIN - 1))
-				);
+			if (PMP_GRAIN >= 2 && pmpcfg_a[i][1]) begin
+				// Bits G-2:0 read back as all-ones when A is NA4 or NAPOT.
+				cfg_rdata[W_ADDR-3:0] = pmpaddr[i] | ~({W_ADDR-2{1'b1}} << (PMP_GRAIN - 1));
+			end else if (PMP_GRAIN >= 1 && !pmpcfg_a[i][1]) begin
+				// Bits G-1:0 read back as all-zeroes when A is OFF or TOR.
+				cfg_rdata[W_ADDR-3:0] = pmpaddr[i] & ({W_ADDR-2{1'b1}} << PMP_GRAIN);
 			end else begin
 				cfg_rdata[W_ADDR-3:0] = pmpaddr[i];
 			end
