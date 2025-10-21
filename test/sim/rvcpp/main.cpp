@@ -24,8 +24,8 @@
 // - M-mode traps
 
 #define RAM_SIZE_DEFAULT (16u * (1u << 20))
-#define RAM_BASE         0u
-#define IO_BASE          0x80000000u
+#define RAM_BASE         0x80000000u
+#define IO_BASE          0xc0000000u
 #define TBIO_BASE        (IO_BASE + 0x0000)
 
 const char *help_str =
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 		else if (s == "--vcd") {
 			if (argc - i < 2)
 				exit_help("Option --vcd requires an argument\n");
-			// (We ignore this argument, it's supported for
+			// (We ignore this argument, it's supported for compatibility with CXXRTL tb)
 			i += 1;
 		}
 		else if (s == "--dump") {
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
 
 	TBMemIO io(trace_execution);
 	MemMap32 mem;
-	mem.add(0x80000000u, 0x1000, &io);
+	mem.add(TBIO_BASE, 0x1000, &io);
 
 	RVCore core(mem, RAM_BASE + 0x40, RAM_BASE, ram_size);
 
@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
 	}
 	catch (TBExitException e) {
 		printf("CPU requested halt. Exit code %d\n", e.exitcode);
-		printf("Ran for %ld cycles\n", cyc + 1);
+		printf("Ran for " I64_FMT " cycles\n", cyc + 1);
 		if (propagate_return_code)
 			rc = e.exitcode;
 	}
