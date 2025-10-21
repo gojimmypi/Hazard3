@@ -55,8 +55,6 @@ Geometric range    1.4254                    Geometric range    0.8233
 All benchmarks run successfully              All benchmarks run successfully
 ```
 
-(Hazard3 configuration: all ISA options enabled, FAST_MUL=1, FASTER_MUL=1, FAST_MULH=1, BRANCH_PREDICTOR=1, MULDIV_UNROLL=2, REDUCED_BYPASS=0)
-
-Also note I don't run the MD5 benchmark because it tries to do a hosted printf inside of the benchmarked section (which is a known issue with Embench).
+(Hazard3 configuration: all ISA options enabled, MUL_FAST=1, MUL_FASTER=1, MULH_FAST=1, BRANCH_PREDICTOR=1, MULDIV_UNROLL=2, REDUCED_BYPASS=0)
 
 I haven't yet compiled a full set of benchmark results for Hazard3, partly because it means coming up with a list of specimen configurations and then doing hardware characterisation on them. This is just a note in case you try to run Embench and wonder why the performance is through the floor.
