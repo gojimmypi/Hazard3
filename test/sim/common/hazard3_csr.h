@@ -16,6 +16,8 @@
 
 #define hazard3_csr_msleep     0xbf0 // M-mode sleep control register
 
+#define hazard3_csr_pmpcfgm0   0xbd0 // Non-locking M-mode enables for PMP regions
+
 #define _read_csr(csrname) ({ \
   uint32_t __csr_tmp_u32; \
   asm volatile ("csrr %0, " #csrname : "=r" (__csr_tmp_u32)); \
