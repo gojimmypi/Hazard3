@@ -147,10 +147,11 @@ always @ (*) begin: cfg_read
 			};
 		end else if (cfg_addr == PMPADDR0 + i[11:0]) begin
 			// If G > 1, the G-1 LSBs of pmpaddr_i are read-only-zero when
-			// region is OFF, and read-only-one when region is NAPOT.
+			// region is OFF (0) or TOR (1), and read-only-one when region is
+			// NAPOT (3) or NA4 (2).
 			if (PMP_GRAIN > 1 && !PMP_HARDWIRED[i]) begin
 				cfg_rdata[W_ADDR-3:0] = pmpaddr[i] & ~(
-					{30{pmpcfg_a[i] != PMP_A_OFF}} & ~(~30'h0 << (PMP_GRAIN - 1))
+					{30{!pmpcfg_a[i][1]}} & ~(~30'h0 << (PMP_GRAIN - 1))
 				);
 			end else begin
 				cfg_rdata[W_ADDR-3:0] = pmpaddr[i];
