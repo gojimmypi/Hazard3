@@ -40,12 +40,18 @@ tb_jtag_state::tb_jtag_state(const tb_cli_args &_args) {
 		}
 
 		int setsockopt_rc = setsockopt(
-			server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT,
+			server_fd, SOL_SOCKET, SO_REUSEADDR,
 			&sock_opt, sizeof(sock_opt)
 		);
+		if (!setsockopt_rc) {
+			setsockopt_rc = setsockopt(
+				server_fd, SOL_SOCKET, SO_REUSEPORT,
+				&sock_opt, sizeof(sock_opt)
+			);
+		}
 
 		if (setsockopt_rc) {
-			fprintf(stderr, "setsockopt failed\n");
+			fprintf(stderr, "setsockopt failed: %d\n", setsockopt_rc);
 			exit(-1);
 		}
 
