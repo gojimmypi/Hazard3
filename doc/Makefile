@@ -23,6 +23,6 @@ else
 	@echo "No spelling errors found"
 endif
 
-$(TOP).pdf: $(shell find -name "*.adoc" | grep -v rev.adoc)
+$(TOP).pdf: $(shell find -name "*.adoc" | grep -v rev.adoc) diagrams/* *.yml
 	@echo ":revdate: Updated: `date +%Y-%b-%d`" > rev.adoc
 	asciidoctor-pdf -a compress $(TOP).adoc

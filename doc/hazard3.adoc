@@ -2,11 +2,14 @@
 :toc:
 :toclevels: 3
 :doctype: book
+:pdf-theme: hazard3-theme.yml
+
+:title-logo-image: image:diagrams/hazard3_logo_riscv_colors.svg[]
 
 :times: ×
 
 include::rev.adoc[]
-= Hazard3
+= Design Guide and Manual
 
 include::sections/introduction.adoc[]
 
