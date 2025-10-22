@@ -146,6 +146,7 @@ On ASIC this should be connected to metal-programmable tie cells so that it can 
 
 |===
 
+[[port-descriptions-1port]]
 ==== Interfaces for 1-port AHB5 CPU
 
 This wrapper (`hazard3_cpu_1port`) adds a single standard AHB5 manager port. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
@@ -173,6 +174,7 @@ Bit `0` is `0` for instruction fetch and `1` for data access (load/store or SBA)
 | 32 | In  | `hrdata`     | Read data bus. The LSB of the bus is always aligned to a 4-byte boundary, so ensure you drive the correct byte lanes for narrow transfers.
 |===
 
+[[port-descriptions-2port]]
 ==== Interfaces for 2-port AHB5 CPU
 
 This wrapper (`hazard3_cpu_2port`) adds two standard AHB5 manager ports, with signals prefixed `i_` for instruction and `d_` for data. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
@@ -730,35 +732,3 @@ NOTE: The vectoring mode, in bits `1:0`, can be made fixed by clearing the LSB o
 In vectored mode, the vector table must be aligned to its size, rounded up to a power of two. If all four standard M-mode vectors (exception, `msip`, `mtip` and `meip`) are in use, this means 64-byte alignment.
 
 Default: All writable except for bit `1`.
-
-=== Bus Behaviour
-
-Hazard3 implements one or two AHB5 bus manager ports. <<port-descriptions>> describes their signal-level implementation. This section describes their behaviour at a higher level, and the requirements Hazard3 imposes on your bus subsystem.
-
-==== Bursts
-
-Hazard3 never generates bursts. HTRANS is always IDLE or NSEQ; HBURST is always SINGLE.
-
-==== Alignment
-
-All Hazard3 bus accesses are naturally aligned. That is, address modulo access size is always zero. Additionally, instruction fetch is always word-aligned and word-sized.
-
-The Zilsd instructions `ld` and `sd` notionally perform 64-bit accesses, but Hazard3 issues these as pairs of 32-bit accesses over its 32-bit AHB bus. The alignment of each access is still four bytes.
-
-==== Idempotency
-
-Hazard3 expects that all memory used for instruction fetch is read-idempotent. This limitation comes about because PMP execute permissions are checked at the point an instruction is _executed_, not the point it is fetched. This is a deliberate design decision that reduces the logic depth of fetch address generation logic. As a consequence it is possible to trigger reads from arbitrary addresses by jumping to them.
-
-This means you must not permit instruction fetch from IO regions if <<param-U_MODE>> is configured, because this would allow U-mode software to cause IO read side effects on privileged registers by (fatally) jumping to an IO address. This can be enforced in one of two ways:
-
-* For a 2-port processor, do not connect instruction fetch to IO regions. This is already desirable to improve routing and logic complexity.
-
-* For a 1-port processor, filter instruction fetch from IO regions by rejecting transfers if `!hprot[0]`.
-
-This limitation does not apply to load/store; Hazard3 checks load/store addresses for PMP read/write permissions before issuing the transfer to the bus. However, idempotency is still a concern for instructions which generate multiple bus accesses, namely:
-
-* Zcmp: `cm.push`, `cm.pop`, `cm.popret`, `cm.popretz`
-* Zilsd: `ld`, `sd`
-* Zclsd: `c.ld`, `c.ldsp`, `c.sd`, `c.sdsp`
-
-An interrupt occurring mid-instruction terminates its execution immediately. When returning from the interrupt, the instruction restarts from the beginning, as there is no provision in RISC-V for saving and restoring the execution progress. Therefore each individual read or write may execute multiple times before the instruction eventually completes uninterrupted. This can cause lost or duplicated data when accessing IO regions. For this reason these instructions should be avoided when accessing non-idempotent memory.

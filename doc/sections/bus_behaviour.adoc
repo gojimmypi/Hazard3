@@ -1,0 +1,69 @@
+
+== Bus Behaviour
+
+Hazard3 implements one or two AHB5 bus manager ports. <<port-descriptions-1port>> describes the signal-level implementation for a single-ported processor, and <<port-descriptions-2port>> for dual-ported. This section describes their behaviour at a higher level, and the requirements Hazard3 imposes on your bus subsystem.
+
+=== Single and Dual-port
+
+In a dual-ported processor, loads and stores issue to the D port and instruction fetch issues to the I port. In a single-ported processor, all accesses issue to the single available port.
+
+When the processor experiences internal contention, loads and stores take priority over instruction fetch. The rationale for this behaviour is that stalling a load or store will always increase the number of cycles required to execute a program, but stalling an instruction fetch has no cycle cost if the prefetch buffer is able to cover the gap.
+
+For single-ported implementations it's highly recommended to enable compressed instruction support (<<param-EXTENSION_C>> = `1`). This reduces contention between instruction fetch and load/store, increasing performance.
+
+=== Bursts
+
+Hazard3 never generates bursts. HTRANS is always IDLE or NSEQ; HBURST is always SINGLE.
+
+=== Alignment
+
+All Hazard3 bus accesses are naturally aligned. That is, address modulo access size is always zero; `HADDR % (1 << HSIZE) == 0` (if HTRANS is not IDLE). Additionally, instruction fetch is always word-aligned and word-sized.
+
+The Zilsd instructions `ld` and `sd` notionally perform 64-bit accesses, but Hazard3 issues these as pairs of 32-bit accesses over its 32-bit AHB bus. The alignment of each access is still four bytes.
+
+[[section-memory-ordering]]
+=== Memory Ordering
+
+Hazard3 is sequentially consistent for loads and stores when it is connected to a sequentially consistent memory subsystem. Equivalently, if a load/store A is before another load/store B in program order, then A issues before B on the core's AHB5 load/store interface. Architecturally this is a (stronger) subset of the RVTSO memory model.
+
+`fence` instructions have no effect on the core's internal state. When executing a fence, the core waits for all earlier memory accesses to complete before raising the `fence_d_vld` signal, then waits for `fence_rdy` before issuing more instructions. See <<interfaces-all-wrappers>> for more information about the core's external fence signals.
+
+If a core A executes a `fence` and core B also executes a `fence` at a later time, the memory subsystem must perform any necessary synchronisation to ensure A's load/store accesses issued before A's fence are observed by B's load/store accesses issued after B's fence. Hazard3 does not distinguish different types of data fences: all fences should be treated as `fence rwio, rwio`.
+
+Hazard3 does not order stores before instruction fetch except with an explicit `fence.i` instruction. This instruction waits for in-progress stores to complete, asserts `fence_i_vld`, waits for `fence_rdy`, and then flushes the prefetch buffer to ensure the next instruction data to be executed is fetched after the instruction fence was observed by the system. It is up to the system designer to ensure that the instruction fetch AHB5 port observes earlier writes from the load/store AHB5 port; this may require flushing of external caches.
+
+In system implementations which lack core-local caches it is usually sufficient to ignore the `fence_i_vld` and `fence_d_vld` signals, and tie `fence_rdy` high.
+
+=== Cacheable and Bufferable Attributes
+
+Hazard3 marks all transfers as non-cacheable and non-bufferable using `hprot[3:2]`. These signals are tied off to constants and are not controllable by software.
+
+All loads are issued to the external bus, even if they alias with a prior store; there is no store-to-load forwarding. All stores are issued to the external bus, even if they alias with a later store; there is no dead store elimination or write merging. Stores are issued immediately to the bus without buffering inside the core.
+
+It is possible to use Hazard3 in systems with caches, but an alternative mechanism must be implemented to control cacheability of accesses. For example, implement multiple mirrors of the cached memory with attributes decoded from the address.
+
+=== Idempotency
+
+Hazard3 expects that all memory used for instruction fetch is read-idempotent. This limitation comes about because PMP execute permissions are checked at the point an instruction is _executed_, not the point it is fetched. This is a deliberate design decision that reduces the logic depth of fetch address generation logic. As a consequence it is possible to trigger reads from arbitrary addresses by jumping to them (though the data returned by that read is discarded if it lacks execute permissions).
+
+You must not permit instruction fetch from IO regions if <<param-U_MODE>> is configured, because this would allow U-mode software to cause IO read side effects on privileged registers by (fatally) jumping to an IO address. This can be enforced in one of two ways:
+
+* For a 2-port processor, do not connect instruction fetch to IO regions. This is already desirable to improve routing and logic complexity.
+
+* For a 1-port processor, filter instruction fetch from IO regions by rejecting transfers if `!hprot[0]`.
+
+This limitation does not apply to load/store; Hazard3 checks load/store addresses for PMP read/write permissions before issuing the transfer to the bus. However, idempotency is still a concern for instructions which generate multiple bus accesses, namely:
+
+* Zcmp: `cm.push`, `cm.pop`, `cm.popret`, `cm.popretz`
+* Zilsd: `ld`, `sd`
+* Zclsd: `c.ld`, `c.ldsp`, `c.sd`, `c.sdsp`
+
+An interrupt occurring mid-instruction terminates its execution immediately. When returning from the interrupt, the instruction restarts from the beginning, as there is no provision in RISC-V for saving and restoring the execution progress. Therefore each individual read or write may execute multiple times before the instruction eventually completes uninterrupted. This can cause lost or duplicated data when accessing IO regions. For this reason these instructions should be avoided when accessing non-idempotent memory.
+
+=== 64-bit Accesses
+
+Hazard3 implements the Zilsd and Zclsd extensions, which perform 64-bit loads and stores to and from pairs of registers. The register pair is always an even register plus the consecutively next higher-numbered register.
+
+64-bit loads and stores are implemented as pairs of 32-bit AHB5 transfers. Since these accesses only require 4-byte alignment, the load/store address can also be 4-byte-aligned, even though it is notionally an 8-byte transfer.
+
+The RISC-V specification does not guarantee the order in which these two writes are issued, and Hazard3 takes advantage of this to simplify fault handling. When the base address register `rs1` is an even-numbered register, the odd-numbered register in the `rd` or `rs2` pair is transferred first. Conversely, when `rs1` is an odd-numbered register, the even register in the pair is transferred first. This ensures that a fault occurring on the second half of an `ld` instruction does not modify `rs1`. It also means that a consecutively-addressed sequence of 64-bit load/stores is not necessarily consecutively addressed on the AHB5 port. When using `ld` and `sd` instructions for IO, ensure that the peripheral is not sensitive to the order of transfers.

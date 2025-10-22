@@ -12,6 +12,8 @@ include::sections/introduction.adoc[]
 
 include::sections/configuration_and_integration.adoc[]
 
+include::sections/bus_behaviour.adoc[]
+
 include::sections/csr.adoc[]
 
 include::sections/custom_extensions.adoc[]
