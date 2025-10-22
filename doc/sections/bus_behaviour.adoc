@@ -3,6 +3,10 @@
 
 Hazard3 implements one or two AHB5 bus manager ports. <<port-descriptions-1port>> describes the signal-level implementation for a single-ported processor, and <<port-descriptions-2port>> for dual-ported. This section describes their behaviour at a higher level, and the requirements Hazard3 imposes on your bus subsystem.
 
+=== Protocol
+
+Hazard3 implements the AHB5 protocol, as described in the https://documentation-service.arm.com/static/5f91607cf86e16515cdc3b4b[AMBA 5 AHB protocol specification].
+
 === Single and Dual-port
 
 In a dual-ported processor, loads and stores issue to the D port and instruction fetch issues to the I port. In a single-ported processor, all accesses issue to the single available port.
@@ -26,7 +30,7 @@ The Zilsd instructions `ld` and `sd` notionally perform 64-bit accesses, but Haz
 
 Hazard3 is sequentially consistent for loads and stores when it is connected to a sequentially consistent memory subsystem. Equivalently, if a load/store A is before another load/store B in program order, then A issues before B on the core's AHB5 load/store interface. Architecturally this is a (stronger) subset of the RVTSO memory model.
 
-`fence` instructions have no effect on the core's internal state. When executing a fence, the core waits for all earlier memory accesses to complete before raising the `fence_d_vld` signal, then waits for `fence_rdy` before issuing more instructions. See <<interfaces-all-wrappers>> for more information about the core's external fence signals.
+`fence` instructions have no effect on the core's internal state. When executing a fence, the core waits for all earlier memory accesses to complete before raising the `fence_d_vld` signal, then waits for `fence_rdy` before issuing more instructions. See <<memory-ordering-signals>> for more information about the core's external fence signals.
 
 If a core A executes a `fence` and core B also executes a `fence` at a later time, the memory subsystem must perform any necessary synchronisation to ensure A's load/store accesses issued before A's fence are observed by B's load/store accesses issued after B's fence. Hazard3 does not distinguish different types of data fences: all fences should be treated as `fence rwio, rwio`.
 

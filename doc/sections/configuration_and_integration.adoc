@@ -71,28 +71,43 @@ Most ports are common to the two top-level wrappers, `hazard3_cpu_1port` and `ha
 
 NOTE: Hazard3 adopts the convention that all signals are active-high, with the exception of the reset input `rst_n`.
 
-[[interfaces-all-wrappers]]
-==== Interfaces Common to All Wrappers
+[[interfaces-clock-and-reset]]
+==== Clock and Reset Inputs
 
 [options="header",cols="1,1,3,4"]
 |===
 | Width | In/Out | Name | Description
-4+| **Clock and Reset Inputs**
-| 1          | In  | `clk`                        | Clock for all processor logic not driven by `clk_always_on`. Must be the same as the AHB5 bus clock. If the Xh3power extension is configured, you should instantiate an external clock gate on this clock, controlled by the `clk_en` output.
+| 1          | In  | `clk`                        | Clock for all processor logic not driven by `clk_always_on`. Must be the same as the AHB5 bus clock (`HCLK`). If the Xh3power extension is configured, you should instantiate an external clock gate on this clock, controlled by the `clk_en` output.
 | 1          | In  | `clk_always_on`              | Clock for logic required to wake from a low-power state. Connect to the same clock as `clk`, but do not insert an external clock gate.
 | 1          | In  | `rst_n`                      | Active-low asynchronous reset for all processor logic. There is no internal synchroniser, so you must arrange externally for reset assertion/removal times to be met. For example, add an external reset synchroniser.
 
 When <<param-RESET_REGFILE>> is one, this input also resets the register file. You should avoid resetting the register file on FPGA, as this can prevent the register file being implemented with block RAM or LUT RAM primitives.
-4+| **Power control signals**
-4+| These signals are used in the implementation of internal sleep states as configured by the <<reg-h3.msleep>> csr. They are used only when the Xh3power extension is enabled.
+|===
+
+==== Power Control Signals
+
+These signals are used in the implementation of internal sleep states as configured by the <<reg-h3.msleep>> csr. They are used only when the Xh3power extension is enabled.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 1          | Out | `pwrup_req`                  | Power-up request. Disconnect if Xh3power is not configured. Part of a four-phase (Gray code) req/ack handshake for negotiating power or clocks with your system power controller. The processor releases `pwrup_req` on entering a sufficiently deep `wfi` or `h3.block` state, as configured by the `h3.msleep` CSR. It then waits for deassertion of `pwrup_ack` before taking further action.
 
 The processor asserts `pwrup_req` when it intends to wake from its low-power state. It then waits for `pwrup_ack` before fetching the first instruction from the bus.
 | 1          | In  | `pwrup_ack`                  | Power-up acknowledged. Tie back to `pwrup_req` if Xh3power is not configured, or if there is no external system power controller. The processor does not access the bus when either `pwrup_req` or `pwrup_ack` is low.
 | 1          | Out | `clk_en`                     | Control output for an external top-level clock gate on `clk`. Active-high enable. Hazard3 tolerates up to one cycle of delay between the assertion of `clk_en` and the resulting clock pulse on `clk`.
 | 1          | Out | `unblock_out`                | Pulses high when an `h3.unblock` instruction executes. Disconnect if Xh3power is not configured.
-| 1          | In  | `unblock_in`                 | A high input pulse will release a blocked `h3.block` instruction, or cause the next `h3.block` instruction to immediately fall through.
-4+| [[memory-ordering-signals]] **Memory Ordering Signals**
+| 1          | In  | `unblock_in`                 | A high input pulse will release a blocked `h3.block` instruction, or cause the next `h3.block` instruction to immediately fall through. Tie low if Xh3power is not configured.
+|===
+
+[[memory-ordering-signals]]
+==== Memory Ordering Signals
+
+Also see <<section-memory-ordering>> for more information on Hazard3's memory model.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 1          | Out | `fence_i_vld`                | Indicates the core is executing a `fence.i` instruction. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_d_vld`.
 
 The core waits for all in-progress bus accesses (load/store and instruction fetch) to complete before asserting this signal, and does not issue further instruction fetches for as long as this signal is asserted.
@@ -105,8 +120,15 @@ The core waits for any in-progress load/store bus accesses to complete before as
 | 1          | In  | `fence_rdy`                  | Signal to the core that the memory subsystem has finished processing the fence requested by `fence_i_vld` or `fence_d_vld`.
 
 If no special handling of fences is required, tie this signal high.
-4+| **Debug Module Controls**
-4+| All Debug Module signals should be connected to the signal with the matching name on the Hazard3 Debug Module implementation.
+|===
+
+==== Debug Module Controls
+
+All Debug Module signals should be connected to the signal with the matching name on the Hazard3 Debug Module implementation (https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dm/hazard3_dm.v[hazard3_dm]).
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 1          | In  | `dbg_req_halt`               | Debugger halt request. Tie low if debug support is not configured.
 | 1          | In  | `dbg_req_halt_on_reset`      | Debugger halt-on-reset request. Tie low if debug support is not configured.
 | 1          | In  | `dbg_req_resume`             | Debugger resume request. Tie low if debug support is not configured.
@@ -120,8 +142,15 @@ If no special handling of fences is required, tie this signal high.
 | 1          | Out | `dbg_instr_data_rdy`         | Instruction injection interface. Disconnect if debug support is not configured.
 | 1          | Out | `dbg_instr_caught_exception` | Exception caught during Program Buffer execution. Disconnect if debug support is not configured.
 | 1          | Out | `dbg_instr_caught_ebreak`    | Breakpoint instruction caught during Program Buffer execution. Disconnect if debug support is not configured.
-4+| **Shared System Bus Access**
-4+| This subordinate bus port allows the standard System Bus Access (SBA) feature of the Debug Module to share bus access with the core. Alternatively, use the standalone `hazard3_sbus_to_ahb` adapter to provide dedicated SBA access to the system bus.
+|===
+
+==== Shared System Bus Access
+
+This subordinate bus port allows the standard System Bus Access (SBA) feature of the Debug Module to share bus access with the core. Alternatively, use the standalone https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dm/hazard3_sbus_to_ahb.v[hazard3_sbus_to_ahb] adapter to provide dedicated SBA access from the Debug Module to the system bus.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 32         | In  | `dbg_sbus_addr`              | Address for SBA arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
 | 1          | In  | `dbg_sbus_write`             | Write/not-Read flag for SBA arbitrated with this core's load/store access. Tie low if this feature is not used.
 | 2          | In  | `dbg_sbus_size`              | Transfer size (`0`/`1`/`2` = byte/halfword/word) for SBA arbitrated with this core's load/store access. Tie low if this feature is not used.
@@ -130,13 +159,27 @@ If no special handling of fences is required, tie this signal high.
 | 1          | Out | `dbg_sbus_err`               | Bus fault signal for SBA arbitrated with this core's load/store access. Disconnect if this feature is not used.
 | 32         | In  | `dbg_sbus_wdata`             | Write data bus for SBA arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
 | 32         | Out | `dbg_sbus_rdata`             | Read data bus for SBA arbitrated with this core's load/store access. Disconnect if this feature is not used.
-4+| **Interrupt Requests**
+|===
+
+==== Interrupt Requests
+
+All interrupts are level-sensitive and synchronous to `clk`.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | `NUM_IRQS` | In  | `irq`                        | If Xh3irq is not configured, this is the RISC-V external interrupt line (`mip.meip`) which you should connect to an external interrupt controller such as a standard RISC-V PLIC.
 
 If Xh3irq is configured, this is a vector of level-sensitive active-high system interrupt requests, which the core's internal interrupt controller can route through the `mip.meip` vector. Tie low if unused.
 | 1          | In  | `soft_irq`                   | This is the standard RISC-V software interrupt signal, `mip.msip`. It should be connected to a register accessible to M-mode software on your system bus. Tie low if unused.
 | 1          | In  | `timer_irq`                  | This is the standard RISC-V timer interrupt signal, `mip.mtip`. It should be connected to a standard RISC-V platform timer peripheral (`mtime`/`mtimecmp`) accessible to M-mode software on your system bus. Tie low if unused.
-4+| **Identification Signals**
+|===
+
+==== Identification Signals
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 32         | In  | `mhartid_val`                | Set the value of the <<reg-mhartid>> CSR, which software uses to determine on which hart it is running. Hazard3 implements one hart per core, so this is effectively a per-core identification value.
 
 At least one hart must have the value of all-zeroes.
@@ -147,7 +190,7 @@ On ASIC this should be connected to metal-programmable tie cells so that it can 
 |===
 
 [[port-descriptions-1port]]
-==== Interfaces for 1-port AHB5 CPU
+==== AHB5 Signals for 1-port CPU
 
 This wrapper (`hazard3_cpu_1port`) adds a single standard AHB5 manager port. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
 
@@ -175,7 +218,7 @@ Bit `0` is `0` for instruction fetch and `1` for data access (load/store or SBA)
 |===
 
 [[port-descriptions-2port]]
-==== Interfaces for 2-port AHB5 CPU
+==== AHB5 Signals for 2-port CPU
 
 This wrapper (`hazard3_cpu_2port`) adds two standard AHB5 manager ports, with signals prefixed `i_` for instruction and `d_` for data. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
 
@@ -229,12 +272,14 @@ Bit `0` is tied to `1` to indicate data access (load/store or SBA).
 
 ==== Reset state configuration
 
+[[param-RESET_VECTOR]]
 ===== RESET_VECTOR
 
 Address of the first instruction executed after Hazard3 comes out of reset.
 
 Default value: all-zeroes.
 
+[[param-MTVEC_INIT]]
 ===== MTVEC_INIT
 
 Initial value of the machine trap vector base CSR (<<reg-mtvec>>).
