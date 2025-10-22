@@ -1,6 +1,6 @@
 set -e
 
-make -C ../tb_cxxrtl/ tb
+make -C ../tb_verilator/ tb
 cd riscv-tests/debug
 
 # Clean up old logs and test binaries
@@ -66,7 +66,7 @@ TESTS="${TESTS} WriteGprs"
 
 # Run all tests with SBA enabled
 ./gdbserver.py \
-	--sim_cmd "../../../tb_cxxrtl/tb --port 9824" \
+	--sim_cmd "../../../tb_verilator/tb --port 9824" \
 	--server_cmd "riscv-openocd" \
 	--gdb riscv32-unknown-elf-gdb \
 	--gcc riscv32-unknown-elf-gcc \
@@ -75,7 +75,7 @@ TESTS="${TESTS} WriteGprs"
 
 # Re-run without SBA -- covers some additional Debug Module logic like abstractauto
 ./gdbserver.py \
-	--sim_cmd "../../../tb_cxxrtl/tb --port 9824" \
+	--sim_cmd "../../../tb_verilator/tb --port 9824" \
 	--server_cmd "riscv-openocd" \
 	--gdb riscv32-unknown-elf-gdb \
 	--gcc riscv32-unknown-elf-gcc \
