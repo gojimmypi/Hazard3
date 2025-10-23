@@ -221,10 +221,12 @@ Bit `1` (privileged) is `0` for U-mode access, and `1` for M-mode and Debug-mode
 
 Bit `0` is `0` for instruction fetch and `1` for data access (load/store or SBA).
 | 1  | Out | `hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
-| 8  | Out | `hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access. (Non-SBA Debug mode load/store access can be detected by checking the `dbg_halted` status.)
+| 8  | Out | `hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access.
+
+Non-SBA Debug-mode load/store access can be detected by checking the `dbg_halted` status.
 | 1  | Out | `hexcl`      | Asserts high to indicate the current transfer is an Exclusive read/write as part of a read-modify-write sequence. This can be disconnected if you have not configured the A extension, or if you do not require global exclusive monitoring (for example in a single-core deployment).
 | 1  | In  | `hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 1  | In  | `hexokay`    | Exclusive transfer success. Hazard3 always queries the global monitor, so tie this input *high* if you do not implement global exclusive monitoring (for example in a single-core deployment). Similarly, ensure your global monitor returns a successful status for non-shared memory regions such as tightly-coupled memories.
 | 32 | Out | `hwdata`     | Write data bus. The LSB of the bus is always aligned to a 4-byte boundary. Hazard3 drives the correct byte lanes depending on the transfer size and bits `1:0` of the address. Remaining byte lanes have undefined contents.
 | 32 | In  | `hrdata`     | Read data bus. The LSB of the bus is always aligned to a 4-byte boundary, so ensure you drive the correct byte lanes for narrow transfers.
@@ -256,7 +258,7 @@ Bit `0` is tied to `0` to indicate instruction fetch.
 | 1  | Out | `i_hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
 | 8  | Out | `i_hmaster`    | 8-bit manager ID. Tied to `0x00`.
 | 1  | In  | `i_hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `i_hresp`      | Bus error signal. You *must* generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `i_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 32 | Out | `i_hwdata`     | Write data bus. Tied to all-zeroes as this port is read-only.
 | 32 | In  | `i_hrdata`     | Read data bus. Valid on cycles where `i_hready` is high during non-`IDLE` data phases.
 4+| **Port D (Data)**
@@ -271,10 +273,12 @@ Bit `1` (privileged) is `0` for U-mode access, and `1` for M-mode access.
 
 Bit `0` is tied to `1` to indicate data access (load/store or SBA).
 | 1  | Out | `d_hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
-| 8  | Out | `d_hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access. (Non-SBA Debug mode load/store access can be detected by checking the `dbg_halted` status.)
+| 8  | Out | `d_hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug-mode access via the Program Buffer), and `0x01` indicates an SBA access.
+
+Non-SBA Debug-mode load/store access can be detected by checking the `dbg_halted` status.
 | 1  | Out | `d_hexcl`      | Asserts high to indicate the current transfer is an Exclusive read/write as part of a read-modify-write sequence. This can be disconnected if you have not configured the A extension, or if you do not require global exclusive monitoring (for example in a single-core deployment).
 | 1  | In  | `d_hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `d_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `d_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 1  | In  | `d_hexokay`    | Exclusive transfer success. Hazard3 always queries the global monitor, so tie this input _high_ if you do not implement global exclusive monitoring (for example in a single-core deployment). Similarly, ensure your global monitor returns a successful status for non-shared memory regions such as tightly-coupled memories.
 | 32 | Out | `d_hwdata`     | Write data bus. The LSB of the bus is always aligned to a 4-byte boundary. Hazard3 drives the correct byte lanes depending on the transfer size and bits `1:0` of the address. Remaining byte lanes have undefined contents.
 | 32 | In  | `d_hrdata`     | Read data bus. The LSB of the bus is always aligned to a 4-byte boundary, so ensure you drive the correct byte lanes for narrow transfers.
@@ -316,6 +320,10 @@ Default value: `1`
 
 Support for the C extension: compressed (variable-width). `0` for disable, `1` for enable.
 
+C is equivalent here to the Zca extension, because Hazard3 does not implement F or D.
+
+Hazard3 supports some other extensions which use 16-bit instructions: Zcmp (<<param-EXTENSION_ZCMP>>), Zcb (<<param-EXTENSION_ZCB>>) and Zclsd (<<param-EXTENSION_ZCLSD>>). You must set <<param-EXTENSION_C>> to enable basic compressed instruction support before enabling any of these other extensions.
+
 Default value: `1`
 
 [[param-EXTENSION_E]]
@@ -329,6 +337,8 @@ Default value: `0`
 ===== EXTENSION_M
 
 Support for the M extension: hardware multiply/divide/modulo. `0` for disable, `1` for enable.
+
+The exact circuit used to implement these instructions, and the resulting area and performance, depends on the following parameters: <<param-MULDIV_UNROLL>>, <<param-MUL_FAST>>, <<param-MUL_FASTER>>, and <<param-MULH_FAST>>.
 
 Default value: `1`
 
@@ -487,7 +497,7 @@ Default value: `1`
 
 Include M-mode trap-handling CSRs, and enable trap support.
 
-Setting this flag to zero makes the core incapable of handling exceptions and interrupts. Instructions which would raise exceptions, such as illegal opcodes or unaligned load/store addresses, instead execute as NOPs.
+Setting this parameter to `0` makes the core incapable of handling exceptions and interrupts. Instructions which would raise exceptions, such as illegal opcodes or unaligned load/store addresses, instead execute as NOPs.
 
 Default value: `1`
 
@@ -516,6 +526,8 @@ Default value: `0`
 Number of physical memory protection regions, or 0 for no PMP. PMP is more
 useful if U-mode is supported, but this is not a requirement.
 
+Hazard3 implements all PMP registers `pmpaddr0` through `pmpaddr15` and `pmpcfg0` through `pmpcfg3` if <<param-PMP_REGIONS>> is greater than zero. They are implemented in the sense that software can read and write them without trapping. However, configuration bits for regions <<param-PMP_REGIONS>> through 15 are hardwired to zero.
+
 Requires: <<param-CSR_M_TRAP>> = `1`.
 
 Default value: `0`
@@ -524,13 +536,12 @@ Default value: `0`
 ===== PMP_GRAIN
 
 This is the _G_ parameter in the privileged spec, which defines the
-granularity of PMP regions. Minimum PMP region size is 1 << (_G_ + 2) bytes. 
+granularity of PMP regions. Minimum PMP region size is 1 << (_G_ + 2) bytes. For example, _G_ = `3` means 32-byte protection granularity.
 
-If _G_ > 0, `pmcfg.a` can not be set to NA4 (attempting to do so will set the
-region to OFF instead).
+If _G_ > 0, `pmcfg.a` cannot be set to NA4; attempting to do so will set the region to OFF instead. The _G_ LSBs of each `pmpaddr` register read back as all-zeroes when `pmpcfg.a` is set to TOR or OFF.
 
-If _G_ > 1, the _G_ - 1 LSBs of pmpaddr are read-only-0 when `pmpcfg.a` is
-OFF, and read-only-1 when `pmpcfg.a` is NAPOT.
+If _G_ > 1, the _G_ - 1 LSBs of pmpaddr are read-only-1 when `pmpcfg.a` is
+NAPOT.
 
 Increasing <<param-PMP_GRAIN>> from its default value reduces the area and
 delay cost associated with the PMP unit.
@@ -722,8 +733,9 @@ Default value: `1`
 [[param-MUL_FAST]]
 ===== MUL_FAST
 
-Use a single-cycle multiply circuit for MUL instructions, retiring to stage 3.
-The sequential multiply/divide circuit is still used for MULH*
+Use a single-cycle multiply circuit for `MUL` instructions, retiring to stage 3 by default (one throughput cycle, two latency cycles).
+
+The sequential multiply/divide circuit is still used for `mulh`, `mulhu` and `mulhsu`.
 
 Default value: `0`
 
@@ -740,8 +752,7 @@ Default value: `0`
 [[param-MULH_FAST]]
 ===== MULH_FAST
 
-Extend the fast multiply circuit to also cover MULH*, and remove
-the multiply functionality from the sequential multiply/divide circuit.
+Extend the fast multiply circuit to also cover `mulh`, `mulhu` and `mulhsu`. Removethe multiply functionality from the sequential multiply/divide circuit.
 
 Requires: <<param-MUL_FAST>> = `1`.
 
@@ -750,28 +761,29 @@ Default value: `0`
 [[param-FAST_BRANCHCMP]]
 ===== FAST_BRANCHCMP
 
-Instantiate a separate comparator (eq/lt/ltu) for branch comparisons, rather
-than using the ALU. Improves fetch address delay, especially if `Zba`
-extension is enabled. Disabling may save area.
+Instantiate a separate comparator (equal, less-than-signed, less-than-unsigned) for branch comparisons, rather
+than using the ALU. Enabling the separate comparator improves the address-phase timing for instruction fetch, especially if the `Zba`
+extension is enabled (<<param-EXTENSION_ZBA>>). Disabling may save area.
 
 Default value: `1`
 
 [[param-RESET_REGFILE]]
 ===== RESET_REGFILE
 
-Whether to support reset of the general purpose registers. There are around 1k
-bits in the register file, so the reset can be disabled e.g. to permit
-block-RAM inference on FPGA.
+If `1`, the `rst_n` input resets all general purpose registers to all-zeroes. If `0`, it does not. There are around 1k
+bits in the register file, so the reset can be disabled to permit
+block RAM and LUT RAM inference on FPGA, or to reduce flop area on ASIC.
+
+Outside of the register file, all other flops in Hazard3 are always reset by the `rst_n` input, no matter the value of this parameter.
 
 Default value: `1`
 
 [[param-BRANCH_PREDICTOR]]
 ===== BRANCH_PREDICTOR
 
-Enable branch prediction. The branch predictor consists of a single BTB entry
-which is allocated on a taken backward branch, and cleared on a mispredicted
-nontaken branch, a `fence.i` or a trap. Successful prediction eliminates the
-1-cyle fetch bubble on a taken branch, usually making tight loops faster.
+Enable branch prediction. The branch predictor consists of a single BTB entry which is allocated on a taken backward branch, and cleared on a mispredicted non-taken branch, a `fence.i` or a trap.
+
+Successful prediction eliminates the 1-cyle fetch bubble on a taken branch, so tight loops execute faster. See <<instruction-timings-branch-predictor>> for more information on this feature.
 
 Requires: <<param-EXTENSION_ZIFENCEI>> = `1`.
 
@@ -785,7 +797,7 @@ recommended, because a common idiom in setup code is to set mtvec just
 past code that may trap, as a hardware `try {...} catch` block.
 
 
-NOTE: The vectoring mode, in bits `1:0`, can be made fixed by clearing the LSB of `MTVEC_WMASK`.
+The vectoring mode, in bits `1:0`, can be made fixed by clearing the LSB of `MTVEC_WMASK`.
 
 In vectored mode, the vector table must be aligned to its size, rounded up to a power of two. If all four standard M-mode vectors (exception, `msip`, `mtip` and `meip`) are in use, this means 64-byte alignment.
 

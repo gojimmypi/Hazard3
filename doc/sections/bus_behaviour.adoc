@@ -17,22 +17,26 @@ For single-ported implementations it's highly recommended to enable compressed i
 
 === Bursts
 
-Hazard3 never generates bursts. HTRANS is always IDLE or NSEQ; HBURST is always SINGLE.
+Hazard3 never generates bursts. `HTRANS` is always `IDLE` or `NSEQ`; `HBURST` is always `SINGLE`.
 
 === Alignment
 
-All Hazard3 bus accesses are naturally aligned. That is, address modulo access size is always zero; `HADDR % (1 << HSIZE) == 0` (if HTRANS is not IDLE). Additionally, instruction fetch is always word-aligned and word-sized.
+All Hazard3 bus accesses are naturally aligned. That is, address modulo access size is always zero; `HADDR % (1 << HSIZE) == 0` (if `HTRANS` is not `IDLE`). Additionally, instruction fetch is always word-aligned and word-sized.
 
 The Zilsd instructions `ld` and `sd` notionally perform 64-bit accesses, but Hazard3 issues these as pairs of 32-bit accesses over its 32-bit AHB bus. The alignment of each access is still four bytes.
 
 [[section-memory-ordering]]
-=== Memory Ordering
+=== Memory Ordering for Loads and Stores
 
 Hazard3 is sequentially consistent for loads and stores when it is connected to a sequentially consistent memory subsystem. Equivalently, if a load/store A is before another load/store B in program order, then A issues before B on the core's AHB5 load/store interface. Architecturally this is a (stronger) subset of the RVTSO memory model.
 
-`fence` instructions have no effect on the core's internal state. When executing a fence, the core waits for all earlier memory accesses to complete before raising the `fence_d_vld` signal, then waits for `fence_rdy` before issuing more instructions. See <<memory-ordering-signals>> for more information about the core's external fence signals.
+When executing a `fence` instruction, the core waits for all earlier loads and stores to complete before raising the `fence_d_vld` signal, then waits for `fence_rdy` before issuing more loads or stores. This has no effect on the order the core issues loads and stores to the bus, as they already unconditionally issue in program order. See <<memory-ordering-signals>> for more information about the core's external fence signals.
 
 If a core A executes a `fence` and core B also executes a `fence` at a later time, the memory subsystem must perform any necessary synchronisation to ensure A's load/store accesses issued before A's fence are observed by B's load/store accesses issued after B's fence. Hazard3 does not distinguish different types of data fences: all fences should be treated as `fence rwio, rwio`.
+
+The core is guaranteed not to issue any load or store accesses while `fence_d_vld` is asserted. For a two-ported implementation this is a good opportunity for system hardware to manipulate any logic such as cache controllers attached to the core's load/store port. No such guarantee is made for instruction fetch, so in a single-ported implementation you cannot assume based on `fence_d_vld` that the AHB5 port is idle.
+
+=== Memory Ordering for Instruction Fetch
 
 Hazard3 does not order stores before instruction fetch except with an explicit `fence.i` instruction. This instruction waits for in-progress stores to complete, asserts `fence_i_vld`, waits for `fence_rdy`, and then flushes the prefetch buffer to ensure the next instruction data to be executed is fetched after the instruction fence was observed by the system. It is up to the system designer to ensure that the instruction fetch AHB5 port observes earlier writes from the load/store AHB5 port; this may require flushing of external caches.
 
@@ -40,7 +44,7 @@ In system implementations which lack core-local caches it is usually sufficient 
 
 === Cacheable and Bufferable Attributes
 
-Hazard3 marks all transfers as non-cacheable and non-bufferable using `hprot[3:2]`. These signals are tied off to constants and are not controllable by software.
+Hazard3 marks all transfers as non-cacheable and non-bufferable using `HPROT[3:2]`. These signals are tied off to constants and are not controllable by software.
 
 All loads are issued to the external bus, even if they alias with a prior store; there is no store-to-load forwarding. All stores are issued to the external bus, even if they alias with a later store; there is no dead store elimination or write merging. Stores are issued immediately to the bus without buffering inside the core.
 
@@ -54,7 +58,7 @@ You must not permit instruction fetch from IO regions if <<param-U_MODE>> is con
 
 * For a 2-port processor, do not connect instruction fetch to IO regions. This is already desirable to improve routing and logic complexity.
 
-* For a 1-port processor, filter instruction fetch from IO regions by rejecting transfers if `!hprot[0]`.
+* For a 1-port processor, filter instruction fetch from IO regions by rejecting transfers if `HPROT[0]` is `0`.
 
 This limitation does not apply to load/store; Hazard3 checks load/store addresses for PMP read/write permissions before issuing the transfer to the bus. However, idempotency is still a concern for instructions which generate multiple bus accesses, namely:
 

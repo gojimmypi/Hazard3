@@ -207,6 +207,7 @@ These 16-bit instructions behave identically to their 32-bit counterparts, namel
 |`cm.mvsa01 r1s', r2s'` | 2 |
 |===
 
+[[instruction-timings-branch-predictor]]
 === Branch Predictor
 
 Hazard3 includes a minimal branch predictor, to accelerate tight loops:
