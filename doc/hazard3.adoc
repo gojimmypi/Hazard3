@@ -5,8 +5,6 @@
 :pdf-fontsdir: fonts
 :pdf-theme: hazard3-theme.yml
 
-:title-logo-image: image:diagrams/hazard3_logo_riscv_colors.svg[]
-
 :times: ×
 
 include::rev.adoc[]

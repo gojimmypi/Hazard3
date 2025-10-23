@@ -1,7 +1,7 @@
 Building
 --------
 
-== Ubuntu
+## Ubuntu
 
 ```bash
 # Get tools
@@ -11,7 +11,7 @@ make
 ```
 
 
-== MacOS
+## MacOS
 
 ```bash
 brew install asciidoctor codespell

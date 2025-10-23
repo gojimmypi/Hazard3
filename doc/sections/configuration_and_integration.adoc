@@ -390,7 +390,7 @@ Support for Zbs single-bit manipulation instructions. `0` for disable, `1` for e
 Default value: `0`
 
 [[param-EXTENSION_ZCB]]
-===== EXTENSION_ZCB:
+===== EXTENSION_ZCB
 
 Support for Zcb basic additional compressed instructions.
 

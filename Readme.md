@@ -30,33 +30,6 @@ Please read [Contributing.md](Contributing.md) before raising an issue or pull r
 
 For the latest stable release, check out the [stable](https://github.com/Wren6991/Hazard3/tree/stable) branch. For the latest work-in-progress code including new experimental features, check out the [develop](https://github.com/Wren6991/Hazard3/tree/develop) branch.
 
-# Links to Specifications
-
-These are links to the ratified versions of the extensions.
-
-| Extension  | Specification |
-|----------- |---------------|
-| `RV32I` v2.1 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `M` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `A` v2.1 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `C` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zicsr` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zilsd` v1.0 | [Zilsd and Zclsd v1.0](https://github.com/riscv/riscv-zilsd/releases/download/v1.0/riscv-zilsd-v1.0.pdf) |
-| `Zifencei` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zba` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbb` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbc` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbs` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbkb` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
-| `Zbkx` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
-| `Zcb` v1.0 | [Code Size Reduction extensions v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
-| `Zclsd` v1.0 | [Zilsd and Zclsd v1.0](https://github.com/riscv/riscv-zilsd/releases/download/v1.0/riscv-zilsd-v1.0.pdf) |
-| `Zcmp` v1.0 | [Code Size Reduction extensions v1.0](https://github.com/riscvarchive/riscv-code-size-reduction/releases/download/v1.0/Zc.pdf) |
-| Machine ISA v1.12 | [Privileged Architecture 20211203](https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf) |
-| Debug v0.13.2 | [RISC-V External Debug Support 20190322](https://riscv.org/wp-content/uploads/2019/03/riscv-debug-release.pdf) |
-
-These specifications are abstract descriptions of the architectural features that Hazard3 implements. The [Hazard3 documentation](doc/hazard3.pdf) is a concrete description of how it implements them, especially in regard to the privileged ISA and debug support.
-
 # Cloning This Repository
 
 For the purpose of using Hazard3 in your design, this repository is self-contained. However, you need the submodules for simulation scripts, tests and example SoC components. In the latter case you should do a recursive clone:
