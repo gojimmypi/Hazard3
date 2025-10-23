@@ -18,7 +18,7 @@ Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 * `Zcmp`: push/pop and double-move compressed instructions
 * `Zclsd`: compressed load/store pair instructions
 * Debug, Machine and User privilege/execution modes
-* Privileged instructions `ECALL`, `EBREAK`, `MRET` and `WFI`
+* Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
 * External debug support
 * Instruction address trigger unit (hardware breakpoints)
 

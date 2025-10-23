@@ -1,4 +1,7 @@
-extends: default
+extends: default-sans
 title-page:
   title:
     top: 90%
+
+codespan:
+  font-color: "#00509E"

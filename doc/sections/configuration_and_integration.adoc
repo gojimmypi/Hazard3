@@ -1,10 +1,23 @@
 == Configuration and Integration
 
+Hazard3 is a soft processor design distributed as HDL source files. To use it in your project you must:
+
+* Download the source files from the public git repository.
+* Configure your synthesis and simulation flows to read Hazard3 source files.
+* Select the appropriate top-level module for your bus architecture (`hazard3_cpu_1port` or `hazard3_cpu_2port`).
+* Select the appropriate configuration parameters for your use case.
+* Instantiate the top-level module, and connect or tie-off _all_ ports.
+* Instantiate any optional external components such as the Debug Module (`hazard3_dm`) and JTAG Debug Transport Module (`hazard3_jtag_dtm`).
+
+The choice of configuration depends on your requirements for performance, code density, area, maximum frequency, level of memory protection, and number of system interrupts and interrupt priority levels. <<config-parameters-section>> documents the available configuration parameters.
+
+The minimal https://github.com/Wren6991/Hazard3/blob/stable/example_soc/soc/example_soc.v[example SoC] shows a complete example of a single-ported Hazard3 core connected to SRAM, a UART, a RISC-V platform timer and external debug components.
+
 === Hazard3 Source Files
 
-Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/stable/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3.
+Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/stable/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3. Hazard3 is distributed under the permissive Apache 2.0 licence; a full copy of the licence text is available in the git repository.
 
-For more information on the Verilog 2005 language, refer to IEEE 1364-2005 (a PDF can be found online).
+For more information on the Verilog 2005 language, refer to standard IEEE 1364-2005.
 
 Files ending with `.vh` are preprocessor include files used by the Hazard3 source. The following two are particularly noteworthy:
 
@@ -31,7 +44,7 @@ The core module `hazard3_core` can also be instantiated directly, which may be m
 
 === FPGA Synthesis
 
-Hazard3 supports FPGA synthesis using tools such as Yosys. You should set <<param-RESET_REGFILE>> to zero, as FPGA block RAMs and LUT RAMs often do not support reset, or are limited in the types of reset they support. Setting <<param-RESET_REGFILE>> to one is likely to result in the register file being implemented with logic fabric flops, which has a significant area and frequency impact.
+Hazard3 supports FPGA synthesis using tools such as Yosys and Vivado. You should set <<param-RESET_REGFILE>> to zero, as FPGA block RAMs and LUT RAMs often do not support reset, or are limited in the types of reset they support. Setting <<param-RESET_REGFILE>> to one is likely to result in the register file being implemented with logic fabric flops, which has a significant area and frequency impact.
 
 You should synchronise the `rst_n` reset input externally. An example reset synchroniser is included in the example SoC file, but the details depend on your FPGA synthesis flow and your platform-level reset requirements.
 
