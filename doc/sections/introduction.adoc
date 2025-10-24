@@ -29,6 +29,23 @@ This document describes Hazard3 version 1.1-rc1. See <<section-release-notes>> f
 
 === Architecture Overview
 
+==== Interfaces
+
+Hazard3 communicates with system hardware using the following groups of signals:
+
+image::diagrams/hazard3_interfaces_both.drawio.png[pdfwidth=60%, align="center"]
+
+AHB:: The core accesses the bus using either 1 {times} or 2 {times} 32-bit AHB5 bus manager ports, depending on choice of top-level module (see <<top-level-modules>>).
+IRQ:: The core implements standard RISC-V timer and software IRQ inputs, and a choice of a single external IRQ input or an integrated interrupt controller with support for up to 512 external IRQs.
+Debug:: Allows the Hazard3 Debug Module implementation to access core internals, and optionally to access the system bus directly by arbitrating with the core's load/store access.
+Power:: The core can negotiate power up/down of external hardware based on sleep state, and enter/exit sleep states cooperatively with other cores in the same multiprocessor system.
+Fence:: The core can request memory orderings; the system can stall the request (e.g. for a cache flush).
+
+See <<port-descriptions>> for a full description of these interfaces.
+
+// Hard line break because there is a huge diagram on the next page and it needs to flow with the text
+<<<
+
 ==== Pipeline Stages
 
 The diagram shows how hardware components are distributed through three pipeline stages. A dotted outline means an optional component. Dotted vertical lines are clock boundaries between stages; blocks that straddle these lines are synchronous elements, either registers or bus signals that are notionally registered outside the core. Dependencies (and time) flow from left to right.

@@ -31,6 +31,7 @@ There are two ways to configure Hazard3 using these two files:
 
 The latter method is recommended for mature projects because it supports multiple distinct configurations of Hazard3 in the same system (for instance, a high-performance applications core and a low-area control-plane core). You may find the former method more convenient for quick hacking on the configuration.
 
+[[top-level-modules]]
 === Top-level Modules
 
 Hazard3 has two top-level modules:
@@ -246,7 +247,7 @@ When shared System Bus Access (SBA) is used, the SBA bus accesses are routed thr
 4+| **Port I (Instruction)**
 | Width | In/Out | Name | Description
 | 32 | Out | `i_haddr`      | Address output. AHB is always byte-addressed. This port always issues word-aligned accesses (address bits `1:0` are zero).
-| 1  | Out | `i_hwrite`     | Always driven low for to indicate a read transfer.
+| 1  | Out | `i_hwrite`     | Always driven low to indicate a read transfer.
 | 2  | Out | `i_htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (`NSEQ`) to indicate there is a transfer. Other types are not used.
 | 3  | Out | `i_hsize`      | Always driven to `2` to indicate a word-sized transfer. Other sizes are not used.
 | 3  | Out | `i_hburst`     | Tied off to `0` (`SINGLE`). Hazard3 does not issue bursts.
@@ -576,17 +577,11 @@ Default value: `0`
 [[param-PMP_HARDWIRED]]
 ===== PMP_HARDWIRED
 
-PMPADDR_HARDWIRED: If a bit is 1, the corresponding region's pmpaddr and
-pmpcfg registers are read-only, with their values fixed when the processor is
-instantiated. PMP_GRAIN is ignored on hardwired regions.
+If a bit is 1, the corresponding region's `pmpaddr` and `pmpcfg` registers are read-only, with their values fixed when the processor is instantiated. PMP_GRAIN is ignored on hardwired regions.
 
-Hardwired regions are far cheaper, both in area and comparison delay, than
-dynamically configurable regions.
+Hardwired regions are far cheaper, both in area and comparison delay, than dynamically configurable regions.
 
-Hardwired PMP regions are a good option for setting default U-mode permissions
-on regions which have access controls outside of the processor, such as
-peripheral regions. For this case it's recommended to make hardwired regions
-the highest-numbered, so they can be overridden by lower-numbered dynamic
+Hardwired PMP regions are a good option for setting default U-mode permissions on regions which have access controls outside of the processor, such as peripheral regions. For this case it's recommended to make hardwired regions the highest-numbered, so they can be overridden by lower-numbered dynamic
 regions.
 
 Default value: all-zeroes.
