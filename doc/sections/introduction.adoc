@@ -19,14 +19,21 @@ Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 * `Zclsd`: compressed load/store pair instructions
 * Debug, Machine and User privilege/execution modes
 * Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
+* Physical memory protection (PMP) with up to 16 regions (configurable support for NAPOT and/or TOR matching)
 * External debug support
 * Instruction address trigger unit (hardware breakpoints)
 
 This document describes Hazard3 version 1.1-rc1. See <<section-release-notes>> for changes introduced in this and earlier versions.
 
-=== Architectural Overview
+<<<
+
+=== Architecture Overview
 
 ==== Pipeline Stages
+
+The diagram shows how hardware components are distributed through three pipeline stages. A dotted outline means an optional component. Dotted vertical lines are clock boundaries between stages; blocks that straddle these lines are synchronous elements, either registers or bus signals that are notionally registered outside the core. Dependencies (and time) flow from left to right.
+
+image::diagrams/hazard3_pipeline.drawio.png[pdfwidth=100%]
 
 The three stages are:
 

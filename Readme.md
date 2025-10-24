@@ -19,6 +19,8 @@ Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instr
 * Debug, Machine and User privilege/execution modes
 * Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
 * Physical memory protection (PMP) with up to 16 regions (configurable support for NAPOT and/or TOR matching)
+* External debug support
+* Instruction address trigger unit (hardware breakpoints)
 
 You can [read the documentation here](https://github.com/Wren6991/Hazard3/releases/download/v1.0/hazard3.pdf). (PDF link)
 
