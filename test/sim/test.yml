@@ -5,6 +5,14 @@ simulators:
     make_args: CONFIG=default
     exec:      tb_cxxrtl/tb
     march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+  cxxrtl_late_mul:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=late_mul
+    exec:      tb_cxxrtl/tb-late_mul
+    march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+    excluded_tests:
+      # Zkt not supported with sequential mulh/mulhsu
+      - h3misa
   verilator_default:
     make_dir:  tb_verilator
     make_args: CONFIG=default
