@@ -13,7 +13,9 @@ This extension is enabled by: <<param-CSR_M_MANDATORY>>.
 
 This extension adds the <<reg-h3.misa>> CSR. This is an extended version of the standard <<reg-misa>> register, capable of enumerating all standard RISC-V extensions (not just the single-letter ones).
 
-It describes presence and absence of extensions using the bitmap format described here in the RISC-V C API documentation: https://github.com/riscv-non-isa/riscv-c-api-doc/blob/main/src/c-api.adoc#extension-bitmask-definitions[https://github.com/riscv-non-isa/riscv-c-api-doc/blob/main/src/c-api.adoc#extension-bitmask-definitions]
+It describes presence and absence of extensions using the bitmap format described in the RISC-V C API documentation:
+
+https://github.com/riscv-non-isa/riscv-c-api-doc/blob/main/src/c-api.adoc#extension-bitmask-definitions[https://github.com/riscv-non-isa/riscv-c-api-doc/blob/main/src/c-api.adoc#extension-bitmask-definitions]
 
 This register also lists the versions of any custom Hazard3 extensions which may be present, including Xh3misa itself. For more details see the description of the <<reg-h3.misa>> register.
 

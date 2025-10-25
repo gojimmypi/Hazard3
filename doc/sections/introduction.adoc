@@ -98,6 +98,19 @@ The single-cycle multiplier is implemented as a simple `*` behavioural multiply,
 
 // ** magic comment to reset sublime text asciidoc lexer
 
+==== Constant-time Execution
+
+Hazard3 supports `Zkt` constant-time execution in the following configurations:
+
+* <<param-EXTENSION_M>> is `0`
+* <<param-EXTENSION_M>> is `1`, <<param-MUL_FAST>> is `1` and <<param-MULH_FAST>> is `1`
+
+The source of data-dependent timing is conditional sign correction in the `mulh` and `mulhsu` instructions when executed on the sequential multiply/divide circuit. You can avoid this by configuring these instructions to execute on the single-cycle multiplier instead. The remaining `Zkt` instructions are constant-time for all configurations.
+
+Constant-time here refers to **data-independent timing**. Execution time can still be affected by other factors such as instruction alignment and external bus stalls.
+
+Software can read the `Zkt` bit in <<reg-h3.misa>> to check whether a given implementation has constant execution time for the `Zkt` instruction list.
+
 === List of RISC-V Specifications
 
 These are links to the ratified versions of the base instruction set and extensions implemented by Hazard3.
