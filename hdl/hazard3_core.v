@@ -963,7 +963,7 @@ generate
 if (PMP_REGIONS > 0) begin: have_pmp
 
 	wire x_loadstore_pmp_badperm;
-	assign x_loadstore_pmp_fail = x_loadstore_pmp_badperm && x_memop_vld;
+	assign x_loadstore_pmp_fail = x_loadstore_pmp_badperm && x_memop_vld && !debug_mode;
 
 	// R and W are enforced at the point the load/store address is generated,
 	// in time to mask the address-phase request. X is enforced by checking
