@@ -66,21 +66,25 @@ end else begin: have_pmp
 // ----------------------------------------------------------------------------
 // Config registers and read/write interface
 
-reg              pmpcfg_l [0:PMP_REGIONS-1];
-reg [1:0]        pmpcfg_a [0:PMP_REGIONS-1];
-reg              pmpcfg_x [0:PMP_REGIONS-1];
-reg              pmpcfg_w [0:PMP_REGIONS-1];
-reg              pmpcfg_r [0:PMP_REGIONS-1];
+// Whether a region's configuration is writable; this is non-trivial when TOR
+// is supported because locking region i + 1 can also lock region i.
+wire [PMP_REGIONS-1:0] region_locked;
+
+reg  [PMP_REGIONS-1:0] pmpcfg_l;
+reg  [1:0]             pmpcfg_a [0:PMP_REGIONS-1];
+reg  [PMP_REGIONS-1:0] pmpcfg_x;
+reg  [PMP_REGIONS-1:0] pmpcfg_w;
+reg  [PMP_REGIONS-1:0] pmpcfg_r;
 
 // Address register contains bits 33:2 of the address (to support 16 GiB
 // physical address space). We don't implement bits 33 or 32.
-reg [W_ADDR-3:0] pmpaddr  [0:PMP_REGIONS-1];
+reg  [W_ADDR-3:0]      pmpaddr  [0:PMP_REGIONS-1];
 
 // Hazard3 extension for applying PMP regions to M-mode without locking.
 // Different from ePMP mseccfg.rlb: low-numbered regions may be locked for
 // security reasons, but higher-numbered regions should stll be available for
 // other purposes e.g. stack guarding, peripheral emulation
-reg [PMP_REGIONS-1:0] pmpcfg_m;
+reg  [PMP_REGIONS-1:0] pmpcfg_m;
 
 always @ (posedge clk or negedge rst_n) begin: cfg_update
 	reg signed [31:0] i;
@@ -98,7 +102,7 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 		pmpcfg_m <= {PMP_REGIONS{1'b0}};
 	end else if (cfg_wen) begin
 		for (i = 0; i < PMP_REGIONS; i = i + 1) begin
-			if (cfg_addr == PMPCFG0 + i[13:2] && !pmpcfg_l[i]) begin
+			if (cfg_addr == PMPCFG0 + i[13:2] && !region_locked[i]) begin
 				if (PMP_HARDWIRED[i]) begin
 					// Keep tied to hardwired value (but still make the "register" sensitive to clk)
 					pmpcfg_l[i] <= PMP_HARDWIRED_CFG[8 * i + 7];
@@ -117,7 +121,7 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 						cfg_wdata[i % 4 * 8 + 3 +: 2] : PMP_A_OFF;
 				end
 			end
-			if (cfg_addr == PMPADDR0 + i[11:0] && !pmpcfg_l[i]) begin
+			if (cfg_addr == PMPADDR0 + i[11:0] && !region_locked[i]) begin
 				// This implements one bit too many when G > 0 and only
 				// PMP_MATCH_TOR is enabled, however that bit is ignored for
 				// both rdata and address matching, so should be trimmed.
@@ -164,6 +168,19 @@ always @ (*) begin: cfg_read
 		cfg_rdata = {{32-PMP_REGIONS{1'b0}}, pmpcfg_m} & {32{|EXTENSION_XH3PMPM}};
 	end
 end
+
+// ----------------------------------------------------------------------------
+// Region locking rules
+
+reg [PMP_REGIONS-1:0] pmp_region_is_tor;
+always @ (*) begin: check_region_is_tor
+	integer i;
+	for (i = 0; i < PMP_REGIONS; i = i + 1) begin
+		pmp_region_is_tor[i] = PMP_MATCH_TOR && pmpcfg_a[i] == PMP_A_TOR;
+	end
+end
+
+assign region_locked = pmpcfg_l | ((pmpcfg_l & pmp_region_is_tor) >> 1);
 
 // ----------------------------------------------------------------------------
 // Match addresses against regions

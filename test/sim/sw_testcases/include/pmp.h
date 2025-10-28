@@ -3,6 +3,11 @@
 
 #include "hazard3_csr.h"
 
+// Number of implemented regions configured in the testbench
+#define PMP_REGIONS 4
+// Number of registers including WARL-0
+#define PMP_REGIONS_MAX 16
+
 #define PMPCFG_L_LSB 7
 #define PMPCFG_L_BITS 0x80
 #define PMPCFG_A_LSB 3

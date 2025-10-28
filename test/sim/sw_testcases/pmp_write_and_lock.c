@@ -55,11 +55,6 @@ Try to set all-ones again
 
 *******************************************************************************/
 
-// Number of implemented regions configured in the testbench
-#define PMP_REGIONS 4
-// Number of registers including WARL-0
-#define PMP_REGIONS_MAX 16
-
 int main() {
 	tb_puts("Reset value check\n");
 	for (int i = 0; i < PMP_REGIONS_MAX; ++i)
