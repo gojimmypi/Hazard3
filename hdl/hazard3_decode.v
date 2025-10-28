@@ -114,7 +114,7 @@ assign df_uop_stall = x_stall || d_starved;
 // fetch bubble to save a cycle, still need to finish the uop sequence.
 assign df_uop_clear = f_jump_now && !df_cir_flush_behind;
 
-// Decode various immmediate formats
+// Decode various immediate formats
 wire [31:0] d_imm_i = {{21{d_instr[31]}}, d_instr[30:20]};
 wire [31:0] d_imm_s = {{21{d_instr[31]}}, d_instr[30:25], d_instr[11:7]};
 wire [31:0] d_imm_b = {{20{d_instr[31]}}, d_instr[7], d_instr[30:25], d_instr[11:8], 1'b0};

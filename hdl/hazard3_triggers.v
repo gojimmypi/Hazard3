@@ -256,7 +256,7 @@ always @ (posedge clk or negedge rst_n) begin: cfg_update
 
 		// With no breakpoints, there is still a dummy entry to avoid
 		// `generate` spaghetti; tools complain about comb processes without
-		// sensitivies etc, so just synchronously tie to 0:
+		// sensitivities etc, so just synchronously tie to 0:
 		if (BREAKPOINT_TRIGGERS == 0) begin
 			bp_tdata1_dmode[0] <= 1'b0;
 			mcontrol_action[0] <= 1'b0;

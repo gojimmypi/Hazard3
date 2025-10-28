@@ -212,6 +212,8 @@ We need to build a copy of `riscv-openocd` before going any further. OpenOCD's r
 
 We need a recent build of [riscv-openocd](https://github.com/riscv/riscv-openocd) with the `remote-bitbang` protocol enabled.
 
+On Ubuntu:
+
 ```bash
 cd /tmp
 git clone https://github.com/riscv/riscv-openocd.git
@@ -223,6 +225,19 @@ make -j $(nproc)
 sudo make install
 ```
 
+On MacOS:
+
+```bash
+brew install autoconf automake libusb
+cd /tmp
+git clone https://github.com/riscv/riscv-openocd.git
+cd riscv-openocd
+./bootstrap
+# Workarounds:
+# - System clang has a warning for the GCC constant VLA thing, and OpenOCD is -Werror by default
+# - amtjtagaccel driver tries to pull in a Linux header
+CFLAGS=-Wno-gnu-folding-constant ./configure --enable-remote-bitbang --enable-ftdi --enable-amtjtagaccel=no --program-prefix=riscv-
+```
 ## Loading and Running
 
 You're going to want three terminal tabs in the `tb_cxxrtl` directory.
