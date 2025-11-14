@@ -35,6 +35,9 @@ Fixed errata:
 ** This behaviour continues to not affect entry/exit to Debug Mode, so LR/SC sequences can be single-stepped
 * Fix the Debug Module PROGBUF1 register being writable when an abstract command is executing, and not setting `abstracts.cmderr` to `busy` when written.
 * Fix spurious dependency of CSR instructions on `rs2`, causing read-after-write stall
+* Fix processor lockup on AMOs that fail PMP checks
+* Fix Debug Mode loads and stores during Program Buffer execution being subject to PMP checks on M-mode-enforced (locked) regions
+
 
 PPA optimisations:
 
