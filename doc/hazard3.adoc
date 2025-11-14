@@ -4,11 +4,21 @@
 :doctype: book
 :pdf-fontsdir: fonts
 :pdf-theme: hazard3-theme.yml
-
+ifdef::HTMLBUILD[]
+:data-uri:
+:toc: left
+endif::[]
 :times: ×
 
 include::rev.adoc[]
+
+ifdef::HTMLBUILD[]
+= Hazard3: Design Guide and Reference Manual
+endif::[]
+
+ifndef::HTMLBUILD[]
 = Design Guide and Reference Manual
+endif::[]
 
 include::sections/introduction.adoc[]
 

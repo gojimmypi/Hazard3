@@ -26,11 +26,11 @@ Hazard3's Debug Module (DM) has the following interfaces:
 
 This is shown in the example topology below.
 
-image::diagrams/debug_topology.png[pdfwidth=50%]
+image::diagrams/debug_topology.png[pdfwidth=50%, width=50%]
 
-The DM _must_ be connected directly to the processors without intervening registers. This implies the DM is in the same clock domain as the processors, so multiple processors on the same DM must share a common clock.
+The DM is implemented by the `hazard3_dm` module, found in https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dm/hazard3_dm.v[hdl/debug/dm/hazard3_dm.v]. The DM _must_ be connected directly to the processors without intervening registers. This implies the DM is in the same clock domain as the processors, so multiple processors on the same DM must share a common clock.
 
-Upstream of the DM is at least one Debug Transport Module, which bridges some host-facing interface such as JTAG to the APB DM Interface. Hazard3 provides an implementation of a standard RISC-V JTAG-DTM, but any APB manager could be used. The DM requires at least 7 bits of word addressing, i.e. 9 bits of byte address space.
+Upstream of the DM is at least one Debug Transport Module, which bridges some host-facing interface such as JTAG to the APB DM Interface. Hazard3 provides an implementation of a standard RISC-V JTAG-DTM, but any APB manager could be used. The DM requires at least 7 bits of word addressing, i.e. 9 bits of byte address space. The top-level module for Hazard3's JTAG-DTM implementation is `hazard3_jtag_dtm`, found in https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dtm/hazard3_jtag_dtm.v[hdl/debug/dtm/hazard3_jtag_dtm.v].
 
 An APB arbiter could be inserted here, to allow multiple transports to be used, provided the host(s) avoid using multiple transports concurrently. This also admits simple implementation of self-hosted debug, by mapping the DM to a system-level peripheral address space.
 

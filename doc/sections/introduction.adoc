@@ -33,7 +33,7 @@ This document describes Hazard3 version 1.1-rc1. See <<section-release-notes>> f
 
 Hazard3 communicates with system hardware using the following groups of signals:
 
-image::diagrams/hazard3_interfaces_both.drawio.png[pdfwidth=60%, align="center"]
+image::diagrams/hazard3_interfaces_both.drawio.png[width=60%, pdfwidth=60%, align="center"]
 
 AHB:: The core accesses the bus using either 1 {times} or 2 {times} 32-bit AHB5 bus manager ports, depending on choice of top-level module (see <<top-level-modules>>).
 IRQ:: The core implements standard RISC-V timer and software IRQ inputs, and a choice of a single external IRQ input or an integrated interrupt controller with support for up to 512 external IRQs.
@@ -50,7 +50,7 @@ See <<port-descriptions>> for a full description of these interfaces.
 
 The diagram shows how hardware components are distributed through three pipeline stages. A dotted outline means an optional component. Dotted vertical lines are clock boundaries between stages; blocks that straddle these lines are synchronous elements, either registers or bus signals that are notionally registered outside the core. Dependencies (and time) flow from left to right.
 
-image::diagrams/hazard3_pipeline.drawio.png[pdfwidth=100%]
+image::diagrams/hazard3_pipeline.drawio.png[width=90%, align="center", pdfwidth=100%]
 
 The three stages are:
 
