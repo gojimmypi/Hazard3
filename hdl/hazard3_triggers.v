@@ -98,7 +98,7 @@ localparam N_BREAKPOINT_REGS = BREAKPOINT_TRIGGERS > 0 ? BREAKPOINT_TRIGGERS : 1
 // ----------------------------------------------------------------------------
 // Configuration state
 
-parameter W_TSELECT = $clog2(N_TRIGGERS);
+localparam W_TSELECT = $clog2(N_TRIGGERS);
 
 reg [W_TSELECT-1:0] tselect;
 

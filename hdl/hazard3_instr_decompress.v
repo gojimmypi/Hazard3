@@ -112,10 +112,10 @@ function [31:0] rfmt_rs2; input [4:0] rs2; begin rfmt_rs2 = {7'h00, rs2, 20'h000
 // - 1x jalr to jump through ra (counter = 14   ) < atomic section
 // - 1x addi to adjust sp       (counter = 15   ) < atomic section
 
-reg [3:0] uop_ctr;
-reg [3:0] uop_ctr_nxt_in_seq;
-reg       in_uop_seq;
-reg       uop_no_pc_update;
+wire [3:0] uop_ctr;
+reg  [3:0] uop_ctr_nxt_in_seq;
+reg        in_uop_seq;
+reg        uop_no_pc_update;
 
 wire zcmp_is_pushpop = instr_in[12];
 wire uop_seq_end      = |EXTENSION_ZCMP && (zcmp_is_pushpop ? uop_ctr == 4'hf : uop_ctr[0]);
@@ -309,7 +309,7 @@ end else begin: instr_decompress
 			// Optional Zclsd instructions:
 			`RVOPC_C_LD: begin
 				instr_out = `RVOPC_NOZ_LD | rfmt_rd(rd_s) | rfmt_rs1(rs1_s)
-					| {4'h00, instr_in[6:5], instr_in[12:10], 3'b000, 20'h00000};
+					| {4'h0, instr_in[6:5], instr_in[12:10], 3'b000, 20'h00000};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
 			`RVOPC_C_SD: begin
@@ -447,13 +447,15 @@ endgenerate
 
 generate
 if (EXTENSION_ZCMP) begin: have_uop_ctr
+	reg [3:0] uop_ctr_r;
+	assign uop_ctr = uop_ctr_r;
 	always @ (posedge clk or negedge rst_n) begin
 		if (!rst_n) begin
-			uop_ctr <= 4'h0;
+			uop_ctr_r <= 4'h0;
 		end else begin
-			uop_ctr <= uop_ctr_nxt;
+			uop_ctr_r <= uop_ctr_nxt;
 `ifdef HAZARD3_ASSERTIONS
-			assert(in_uop_seq || uop_ctr == 4'h0);
+			assert(in_uop_seq || uop_ctr_r == 4'h0);
 			assert(in_uop_seq || zcmp_ls_reg == 5'h01);
 			assert(in_uop_seq || !uop_atomic);
 			assert(in_uop_seq || !uop_no_pc_update);
@@ -465,7 +467,7 @@ if (EXTENSION_ZCMP) begin: have_uop_ctr
 		end
 	end
 end else begin: no_uop_ctr
-	always @ (*) uop_ctr = 4'h0;
+	assign uop_ctr = 4'h0;
 end
 endgenerate
 
