@@ -38,7 +38,7 @@ def run_and_wait(job_list):
 
 	any_failed = False
 	for name, proc in wait_procs:
-		print(f"  {name:<40} : {"PASS" if proc.returncode == 0 else "FAIL"}")
+		print(f"  {name:<40} : {'PASS' if proc.returncode == 0 else 'FAIL'}")
 		if proc.returncode != 0:
 			any_failed = True
 			print("\n", proc.stderr.read().decode("utf-8"), "\n")
@@ -68,8 +68,8 @@ for k in cfg["simulators"]:
 	print(f"\nRunning sw_testcases on simulator {k}...\n")
 	cmdline = [
 		"./runtests",
-		f"--tb=../{sim_cfg["exec"]}",
-		f"--march={sim_cfg["march"]}",
+		f"--tb=../{sim_cfg['exec']}",
+		f"--march={sim_cfg['march']}",
 		f"--build-dir={k}",
 		"--no-tb-build"
 	]
