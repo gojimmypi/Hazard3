@@ -53,7 +53,7 @@ It's recommended to tie `clk` and `clk_always_on` to the exact same clock net to
 
 === ASIC Synthesis
 
-Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue https://https://github.com/Wren6991/Hazard3/issues[here] if you find a compatibility issue with your tools.
+Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue https://github.com/Wren6991/Hazard3/issues[here] if you find a compatibility issue with your tools.
 
 When applying the `clk_en` clock enable signal to the `clk` input in conjunction with the Xh3power extension, you must instantiate an external clock gate cell appropriate to your platform (such as an AND-and-latch type). Do not use a behavioural AND gate to gate the clock.
 

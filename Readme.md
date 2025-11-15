@@ -19,18 +19,14 @@ Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instr
 * Debug, Machine and User privilege/execution modes
 * Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
 * Physical memory protection (PMP) with up to 16 regions (configurable support for NAPOT and/or TOR matching)
-* External debug support
+* External debug support (JTAG or APB)
 * Instruction address trigger unit (hardware breakpoints)
 
-You can [read the documentation here](https://github.com/Wren6991/Hazard3/releases/download/v1.0/hazard3.pdf). (PDF link)
+Download the Hazard3 documentation [here (PDF)](https://github.com/Wren6991/Hazard3/releases/download/v1.1-rc1/hazard3.pdf). Alternatively read the online documentation [here](https://wren.wtf/hazard3/doc).
 
-This repository also contains a compliant RISC-V Debug Module for Hazard3, which can be accessed over an AMBA 3 APB port or using the optional JTAG Debug Transport Module.
-
-The [example SoC integration](example_soc/soc/example_soc.v) shows how these components can be assembled to create a minimal system with a JTAG-enabled RISC-V processor, some RAM and a serial port.
+This repository contains the source for the Hazard3 core and its associated debug components. The [example SoC integration](example_soc/soc/example_soc.v) shows how you can assemble these components to create a minimal system with a JTAG-enabled RISC-V processor, some RAM, a serial port and a platform timer.
 
 Please read [Contributing.md](Contributing.md) before raising an issue or pull request.
-
-For the latest stable release, check out the [stable](https://github.com/Wren6991/Hazard3/tree/stable) branch. For the latest work-in-progress code including new experimental features, check out the [develop](https://github.com/Wren6991/Hazard3/tree/develop) branch.
 
 # Cloning This Repository
 
@@ -45,6 +41,10 @@ To initialise submodules in an already-cloned repository:
 ```bash
 git submodule update --init --recursive
 ```
+
+The default branch for clones is [stable](https://github.com/Wren6991/Hazard3/tree/stable). I strongly recommend this branch for ASIC tapeouts. The head of stable is always the latest non-development release under [releases](https://github.com/Wren6991/Hazard3/releases).
+
+See the [develop](https://github.com/Wren6991/Hazard3/tree/develop) branch to try the latest features and optimisations.
 
 # Running Hello World
 
@@ -414,7 +414,12 @@ Correct operation validated. See README.md for run and reporting rules.
 CoreMark 1.0 : 4.154888 / GCC15.1.0 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1   / STACK
 ```
 
-To reproduce this in the RTL simulator, use the top-level Makefile in [test/sim/coremark](test/sim/coremark) after you have followed all the steps to get set up for running a "Hello, world!" binary above.
+To reproduce this in the RTL simulator, use the top-level Makefile in [test/sim/coremark](test/sim/coremark) after you have followed all the steps to get set up for running a "Hello, world!" binary above. Expect the simulation to take a couple of minutes.
+
+```bash
+cd test/sim/coremark
+make
+```
 
 The default flags are appropriate for the non-multilib toolchain build, and achieve 4.10 CoreMark/MHz. To achieve the full 4.15 CoreMark/MHz, change the ISA variant in `core_portme.mak` to `rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs`. See the comments in that file for an explanation of why this makes a difference.
 
