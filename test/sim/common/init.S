@@ -150,14 +150,13 @@ progname:
 // so the CPU will print some basic diagnostics on any unhandled trap
 // (assuming the processor is not internally completely broken)
 
-// argument in t0, return in tp, trashes t0...t2
+// argument in t0, IO pointer in t1, return in tp, trashes t0 and t2;
 _tb_puts:
-	li t1, IO_PRINT_CHAR
 1:
 	lbu t2, (t0)
 	addi t0, t0, 1
 	beqz t2, 2f
-	sw t2, (t1)
+	sw t2, IO_PRINT_CHAR - IO_BASE(t1)
 	j 1b
 2:
 	jr tp
@@ -165,19 +164,19 @@ _tb_puts:
 .macro print_reg str reg
 	la t0, \str
 	jal tp, _tb_puts
-	sw \reg, (gp)
+	sw \reg, IO_PRINT_U32 - IO_BASE(t1)
 .endm
 
 _weak_handler_name_in_gp:
 	la t0, _str_unhandled_trap
+	li t1, IO_BASE
 	jal tp, _tb_puts
 	mv t0, gp
 	jal tp, _tb_puts
 	la t0, _str_at_mepc
 	jal tp, _tb_puts
-	li gp, IO_PRINT_U32
 	csrr t0, mepc
-	sw t0, (gp)
+	sw t0, IO_PRINT_U32 - IO_BASE(t1)
 	csrr gp, mcause
 	bltz gp, 1f
 	print_reg _str_mcause gp
@@ -192,9 +191,8 @@ _weak_handler_name_in_gp:
 	print_reg _str_a5 a5
 	print_reg _str_ra ra
 	print_reg _str_sp sp
-	li t1, IO_EXIT
 	li t2, -1
-	sw t2, (t1)
+	sw t2, IO_EXIT - IO_BASE(t1)
 	// Should be unreachable:
 	j .halt
 
@@ -214,7 +212,7 @@ _str_sp:             .asciz "sp: "
 .p2align 2
 
 // Provide a default weak handler for each trap, which calls into the above
-// diagnostic routine with the trap name (a null-terminated string) in x31
+// diagnostic routine with the trap name (a null-terminated string) in gp
 
 .macro weak_handler name:req
 .p2align 2
