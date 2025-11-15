@@ -109,9 +109,13 @@ assign d_no_pc_increment = fd_cir_uop_nonfinal || d_lspair_nonfinal;
 
 assign df_uop_stall = x_stall || d_starved;
 
-// Note !df_cir_flush_behind because the jump in cm.popret/popretz is
-// the *penultimate* instruction: we execute the stack adjustment in the
-// fetch bubble to save a cycle, still need to finish the uop sequence.
+// Note !df_cir_flush_behind because the jump in cm.popret/popretz is the
+// *penultimate* instruction: we execute the stack adjustment in the fetch
+// bubble to save a cycle, still need to finish the uop sequence.
+//
+// The sp adjust cannot generate an exception (it's an `add` with the same
+// PMP.X and breakpoint comparison results as earlier uops) and interrupts are
+// suppressed for this part of the sequence.
 assign df_uop_clear = f_jump_now && !df_cir_flush_behind;
 
 // Decode various immediate formats
@@ -149,9 +153,18 @@ assign df_cir_use =
 // side effects e.g. writing a link value to the register file.
 wire jump_caused_by_d = f_jump_now && x_jump_not_except;
 wire assert_cir_lock = jump_caused_by_d && d_stall;
-wire deassert_cir_lock = !d_stall;
-reg cir_lock_prev;
 
+// CIR lock ends naturally when an instruction (not just uop) graduates to the
+// next stage:
+wire finished_cir_lock = !d_stall;
+
+// CIR lock can meet an untimely end due to trap entry. One way to reach this
+// is a dphase load fault on the final load in a cm.popret: here the `ret`
+// issues a fetch address while stalled on the first dphase cycle, then is
+// flushed by trap on second cycle.
+wire deassert_cir_lock = finished_cir_lock || (f_jump_now && !x_jump_not_except);
+
+reg cir_lock_prev;
 wire cir_lock = (cir_lock_prev && !deassert_cir_lock) || assert_cir_lock;
 assign df_cir_flush_behind = assert_cir_lock && !cir_lock_prev;
 
@@ -187,8 +200,8 @@ wire predicted_branch = |BRANCH_PREDICTOR && fd_cir_predbranch[0];
 // exception to this is jumps in micro-op sequences: in this case the jump is
 // the penultimate instruction in the sequence (ret before addi sp) and we
 // need to capture the pc mid-uop-sequence.
-wire hold_pc_on_cir_lock = assert_cir_lock && !(fd_cir_is_uop && !fd_cir_uop_no_pc_update);
-wire update_pc_on_cir_unlock = cir_lock_prev && deassert_cir_lock && !(fd_cir_is_uop && fd_cir_uop_no_pc_update);
+wire hold_pc_on_cir_lock = assert_cir_lock && !(fd_cir_is_uop && !fd_cir_uop_no_pc_update && !x_stall);
+wire update_pc_on_cir_unlock = cir_lock_prev && finished_cir_lock && !fd_cir_uop_no_pc_update;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -199,6 +212,10 @@ always @ (posedge clk or negedge rst_n) begin
 		end else if (debug_mode) begin
 			pc <= pc;
 		end else if ((f_jump_now && !hold_pc_on_cir_lock) || update_pc_on_cir_unlock) begin
+			pc <= f_jump_target;
+		end else if (!f_jump_now && fd_cir_uop_nonfinal && !fd_cir_uop_no_pc_update && !x_stall) begin
+			// End of previously stalled jr uop in cm.popret and cm.popretz:
+			// safe to update PC as next instruction (addi sp) cannot trap.
 			pc <= f_jump_target;
 		end else if (!d_stall && !cir_lock) begin
 			// If this instruction is a predicted-taken branch (and has not

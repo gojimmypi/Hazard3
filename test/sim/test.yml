@@ -34,6 +34,10 @@ simulators:
       - zcmp_mvsa01
       - zcmp_pop
       - zcmp_push
+      - zcmp_pop_bus_fault
+      - zcmp_popret_bus_fault
+      - zcmp_popretz_bus_fault
+      - zcmp_popret_pmp_fault
       - zilsd_irq
       - zilsd_memcpy
       # Reports E instead of I, so fails:
