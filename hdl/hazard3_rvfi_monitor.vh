@@ -301,7 +301,20 @@ assign rvfi_mem_fault_wmask = rvfi_mem_wmask_r & {4{ rvfi_mem_fault_r}};
 
 always @ (posedge clk) begin
 	rvfm_mem_hold <= (rvfm_mem_hold || (rvfm_htrans_dph && bus_dph_ready_d)) && m_stall;
-	if (bus_dph_ready_d) begin
+	if (xm_memop == MEMOP_AMO) begin
+		// AMO has completed in stage X. Progressing to stage M without MEMOP
+		// going to NONE then there has been no trap, therefore no stall,
+		// therefore no time for another address to have issued:
+		assert(!m_stall);
+		rvfi_mem_addr_r <= rvfm_haddr_dph;
+		// Always 32-bit, always both read and write:
+		rvfi_mem_rmask_r <= 4'hf;
+		rvfi_mem_wmask_r <= 4'hf;
+		// Has been juggled since the read that matched the winning write:
+		rvfi_mem_rdata_r <= xm_result;
+		// Incidentally captured on previous cycle:
+		rvfi_mem_wdata_r <= rvfi_mem_wdata_r;
+	end else if (bus_dph_ready_d) begin
 		// RVFI has an AXI-like concept of byte strobes, rather than AHB-like
 		rvfi_mem_addr_r <= rvfm_haddr_dph & 32'hffff_fffc;
 		{rvfi_mem_rmask_r, rvfi_mem_wmask_r} <= 0;

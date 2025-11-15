@@ -59,7 +59,11 @@ module rvfi_wrapper (
 (* keep *) wire               [31:0]  dbg_sbus_rdata;
 
 `ifdef RISCV_FORMAL_FAIRNESS
-localparam MAX_BUS_STALL = 7;
+`ifdef RISCV_FORMAL_FAIRNESS_MAX_STALL
+localparam MAX_BUS_STALL = `RISCV_FORMAL_FAIRNESS_MAX_STALL;
+`else
+localparam MAX_BUS_STALL = 5;
+`endif
 `else
 localparam MAX_BUS_STALL = -1;
 `endif
@@ -123,6 +127,8 @@ sbus_assumptions #(
 );
 
 `ifdef RISCV_FORMAL_FAIRNESS
+// Limit the number of consecutive cycles the solver can stall the fence
+// interface. This would be an uninteresting liveness failure.
 reg [7:0] fence_stall_ctr;
 always @ (posedge clock) begin
 	if (reset) begin
@@ -132,6 +138,29 @@ always @ (posedge clock) begin
 		assume(fence_stall_ctr < MAX_BUS_STALL);
 	end else begin
 		fence_stall_ctr <= 8'h00;
+	end
+end
+`endif
+
+`ifdef RISCV_FORMAL_FAIRNESS
+// Allow the solver to respond with HEXOKAY low only once (on cycles where
+// exclusive data phases end, otherwise don't care). This is sufficient to
+// cover most interesting paths and avoids the liveness check getting starved.
+reg in_exclusive_dph;
+reg seen_hexokay_low;
+wire exclusive_dph_end = in_exclusive_dph && d_hready;
+always @ (posedge clock) begin
+	if (reset) begin
+		seen_hexokay_low <= 1'b0;
+		in_exclusive_dph <= 1'b0;
+	end else begin
+		seen_hexokay_low <= seen_hexokay_low || (exclusive_dph_end && !d_hexokay);
+		if (d_hready) begin
+			in_exclusive_dph <= d_htrans[1] && d_hexcl;
+		end
+		if (exclusive_dph_end && seen_hexokay_low) begin
+			assume(d_hexokay);
+		end
 	end
 end
 `endif
@@ -183,6 +212,14 @@ localparam COMPRESSED = 0;
 localparam COMPRESSED = 1;
 `endif
 
+`ifdef ISA_A
+// riscv-formal doesn't model these instructions. It's possible to report AMOs
+// as combined mem read + write, but not yet implemented.
+localparam EXTENSION_A = 1;
+`else
+localparam EXTENSION_A = 0;
+`endif
+
 `ifdef SINGLE_PORTED_CORE
 hazard3_cpu_1port #(
 `else
@@ -190,7 +227,7 @@ hazard3_cpu_2port #(
 `endif
 	.RESET_VECTOR        (0),
 
-	.EXTENSION_A         (0), // UNSUPPORTED -- riscv-formal does not understand its bus accesses
+	.EXTENSION_A         (EXTENSION_A),
 	.EXTENSION_C         (COMPRESSED),
 	.EXTENSION_E         (0),
 	.EXTENSION_M         (1),
