@@ -118,12 +118,32 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		rvfm_x_saw_f_jump <= 1'b0;
 		rvfm_x_saw_f_jump_target <= 32'd0;
-	end else if (f_jump_now && !m_trap_enter_vld && (x_stall || (fd_cir_is_uop && fd_cir_uop_nonfinal))) begin
+	end else if (f_jump_now && !(m_trap_enter_vld && m_trap_enter_rdy) && (x_stall || (fd_cir_is_uop && fd_cir_uop_nonfinal))) begin
+		// Record fetch address issued by instruction. Note this case is gated
+		// on m_trap_enter_vld && m_trap_enter_rdy (not just vld). If
+		// !m_trap_enter_rdy it is still possible to get a new fetch address
+		// in the following case:
+		//
+		// * M instr is a load/store (in dphase)
+		//
+		// * IRQ is asserted, but blocked by the load/store dphase to avoid
+		//   trashing exception PC of a potential data-phase bus fault
+		//
+		// * X instr is a jump, which stalls due to the IRQ assertion
+		//
+		// * X instr's PC goes through to frontend during stall (and would be
+		//   flushed if the IRQ went through) because stall cannot gate fetch
+		//   address request to avoid AHB through-path.
+		//
+		// * IRQ's trap address is not immediately accepted by frontend due to
+		//   address-phase stall on issuing jump instr's address
+		//
+		// * IRQ deasserts on the next cycle, so its trap address is not accepted.
 		rvfm_x_saw_f_jump <= 1'b1;
 		rvfm_x_saw_f_jump_target <= f_jump_target;
 	end else if (!x_stall && !(fd_cir_is_uop && !fd_cir_uop_nonfinal)) begin
 		rvfm_x_saw_f_jump <= 1'b0;
-	end else if (m_trap_enter_vld) begin
+	end else if (m_trap_enter_vld && m_trap_enter_rdy) begin
 		// E.g. trap during uop sequence
 		rvfm_x_saw_f_jump <= 1'b0;
 	end
