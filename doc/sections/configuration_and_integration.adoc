@@ -177,7 +177,13 @@ This subordinate bus port allows the standard System Bus Access (SBA) feature of
 
 ==== Interrupt Requests
 
-All interrupts are level-sensitive and synchronous to `clk`.
+All interrupts are level-sensitive and synchronous to `clk`. Asynchronous interrupts must be synchronised externally before entering the processor. If an interrupt is used for waking from sleep states, make sure to use the ungated version of `clk` (`clk_always_on`) for synchronisation.
+
+Briefly asserting then deasserting an interrupt signal is not guaranteed to cause the processor to enter the relevant handler; the processor ignores interrupts it is not able to take at that time, for example when interrupts are disabled via `mstatus.mie`. There is also no guarantee that the processor will _not_ take such an interrupt. Peripherals and software should follow these guidelines for reliable interrupt handling:
+
+* When an interrupt is asserted, it should remain asserted until the condition which caused the interrupt is cleared. For example, an RX FIFO valid interrupt should remain asserted until the processor pops data from the FIFO.
+* Interrupt handlers should check the peripheral status at the top of the handler to see if it still requires servicing. If an interrupt is synchronised externally, it may still briefly be observed as asserted after returning from the handler, causing re-entry.
+* To avoid the previous issue, interrupt handlers should acknowledge (clear) the peripheral interrupt as soon as possible in the handler, to ensure the interrupt is seen deasserted before the processor returns from the interrupt handler.
 
 [options="header",cols="1,1,3,4"]
 |===
@@ -668,12 +674,9 @@ Default value: `0`
 [[param-IRQ_INPUT_BYPASS]]
 ===== IRQ_INPUT_BYPASS
 
-Disable the input registers on the external interrupts, to reduce latency by
-one cycle. Can be applied on an IRQ-by-IRQ basis.
+Disable the input registers on the external interrupts, to reduce latency by one cycle. Can be applied on an IRQ-by-IRQ basis. Use this when the interrupt already comes straight from a register, e.g. when you have synchronised an interrupt to the processor clock from an asynchronous source; the additional register inside the processor is redundant in this case.
 
-Ignored if <<param-EXTENSION_XH3IRQ>> = `0`. In this case, when the internal
-interrupt controller is not present, all external IRQ inputs are OR'd together
-before being registered in a single flip-flop.
+Ignored if <<param-EXTENSION_XH3IRQ>> = `0`. In this case, when the internal interrupt controller is not present, all external IRQ inputs are OR'd together before being registered in a single flip-flop.
 
 Default value: all-zeroes (not bypassed).
 
