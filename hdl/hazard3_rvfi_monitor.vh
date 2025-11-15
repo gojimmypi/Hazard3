@@ -82,7 +82,7 @@ always @ (posedge clk) begin
 		rvfm_m_intr <= 1'b0;
 		rvfi_intr_r <= 1'b0;
 	end else begin
-		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved)) ||
+		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved || fd_cir_uop_nonfinal)) ||
 			(m_trap_enter_vld && m_trap_enter_rdy);
 		if (!x_stall) begin
 			rvfm_m_intr <= rvfm_x_intr;
@@ -141,7 +141,7 @@ always @ (posedge clk or negedge rst_n) begin
 		// * IRQ deasserts on the next cycle, so its trap address is not accepted.
 		rvfm_x_saw_f_jump <= 1'b1;
 		rvfm_x_saw_f_jump_target <= f_jump_target;
-	end else if (!x_stall && !(fd_cir_is_uop && !fd_cir_uop_nonfinal)) begin
+	end else if (!x_stall && !(fd_cir_is_uop && fd_cir_uop_nonfinal)) begin
 		rvfm_x_saw_f_jump <= 1'b0;
 	end else if (m_trap_enter_vld && m_trap_enter_rdy) begin
 		// E.g. trap during uop sequence
@@ -156,8 +156,10 @@ always @ (posedge clk or negedge rst_n) begin
 	end else begin
 		if (!x_stall) begin
 			// For cm.popret and cm.popretz the PC actually changes on the
-			// penultimate uop; ignore this and retain the initial PC.
-			if (!(fd_cir_is_uop && !fd_cir_uop_nonfinal)) begin
+			// penultimate uop; ignore this and retain the initial PC. Abuse
+			// knowledge that the PC update is always in the atomic section,
+			// and the first instruction is always interruptible.
+			if (!(fd_cir_is_uop && fd_cir_uop_atomic)) begin
 				rvfm_xm_pc <= d_pc;
 			end
 			rvfm_xm_pc_next <=
