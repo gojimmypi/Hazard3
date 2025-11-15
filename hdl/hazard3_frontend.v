@@ -246,37 +246,43 @@ assign pwrdown_ok = (fifo_full && !jump_target_vld) || debug_mode;
 // ----------------------------------------------------------------------------
 // Branch target buffer
 
-reg [W_ADDR-1:0] btb_src_addr;
-reg              btb_src_size;
-reg [W_ADDR-1:0] btb_target_addr;
-reg              btb_valid;
+wire [W_ADDR-1:0] btb_src_addr;
+wire              btb_src_size;
+wire [W_ADDR-1:0] btb_target_addr;
+wire              btb_valid;
 
 generate
 if (BRANCH_PREDICTOR) begin: have_btb
+	reg [W_ADDR-1:0] btb_src_addr_r;
+	reg              btb_src_size_r;
+	reg [W_ADDR-1:0] btb_target_addr_r;
+	reg              btb_valid_r;
+	assign btb_src_addr    = btb_src_addr_r;
+	assign btb_src_size    = btb_src_size_r;
+	assign btb_target_addr = btb_target_addr_r;
+	assign btb_valid       = btb_valid_r;
 	always @ (posedge clk or negedge rst_n) begin
 		if (!rst_n) begin
-			btb_src_addr <= {W_ADDR{1'b0}};
-			btb_src_size <= 1'b0;
-			btb_target_addr <= {W_ADDR{1'b0}};
-			btb_valid <= 1'b0;
+			btb_src_addr_r <= {W_ADDR{1'b0}};
+			btb_src_size_r <= 1'b0;
+			btb_target_addr_r <= {W_ADDR{1'b0}};
+			btb_valid_r <= 1'b0;
 		end else if (btb_clear) begin
 			// Clear takes precedences over set. E.g. if a taken branch is in
 			// stage 2 and an exception is in stage 3, we must clear the BTB.
-			btb_valid <= 1'b0;
+			btb_valid_r <= 1'b0;
 		end else if (btb_set) begin
-			btb_src_addr <= btb_set_src_addr;
-			btb_src_size <= btb_set_src_size;
-			btb_target_addr <= btb_set_target_addr;
-			btb_valid <= 1'b1;
+			btb_src_addr_r <= btb_set_src_addr;
+			btb_src_size_r <= btb_set_src_size;
+			btb_target_addr_r <= btb_set_target_addr;
+			btb_valid_r <= 1'b1;
 		end
 	end
 end else begin: no_btb
-	always @ (*) begin
-		btb_src_addr = {W_ADDR{1'b0}};
-		btb_src_size = 1'b0;
-		btb_target_addr = {W_ADDR{1'b0}};
-		btb_valid = 1'b0;
-	end
+	assign btb_src_addr = {W_ADDR{1'b0}};
+	assign btb_src_size = 1'b0;
+	assign btb_target_addr = {W_ADDR{1'b0}};
+	assign btb_valid = 1'b0;
 end
 endgenerate
 

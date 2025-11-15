@@ -237,14 +237,15 @@ end
 // direct 16-bit aliases of those instructions. Therefore it's cleaner to
 // separate the phasing from the decompression for Zilsd/Zclsd.
 
-reg d_lspair_phase;
+wire d_lspair_phase;
 
 // Reorder accesses to avoid clobbering rs1 (base) in first half of load:
 wire d_lspair_reg_sel = d_lspair_phase == d_instr[15];
 
 generate
 if (EXTENSION_ZILSD) begin: have_lspair_reg_sel
-
+	reg d_lspair_phase_r;
+	assign d_lspair_phase = d_lspair_phase_r;
 	reg instr_is_lspair;
 	always @ (*) begin
 		casez ({d_invalid || d_starved, d_instr})
@@ -256,17 +257,17 @@ if (EXTENSION_ZILSD) begin: have_lspair_reg_sel
 
 	always @ (posedge clk or negedge rst_n) begin
 		if (!rst_n) begin
-			d_lspair_phase <= 1'b0;
+			d_lspair_phase_r <= 1'b0;
 		end else begin
-			d_lspair_phase <= df_lspair_phase_next;
+			d_lspair_phase_r <= df_lspair_phase_next;
 		end
 	end
 
 	assign df_lspair_phase_next =
 		!d_stall || f_jump_now      ? 1'b0 :
-		instr_is_lspair && !x_stall ? 1'b1 : d_lspair_phase;
+		instr_is_lspair && !x_stall ? 1'b1 : d_lspair_phase_r;
 
-	assign d_lspair_nonfinal = instr_is_lspair && !d_lspair_phase;
+	assign d_lspair_nonfinal = instr_is_lspair && !d_lspair_phase_r;
 
 	assign d_lspair_offset = {
 		29'h0,
@@ -276,7 +277,7 @@ if (EXTENSION_ZILSD) begin: have_lspair_reg_sel
 
 end else begin: no_lspair_reg_sel
 
-	always @ (*) d_lspair_phase = 1'b0;
+	assign d_lspair_phase = 1'b0;
 	assign df_lspair_phase_next = 1'b0;
 	assign d_lspair_nonfinal = 1'b0;
 	assign d_lspair_offset = 32'h0;
