@@ -158,11 +158,10 @@ always @ (posedge clock) begin
 		if (d_hready) begin
 			in_exclusive_dph <= d_htrans[1] && d_hexcl;
 		end
-		if (exclusive_dph_end && seen_hexokay_low) begin
-			assume(d_hexokay);
-		end
 	end
 end
+
+always @ (posedge clock) assume(d_hexokay || !exclusive_dph_end || !seen_hexokay_low);
 `endif
 
 `ifdef RISCV_FORMAL_FAIRNESS
@@ -178,6 +177,14 @@ always assume(!d_hresp);
 // Need to disable SBA accesses as they come out through the load/store port
 // but cannot be cross-referenced with instruction execution
 always assume(!dbg_sbus_vld);
+`endif
+
+`ifdef RISCV_FORMAL_FAIRNESS
+`ifdef SINGLE_PORTED_CORE
+// Disable SBUS access for single-ported liveness checks. These take priority
+// over instruction fetch, and this is a known design limitation.
+always assume(!dbg_sbus_vld
+`endif
 `endif
 
 // ----------------------------------------------------------------------------
@@ -212,6 +219,26 @@ localparam COMPRESSED = 0;
 localparam COMPRESSED = 1;
 `endif
 
+`ifdef ISA_ZCMP
+// Disabled by default because riscv-formal doesn't understand instructions
+// which perform multiple bus accesses or write multiple registers. We still
+// run some checks, separately.
+localparam EXTENSION_ZCMP = 1;
+`else
+localparam EXTENSION_ZCMP = 0;
+`endif
+
+`ifdef ISA_ZILSD_ZCLSD
+// Disabled by default because riscv-formal doesn't understand instructions
+// which perform multiple bus accesses or write multiple registers. We still
+// run some checks, separately.
+localparam EXTENSION_ZILSD = 1;
+localparam EXTENSION_ZCLSD = 1;
+`else
+localparam EXTENSION_ZILSD = 0;
+localparam EXTENSION_ZCLSD = 0;
+`endif
+
 `ifdef ISA_A
 // riscv-formal doesn't model these instructions. It's possible to report AMOs
 // as combined mem read + write, but not yet implemented.
@@ -239,14 +266,14 @@ hazard3_cpu_2port #(
 	.EXTENSION_ZBKX      (1),
 	.EXTENSION_ZBS       (1),
 	.EXTENSION_ZCB       (COMPRESSED),
-	.EXTENSION_ZCLSD     (0), // UNSUPPORTED
-	.EXTENSION_ZCMP      (0), // UNSUPPORTED
+	.EXTENSION_ZCLSD     (EXTENSION_ZCLSD),
 	.EXTENSION_ZIFENCEI  (1),
-	.EXTENSION_ZILSD     (0), // UNSUPPORTED
+	.EXTENSION_ZILSD     (EXTENSION_ZILSD),
+	.EXTENSION_ZCMP      (EXTENSION_ZCMP),
 	.EXTENSION_XH3BEXTM  (1),
-	.EXTENSION_XH3IRQ    (0),
-	.EXTENSION_XH3PMPM   (0),
-	.EXTENSION_XH3POWER  (0),
+	.EXTENSION_XH3IRQ    (0), // Uninteresting: just a different way of driving mip.meip
+	.EXTENSION_XH3PMPM   (0), // Uninteresting: just changes when PMP generates faults, and PMP is not modeled.
+	.EXTENSION_XH3POWER  (0), // FIXME
 
 	.CSR_M_MANDATORY     (1),
 	.CSR_M_TRAP          (1),
