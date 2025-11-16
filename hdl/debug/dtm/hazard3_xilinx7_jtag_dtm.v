@@ -113,7 +113,7 @@ always @ (posedge jtck or negedge jrst_n) begin
     end else if (core_dr_ren) begin
         dr_shift <= core_dr_rdata;
     end else if (dr_shift_en) begin
-        dr_shift <= {jtdi, dr_shift} >> 1'b1;
+        dr_shift <= {jtdi, dr_shift[W_DR_SHIFT-1:1]};
         if (!core_dr_sel_dmi_ndtmcs)
             dr_shift[31] <= jtdi;
     end

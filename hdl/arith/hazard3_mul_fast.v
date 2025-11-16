@@ -32,12 +32,12 @@ module hazard3_mul_fast #(
 localparam XLEN = W_DATA;
 
 //synthesis translate_off
-generate if (MULH_FAST && !MUL_FAST)
+generate if (MULH_FAST && !MUL_FAST) begin: err_require_mul_fast_for_mulh
 	initial $fatal("%m: MULH_FAST requires that MUL_FAST is also set.");
-endgenerate
-generate if (MUL_FASTER && !MUL_FAST)
+end endgenerate
+generate if (MUL_FASTER && !MUL_FAST) begin: err_require_mul_fast_for_faster
 	initial $fatal("%m: MUL_FASTER requires that MUL_FAST is also set.");
-endgenerate
+end endgenerate
 //synthesis translate_on
 
 // Latency of 1:
