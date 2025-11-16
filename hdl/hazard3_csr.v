@@ -381,7 +381,7 @@ end
 // each release.
 
 // Set to 1 if this RTL has not been released to the stable branch:
-localparam [0:0] MIMPID_PRERELEASE = 1'b1;
+localparam [0:0] MIMPID_PRERELEASE = 1'b0;
 
 // Major version, e.g the 1 in v1.2.3:
 localparam [3:0] MIMPID_MAJOR      = 4'd1;
