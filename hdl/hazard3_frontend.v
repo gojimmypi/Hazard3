@@ -737,12 +737,11 @@ always @ (*) begin
 	{1'b1, 1'bz, 16'bzzzzzzzzzzzzzzzz}: predecode_rs1_coarse = next_instr[19:15]; // 32-bit R, S, B formats
 	{1'b0, 1'bz, 16'b00zzzzzzzzzzzz00}: predecode_rs1_coarse = 5'd2;              // c.addi4spn + don't care
 	{1'b0, 1'bz, 16'b0zzzzzzzzzzzzz01}: predecode_rs1_coarse = next_instr[11:7];  // c.addi, c.addi16sp + don't care (jal, li)
-	{1'b0, 1'bz, 16'b100zzzzzzzzzzz10}: predecode_rs1_coarse = next_instr[11:7];  // c.add
 	{1'b0, 1'bz, 16'bz1zzzzzzzzzzzz10}: predecode_rs1_coarse = 5'd2;              // c.lwsp, c.swsp, c.ldsp, c.sdsp
 	{1'b0, 1'bz, 16'bz00zzzzzzzzzzz10}: predecode_rs1_coarse = next_instr[11:7];  // c.slli, c.mv, c.add
-	{1'b0, 1'b1, 16'b1z11zzzzzzzzzz10}: predecode_rs1_coarse = zcmp_pushpop_rs1;  // cm.push, cm.pop*
-	{1'b0, 1'b1, 16'b1z10zzzzz0zzzz10}: predecode_rs1_coarse = zcmp_mvsa01_rs1;   // cm.mvsa01
-	{1'b0, 1'b1, 16'b1z10zzzzz1zzzz10}: predecode_rs1_coarse = zcmp_mva01s_rs1;   // cm.mva01s
+	{1'b0, 1'b1, 16'b1011zzzzzzzzzz10}: predecode_rs1_coarse = zcmp_pushpop_rs1;  // cm.push, cm.pop*
+	{1'b0, 1'b1, 16'b1010zzzzz0zzzz10}: predecode_rs1_coarse = zcmp_mvsa01_rs1;   // cm.mvsa01
+	{1'b0, 1'b1, 16'b1010zzzzz1zzzz10}: predecode_rs1_coarse = zcmp_mva01s_rs1;   // cm.mva01s
 	default:                            predecode_rs1_coarse = {2'b01, next_instr[9:7]};
 	endcase
 
