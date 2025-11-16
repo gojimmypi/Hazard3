@@ -177,7 +177,7 @@ This subordinate bus port allows the standard System Bus Access (SBA) feature of
 
 ==== Interrupt Requests
 
-All interrupts are level-sensitive and synchronous to `clk`. Asynchronous interrupts must be synchronised externally before entering the processor. If an interrupt is used for waking from sleep states, make sure to use the ungated version of `clk` (`clk_always_on`) for synchronisation.
+All interrupts are level-sensitive and synchronous to `clk`. Asynchronous interrupts must be synchronised externally before entering the processor. You must use the ungated version of `clk` (`clk_always_on`) for synchronisation if you use the interrupt to wake from sleep states.
 
 Briefly asserting then deasserting an interrupt signal is not guaranteed to cause the processor to enter the relevant handler; the processor ignores interrupts it is not able to take at that time, for example when interrupts are disabled via `mstatus.mie`. There is also no guarantee that the processor will _not_ take such an interrupt. Peripherals and software should follow these guidelines for reliable interrupt handling:
 
