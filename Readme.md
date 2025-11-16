@@ -22,7 +22,7 @@ Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instr
 * External debug support (JTAG or APB)
 * Instruction address trigger unit (hardware breakpoints)
 
-Download the Hazard3 documentation [here (PDF)](https://github.com/Wren6991/Hazard3/releases/download/v1.1-rc1/hazard3.pdf). Alternatively read the online documentation [here](https://wren.wtf/hazard3/doc).
+Download the Hazard3 reference manual [here (PDF)](https://github.com/Wren6991/Hazard3/releases/download/v1.1/hazard3.pdf). You can also [read the documentation online](https://wren.wtf/hazard3/doc).
 
 This repository contains the source for the Hazard3 core and its associated debug components. The [example SoC integration](example_soc/soc/example_soc.v) shows how you can assemble these components to create a minimal system with a JTAG-enabled RISC-V processor, some RAM, a serial port and a platform timer.
 
@@ -273,8 +273,6 @@ Info : remote_bitbang driver initialized
 Info : Note: The adapter "remote_bitbang" doesn't support configurable speed
 Info : JTAG tap: hazard3.cpu tap/device found: 0xdeadbeef (mfg: 0x777 (Fabric of Truth Inc), part: 0xeadb, ver: 0xd)
 Info : [hazard3.cpu] datacount=1 progbufsize=2
-Info : [hazard3.cpu] Disabling abstract command reads from CSRs.
-Info : [hazard3.cpu] Disabling abstract command writes to CSRs.
 Info : [hazard3.cpu] Examined RISC-V core
 Info : [hazard3.cpu]  XLEN=32, misa=0x40901107
 [hazard3.cpu] Target successfully examined.
@@ -341,7 +339,7 @@ There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on iCE
 - A UART
 - A standard RISC-V platform timer
 
-Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. All very much WIP. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
+Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
 
 ## Comparison of Supported Boards
 

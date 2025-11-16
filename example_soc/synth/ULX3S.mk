@@ -12,6 +12,7 @@ PACKAGE=CABGA381
 
 include $(SCRIPTS)/synth_ecp5.mk
 
+# Get ujprog from: git@github.com:emard/tools.git
 prog: bit
 	ujprog $(CHIPNAME).bit
 
