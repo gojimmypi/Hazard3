@@ -906,7 +906,7 @@ endgenerate
 // Branch handling
 
 // For JALR, the LSB of the result must be cleared by hardware
-wire [W_ADDR-1:0] x_jump_target = x_addr_sum & ~32'h1;
+wire [W_ADDR-1:0] x_jump_target = x_addr_sum & ~32'd1;
 wire              x_jump_misaligned = ~|EXTENSION_C && x_addr_sum[1];
 wire              x_branch_cmp_noinvert;
 
@@ -1395,9 +1395,9 @@ assign m_stall = m_bus_stall ||
 // exception, we know that the previous instruction to be in X (now in M)
 // was *not* a taken branch, which is why we can just walk back the PC.
 assign m_exception_return_addr = d_pc - (
-	m_trap_is_irq         ? 32'h0 :
-	xm_no_pc_increment    ? 32'h0 :
-	prev_instr_was_32_bit ? 32'h4 : 32'h2
+	m_trap_is_irq         ? 32'd0 :
+	xm_no_pc_increment    ? 32'd0 :
+	prev_instr_was_32_bit ? 32'd4 : 32'd2
 );
 
 hazard3_power_ctrl power_ctrl (

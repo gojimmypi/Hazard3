@@ -196,14 +196,14 @@ end else begin: instr_decompress
 			uop_ctr_nxt_in_seq = uop_ctr;
 		end else begin
 			instr_is_32bit = 1'b0;
-			instr_out = 32'h0;
+			instr_out = 32'd0;
 			invalid = 1'b0;
 			in_uop_seq = 1'b0;
 			uop_no_pc_update = 1'b0;
 			uop_ctr_nxt_in_seq = uop_ctr;
 			casez (instr_in[15:0])
 			`RVOPC_C_ADDI4SPN: begin
-				instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(rd_s) | rfmt_rs1(5'h2)
+				instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(rd_s) | rfmt_rs1(5'd2)
 					| {2'h0, instr_in[10:7], instr_in[12:11], instr_in[5], instr_in[6], 2'b00, 20'h00000};
 				invalid   = ~|instr_in[12:2]; // Always-invalid all-zeroes instruction
 			end
@@ -212,13 +212,13 @@ end else begin: instr_decompress
 			`RVOPC_C_SW:   instr_out = `RVOPC_NOZ_SW | rfmt_rs2(rs2_s) | rfmt_rs1(rs1_s)
 				| {5'h00, instr_in[5], instr_in[12], 13'h0000, instr_in[11:10], instr_in[6], 2'b00, 7'h00};
 			`RVOPC_C_ADDI: instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(rd_l) | rfmt_rs1(rs1_l) | imm_ci;
-			`RVOPC_C_JAL:  instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'h1) | imm_cj;
-			`RVOPC_C_J:    instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'h0) | imm_cj;
+			`RVOPC_C_JAL:  instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'd1) | imm_cj;
+			`RVOPC_C_J:    instr_out = `RVOPC_NOZ_JAL  | rfmt_rd(5'd0) | imm_cj;
 			`RVOPC_C_LI:   instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(rd_l) | imm_ci;
 			`RVOPC_C_LUI: begin
-				if (rd_l == 5'h2) begin
+				if (rd_l == 5'd2) begin
 					// addi16sp
-					instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(5'h2) | rfmt_rs1(5'h2) |
+					instr_out = `RVOPC_NOZ_ADDI | rfmt_rd(5'd2) | rfmt_rs1(5'd2) |
 						{{3{instr_in[12]}}, instr_in[4:3], instr_in[5], instr_in[2], instr_in[6], 24'h000000};
 				end else begin
 					instr_out = `RVOPC_NOZ_LUI | rfmt_rd(rd_l) | {{15{instr_in[12]}}, instr_in[6:2], 12'h000};
@@ -237,7 +237,7 @@ end else begin: instr_decompress
 				if (|rs2_l) begin
 					instr_out = `RVOPC_NOZ_ADD | rfmt_rd(rd_l) | rfmt_rs1(rs1_l) | rfmt_rs2(rs2_l);
 				end else if (|rs1_l) begin // jalr
-					instr_out = `RVOPC_NOZ_JALR | rfmt_rd(5'h1) | rfmt_rs1(rs1_l);
+					instr_out = `RVOPC_NOZ_JALR | rfmt_rd(5'd1) | rfmt_rs1(rs1_l);
 				end else begin // ebreak
 					instr_out = `RVOPC_NOZ_EBREAK;
 				end
@@ -251,11 +251,11 @@ end else begin: instr_decompress
 				end
 			end
 			`RVOPC_C_LWSP: begin
-				instr_out = `RVOPC_NOZ_LW | rfmt_rd(rd_l) | rfmt_rs1(5'h2) |
+				instr_out = `RVOPC_NOZ_LW | rfmt_rd(rd_l) | rfmt_rs1(5'd2) |
 					{4'h0, instr_in[3:2], instr_in[12], instr_in[6:4], 2'b00, 20'h00000};
 				invalid = ~|rd_l; // RESERVED
 			end
-			`RVOPC_C_SWSP:    instr_out = `RVOPC_NOZ_SW | rfmt_rs2(rs2_l) | rfmt_rs1(5'h2)
+			`RVOPC_C_SWSP:    instr_out = `RVOPC_NOZ_SW | rfmt_rs2(rs2_l) | rfmt_rs1(5'd2)
 				| {4'h0, instr_in[8:7], instr_in[12], 13'h0000, instr_in[11:9], 2'b00, 7'h00};
 			`RVOPC_C_BEQZ:     instr_out = `RVOPC_NOZ_BEQ | rfmt_rs1(rs1_s) | imm_cb;
 			`RVOPC_C_BNEZ:     instr_out = `RVOPC_NOZ_BNE | rfmt_rs1(rs1_s) | imm_cb;
@@ -318,12 +318,12 @@ end else begin: instr_decompress
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
 			`RVOPC_C_LDSP: begin
-				instr_out = `RVOPC_NOZ_LD | rfmt_rd(rd_l) | rfmt_rs1(5'h2) |
+				instr_out = `RVOPC_NOZ_LD | rfmt_rd(rd_l) | rfmt_rs1(5'd2) |
 					{3'h0, instr_in[4:2], instr_in[12], instr_in[6:5], 3'b000, 20'h00000};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD || ~|rd_l; // RESERVED
 			end
 			`RVOPC_C_SDSP: begin
-				instr_out = `RVOPC_NOZ_SD | rfmt_rs2(rs2_l) | rfmt_rs1(5'h2)
+				instr_out = `RVOPC_NOZ_SD | rfmt_rs2(rs2_l) | rfmt_rs1(5'd2)
 					| {3'h0, instr_in[9:7], instr_in[12], 13'h0000, instr_in[11:10], 3'b000, 7'h00};
 				invalid = ~|EXTENSION_ZILSD || ~|EXTENSION_ZCLSD;
 			end
@@ -370,7 +370,7 @@ end else begin: instr_decompress
 				// cause the wrong exception PC to be sampled if this uop is interrupted.
 				in_uop_seq = 1'b1;
 				uop_ctr_nxt_in_seq = uop_ctr + 4'h1;
-				instr_out = `RVOPC_NOZ_JALR | rfmt_rs1(5'h1);
+				instr_out = `RVOPC_NOZ_JALR | rfmt_rs1(5'd1);
 			end else if (uop_ctr == 4'hf) begin
 				in_uop_seq = 1'b1;
 				uop_ctr_nxt_in_seq = 4'h0;
@@ -396,7 +396,7 @@ end else begin: instr_decompress
 			end else if (uop_ctr == 4'he) begin
 				in_uop_seq = 1'b1;
 				uop_ctr_nxt_in_seq = uop_ctr + 4'h1;
-				instr_out = `RVOPC_NOZ_JALR | rfmt_rs1(5'h1);
+				instr_out = `RVOPC_NOZ_JALR | rfmt_rs1(5'd1);
 			end else if (uop_ctr == 4'hf) begin
 				in_uop_seq = 1'b1;
 				uop_ctr_nxt_in_seq = 4'h0;

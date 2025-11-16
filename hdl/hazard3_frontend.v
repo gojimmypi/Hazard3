@@ -189,7 +189,7 @@ always @ (posedge clk or negedge rst_n) begin: fifo_update
 	if (!rst_n) begin
 		for (i = 0; i < FIFO_DEPTH; i = i + 1) begin
 			fifo_valid_hw[i] <= 2'b00;
-			fifo_mem[i] <= 32'h0;
+			fifo_mem[i] <= 32'd0;
 			fifo_err[i] <= 1'b0;
 			fifo_break_any[i] <= 2'b00;
 			fifo_break_d_mode[i] <= 2'b00;
@@ -343,7 +343,7 @@ always @ (posedge clk or negedge rst_n) begin
 			if (btb_match_now && |BRANCH_PREDICTOR) begin
 				fetch_addr <= {btb_target_addr[W_ADDR-1:2], 2'b00};
 			end else begin
-				fetch_addr <= fetch_addr + 32'h4;
+				fetch_addr <= fetch_addr + 32'd4;
 			end
 			btb_prev_start_of_overhanging <= btb_match_next_addr;
 		end

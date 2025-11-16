@@ -178,8 +178,8 @@ end
 
 reg  [W_ADDR-1:0] pc;
 wire [W_ADDR-1:0] pc_seq_next = pc + (
-	|EXTENSION_ZCMP && fd_cir_is_uop && fd_cir_uop_no_pc_update ? 32'h0 :
-	fd_cir_is_32bit                                             ? 32'h4 : 32'h2
+	|EXTENSION_ZCMP && fd_cir_is_uop && fd_cir_uop_no_pc_update ? 32'd0 :
+	fd_cir_is_32bit                                             ? 32'd4 : 32'd2
 );
 
 assign d_pc = pc;
@@ -239,8 +239,8 @@ end
 `endif
 
 wire [W_ADDR-1:0] branch_offs =
-	!fd_cir_is_32bit && predicted_branch ? 32'h2 :
-	 fd_cir_is_32bit && predicted_branch ? 32'h4 : d_imm_b;
+	!fd_cir_is_32bit && predicted_branch ? 32'd2 :
+	 fd_cir_is_32bit && predicted_branch ? 32'd4 : d_imm_b;
 
 always @ (*) begin
 	casez ({|EXTENSION_A, d_instr[6:2]})
@@ -309,7 +309,7 @@ end else begin: no_lspair_reg_sel
 	assign d_lspair_phase = 1'b0;
 	assign df_lspair_phase_next = 1'b0;
 	assign d_lspair_nonfinal = 1'b0;
-	assign d_lspair_offset = 32'h0;
+	assign d_lspair_offset = 32'd0;
 
 end
 endgenerate
@@ -381,9 +381,9 @@ always @ (*) begin
 	`RVOPC_BLTU:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_rd = X0; raw_aluop = ALUOP_LTU; raw_branchcond = BCOND_NZERO; end
 	`RVOPC_BGEU:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_rd = X0; raw_aluop = ALUOP_LTU; raw_branchcond = BCOND_ZERO;  end
 	`RVOPC_JALR:      begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_branchcond = BCOND_ALWAYS; raw_addr_is_regoffs = 1'b1;
-	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'h4 : 32'h2; end
+	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'd4 : 32'd2; end
 	`RVOPC_JAL:       begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_branchcond = BCOND_ALWAYS; raw_rs1 = X0;
-	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'h4 : 32'h2; end
+	                        raw_rs2 = X0; raw_aluop = ALUOP_ADD; raw_alusrc_a = ALUSRCA_PC; raw_alusrc_b = ALUSRCB_IMM; raw_imm = fd_cir_is_32bit ? 32'd4 : 32'd2; end
 	`RVOPC_LUI:       begin raw_aluop = ALUOP_RS2; raw_imm = d_imm_u; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; raw_rs1 = X0; end
 	`RVOPC_AUIPC:     begin d_invalid_32bit = DEBUG_SUPPORT && debug_mode; raw_aluop = ALUOP_ADD; raw_imm = d_imm_u; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; raw_alusrc_a = ALUSRCA_PC;  raw_rs1 = X0; end
 	`RVOPC_ADDI:      begin raw_aluop = ALUOP_ADD; raw_imm = d_imm_i; raw_alusrc_b = ALUSRCB_IMM; raw_rs2 = X0; end
