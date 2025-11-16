@@ -183,7 +183,7 @@ always assume(!dbg_sbus_vld);
 `ifdef SINGLE_PORTED_CORE
 // Disable SBUS access for single-ported liveness checks. These take priority
 // over instruction fetch, and this is a known design limitation.
-always assume(!dbg_sbus_vld
+always assume(!dbg_sbus_vld);
 `endif
 `endif
 

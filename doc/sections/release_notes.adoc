@@ -30,13 +30,15 @@ New features:
 
 Fixed errata:
 
-* Fix `fence.i` only ordering against the address phase of a preceding store (a multi-manager AHB fabric may reorder address phases, so order against the data phase instead)
-* Fix local monitor flag being cleared by trap entry as well as trap exit (only `xRET` should clear it)
-** This behaviour continues to not affect entry/exit to Debug Mode, so LR/SC sequences can be single-stepped
+* Fix `fence.i` only ordering against the address phase of a preceding store (a multi-manager AHB fabric may reorder address phases, so order against the data phase instead).
+* Fix local monitor flag being cleared by trap entry as well as trap exit (only `xRET` should clear it).
+** This behaviour continues to not affect entry/exit to Debug Mode, so LR/SC sequences can be single-stepped.
 * Fix the Debug Module PROGBUF1 register being writable when an abstract command is executing, and not setting `abstracts.cmderr` to `busy` when written.
-* Fix spurious dependency of CSR instructions on `rs2`, causing read-after-write stall
-* Fix processor lockup on AMOs that fail PMP checks
-* Fix Debug Mode loads and stores during Program Buffer execution being subject to PMP checks on M-mode-enforced (locked) regions
+* Fix spurious dependency of CSR instructions on `rs2`, causing read-after-write stall.
+* Fix processor lockup on AMOs that fail PMP checks.
+* Fix Debug Mode loads and stores during Program Buffer execution being subject to PMP checks on M-mode-enforced (locked) regions.
+* Fix a data-phase fault on the final load of a `cm.popret` which loads at least two registers reporting the return address as the exception PC.
+** The following were not affected: `cm.pop`, `cm.popretz`, 1-register `cm.popret`, PMP traps and alignment traps.
 
 
 PPA optimisations:
@@ -50,10 +52,10 @@ PPA optimisations:
 
 General improvements:
 
-* Relax PMP X permission checking to allow instructions to straddle two PMP regions which both have the necessary permissions
-* RTL is now lint-clean with Verilator v5.036
-* Add Verilator testbench, command-line-compatible with existing CXXRTL testbench
-* Update to latest version of `riscv-arch-test`
+* Relax PMP X permission checking to allow instructions to straddle two PMP regions which both have the necessary permissions.
+* RTL is now lint-clean with Verilator v5.038.
+* Add Verilator testbench, command-line-compatible with existing CXXRTL testbench.
+* Update to latest versions of `riscv-arch-test`, `riscv-test`  and `riscv-formal`.
 
 Other changes:
 
