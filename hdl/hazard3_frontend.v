@@ -866,7 +866,8 @@ end else begin: have_decompress
 
 	wire cir_clken =
 		~|cir_vld || (!cir_vld[1] && &buf_contents[1:0]) ||
-		|cir_use  || (cir_is_uop && !uop_stall);
+		|cir_use  || (|EXTENSION_ZCMP && cir_is_uop && !uop_stall) ||
+		(|EXTENSION_ZCMP && uop_clear);
 
 	wire cir_is_uop_next = decomp_is_uop && |buf_level_next;
 	wire cir_uop_nonfinal_next = cir_is_uop_next && !decomp_is_final_uop;
@@ -884,10 +885,10 @@ end else begin: have_decompress
 			cir                  <= decomp_instr_out | 32'd3;
 			cir_is_32bit         <= decomp_instr_is_32bit;
 			cir_invalid_16bit    <= decomp_invalid;
-			cir_is_uop           <= |EXTENSION_ZCMP && cir_is_uop_next;
-			cir_uop_nonfinal     <= |EXTENSION_ZCMP && cir_uop_nonfinal_next;
-			cir_uop_no_pc_update <= |EXTENSION_ZCMP && decomp_uop_no_pc_update;
-			cir_uop_atomic       <= |EXTENSION_ZCMP && decomp_uop_atomic;
+			cir_is_uop           <= |EXTENSION_ZCMP && !uop_clear && cir_is_uop_next;
+			cir_uop_nonfinal     <= |EXTENSION_ZCMP && !uop_clear && cir_uop_nonfinal_next;
+			cir_uop_no_pc_update <= |EXTENSION_ZCMP && !uop_clear && decomp_uop_no_pc_update;
+			cir_uop_atomic       <= |EXTENSION_ZCMP && !uop_clear && decomp_uop_atomic;
 		end
 	end
 

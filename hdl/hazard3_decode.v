@@ -226,6 +226,18 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
+`ifdef HAZARD3_ASSERTIONS
+always @ (posedge clk) if (rst_n) begin
+	if (~|fd_cir_vld)            assert(!fd_cir_is_uop);
+	if (fd_cir_uop_no_pc_update) assert(fd_cir_is_uop);
+	if (fd_cir_uop_nonfinal)     assert(fd_cir_is_uop);
+	if ($past(df_uop_clear))     assert(!fd_cir_is_uop);
+	// Important to avoid spurious PC updates following a trap on the final
+	// load of a cm.popret:
+	if ($past(df_uop_clear))     assert(!fd_cir_uop_no_pc_update);
+end
+`endif
+
 wire [W_ADDR-1:0] branch_offs =
 	!fd_cir_is_32bit && predicted_branch ? 32'h2 :
 	 fd_cir_is_32bit && predicted_branch ? 32'h4 : d_imm_b;
