@@ -208,7 +208,17 @@ always @ (posedge clk or negedge rst_n) begin
 		mstatus_mpp <= 1'b1;
 		mstatus_mprv <= 1'b0;
 		mstatus_tw <= 1'b0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented; avoid synthesis warning about
+		// flops insensitive to clk. Should match the rst_n case above so that
+		// flops are constant-propagated away.
+		m_mode <= 1'b1;
+		mstatus_mpie <= 1'b0;
+		mstatus_mie <= 1'b0;
+		mstatus_mpp <= 1'b1;
+		mstatus_mprv <= 1'b0;
+		mstatus_tw <= 1'b0;
+	end else begin
 		if (trapreg_update_exit) begin
 			mstatus_mpie <= 1'b1;
 			mstatus_mie <= mstatus_mpie;
@@ -246,14 +256,6 @@ always @ (posedge clk or negedge rst_n) begin
 			m_mode <= 1'b1;
 			mstatus_mpp <= 1'b1;
 		end
-	end else begin
-		// Explicitly tie-off to constant when !CSR_M_TRAP
-		m_mode <= 1'b1;
-		mstatus_mpie <= 1'b0;
-		mstatus_mie <= 1'b0;
-		mstatus_mpp <= 1'b1;
-		mstatus_mprv <= 1'b0;
-		mstatus_tw <= 1'b0;
 	end
 end
 
@@ -268,9 +270,13 @@ reg [XLEN-1:0] mscratch;
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mscratch <= X0;
-	end else if (CSR_M_TRAP) begin
-		if (wen_m_mode && addr == MSCRATCH)
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mscratch <= X0;
+	end else begin
+		if (wen_m_mode && addr == MSCRATCH) begin
 			mscratch <= wdata_update;
+		end
 	end
 end
 
@@ -282,9 +288,13 @@ wire            irq_vector_enable = mtvec_reg[0];
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mtvec_reg <= MTVEC_INIT;
-	end else if (CSR_M_TRAP) begin
-		if (wen_m_mode && addr == MTVEC)
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mtvec_reg <= MTVEC_INIT;
+	end else begin
+		if (wen_m_mode && addr == MTVEC) begin
 			mtvec_reg <= update_nonconst(mtvec_reg, MTVEC_WMASK);
+		end
 	end
 end
 
@@ -296,7 +306,10 @@ localparam MEPC_MASK = {{XLEN-2{1'b1}}, |EXTENSION_C, 1'b0};
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mepc <= X0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mepc <= X0;
+	end else begin
 		if (trapreg_update_enter) begin
 			mepc <= mepc_in & MEPC_MASK;
 		end else if (wen_m_mode && addr == MEPC) begin
@@ -314,7 +327,10 @@ wire meicontext_clearts;
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mie <= X0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mie <= X0;
+	end else begin
 		if (wen_m_mode && addr == MIE) begin
 			mie <= update_nonconst(mie, MIE_WMASK);
 		end else if (wen_m_mode && addr == MEICONTEXT) begin
@@ -345,7 +361,11 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mcause_irq <= 1'b0;
 		mcause_code <= 4'h0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mcause_irq <= 1'b0;
+		mcause_code <= 4'h0;
+	end else begin
 		if (trapreg_update_enter) begin
 			mcause_irq <= mcause_irq_next;
 			mcause_code <= mcause_code_next;
