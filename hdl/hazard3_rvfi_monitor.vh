@@ -82,7 +82,7 @@ always @ (posedge clk) begin
 		rvfm_m_intr <= 1'b0;
 		rvfi_intr_r <= 1'b0;
 	end else begin
-		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved || fd_cir_uop_nonfinal)) ||
+		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved || fd_cir_uop_nonfinal || df_lspair_phase_next)) ||
 			(m_trap_enter_vld && m_trap_enter_rdy);
 		if (!x_stall) begin
 			rvfm_m_intr <= rvfm_x_intr;
