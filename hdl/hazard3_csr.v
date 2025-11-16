@@ -583,6 +583,17 @@ reg [XLEN-1:0] mcycle;
 reg [XLEN-1:0] minstreth;
 reg [XLEN-1:0] minstret;
 
+// Writing to either half suppresses increment of the entire 64-bit register.
+// It doesn't just replace the value of one 32-bit half. See:
+//   https://github.com/riscv/riscv-isa-manual/issues/1255
+wire mcycle_stopped = mcountinhibit_cy || debug_mode || wen_m_mode && (
+	addr == MCYCLEH || addr == MCYCLE
+);
+
+wire minstret_stopped = mcountinhibit_ir || debug_mode || wen_m_mode && (
+	addr == MINSTRETH || addr == MINSTRET
+);
+
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mcycleh <= X0;
@@ -593,20 +604,24 @@ always @ (posedge clk or negedge rst_n) begin
 		mcountinhibit_cy <= 1'b1;
 		mcountinhibit_ir <= 1'b1;
 	end else begin
-		if (!(mcountinhibit_cy || debug_mode))
-			{mcycleh, mcycle} <= ({mcycleh, mcycle} + 1'b1) & {2*XLEN{|CSR_COUNTER}};
-		if (!(mcountinhibit_ir || debug_mode) && instr_ret)
-			{minstreth, minstret} <= ({minstreth, minstret} + 1'b1) & {2*XLEN{|CSR_COUNTER}};
+		if (!mcycle_stopped) begin
+			{mcycleh, mcycle} <=
+				({mcycleh, mcycle} + 64'd1) & {2*XLEN{|CSR_COUNTER}};
+		end
+		if (instr_ret && !minstret_stopped) begin
+			{minstreth, minstret} <=
+				({minstreth, minstret} + 64'd1) & {2*XLEN{|CSR_COUNTER}};
+		end
 		if (wen_m_mode) begin
-			if (addr == MCYCLEH)
+			if (addr == MCYCLEH) begin
 				mcycleh <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MCYCLE)
+			end else if (addr == MCYCLE) begin
 				mcycle <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MINSTRETH)
+			end else if (addr == MINSTRETH) begin
 				minstreth <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MINSTRET)
+			end else if (addr == MINSTRET) begin
 				minstret <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MCOUNTINHIBIT) begin
+			end else if (addr == MCOUNTINHIBIT) begin
 				{mcountinhibit_ir, mcountinhibit_cy} <= {wdata_update[2], wdata_update[0]} | {2{~|CSR_COUNTER}};
 			end
 		end
