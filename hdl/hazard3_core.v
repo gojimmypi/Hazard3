@@ -1,5 +1,5 @@
 /*****************************************************************************\
-|                      Copyright (C) 2021-2023 Luke Wren                      |
+|                      Copyright (C) 2021-2025 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
 \*****************************************************************************/
 
@@ -445,10 +445,10 @@ wire x_stall_on_amo = |EXTENSION_A && d_memop_is_amo && !m_trap_enter_soon && (
 
 wire m_fast_mul_result_vld;
 wire m_generating_result =
-	xm_memop < MEMOP_SW ||
-	|EXTENSION_A && xm_memop == MEMOP_LR_W ||
-	|EXTENSION_A && xm_memop == MEMOP_SC_W || // sc.w success result is data phase
-	|EXTENSION_M && m_fast_mul_result_vld;
+	(xm_memop < MEMOP_SW) ||
+	(|EXTENSION_A && xm_memop == MEMOP_LR_W) ||
+	(|EXTENSION_A && xm_memop == MEMOP_SC_W) || // sc.w success result is data phase
+	(|EXTENSION_M && m_fast_mul_result_vld);
 
 reg x_stall_on_raw;
 
@@ -624,9 +624,11 @@ wire x_memop_vld = d_memop != MEMOP_NONE && !(
 );
 
 wire x_memop_write =
-	d_memop == MEMOP_SW || d_memop == MEMOP_SH || d_memop == MEMOP_SB ||
-	|EXTENSION_A && d_memop == MEMOP_SC_W ||
-	|EXTENSION_A && d_memop_is_amo && x_amo_phase == 3'h2;
+	d_memop == MEMOP_SW ||
+	d_memop == MEMOP_SH ||
+	d_memop == MEMOP_SB ||
+	(|EXTENSION_A && d_memop == MEMOP_SC_W) ||
+	(|EXTENSION_A && d_memop_is_amo && x_amo_phase == 3'h2);
 
 // Always query the global monitor, except for store-conditional suppressed by local monitor.
 assign bus_aph_excl_d = |EXTENSION_A && (
@@ -807,10 +809,10 @@ wire [W_DATA-1:0] x_muldiv_result;
 wire [W_DATA-1:0] m_fast_mul_result;
 
 wire x_use_fast_mul = d_aluop == ALUOP_MULDIV && (
-	MUL_FAST  && d_mulop == M_OP_MUL   ||
-	MULH_FAST && d_mulop == M_OP_MULH  ||
-	MULH_FAST && d_mulop == M_OP_MULHU ||
-	MULH_FAST && d_mulop == M_OP_MULHSU
+	(MUL_FAST  && d_mulop == M_OP_MUL   ) ||
+	(MULH_FAST && d_mulop == M_OP_MULH  ) ||
+	(MULH_FAST && d_mulop == M_OP_MULHU ) ||
+	(MULH_FAST && d_mulop == M_OP_MULHSU)
 );
 
 generate

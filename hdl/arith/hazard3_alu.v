@@ -54,10 +54,12 @@ assign cmp = aluop == ALUOP_SUB ? |op_xor : lt;
 // Separate units for shift, ctz etc
 
 wire [W_DATA-1:0] shift_dout;
-wire shift_right_nleft = aluop == ALUOP_SRL || aluop == ALUOP_SRA ||
-	|EXTENSION_ZBB      && aluop == ALUOP_ROR  ||
-	|EXTENSION_ZBS      && aluop == ALUOP_BEXT ||
-	|EXTENSION_XH3BEXTM && aluop == ALUOP_BEXTM;
+wire shift_right_nleft =
+	aluop == ALUOP_SRL ||
+	aluop == ALUOP_SRA ||
+	(|EXTENSION_ZBB      && aluop == ALUOP_ROR  ) ||
+	(|EXTENSION_ZBS      && aluop == ALUOP_BEXT ) ||
+	(|EXTENSION_XH3BEXTM && aluop == ALUOP_BEXTM);
 
 wire shift_arith = aluop == ALUOP_SRA;
 wire shift_rotate = |EXTENSION_ZBB & (aluop == ALUOP_ROR || aluop == ALUOP_ROL);
