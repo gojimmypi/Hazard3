@@ -386,7 +386,6 @@ wire                 x_alu_cmp;
 
 wire [W_DATA-1:0]    m_trap_addr;
 wire                 m_trap_is_irq;
-wire                 m_trap_is_debug_entry;
 wire                 m_trap_enter_vld;
 wire                 m_trap_enter_soon;
 wire                 m_trap_enter_rdy = f_jump_rdy;
@@ -1190,7 +1189,6 @@ hazard3_csr #(
 	// Trap signalling
 	.trap_addr                  (m_trap_addr),
 	.trap_is_irq                (m_trap_is_irq),
-	.trap_is_debug_entry        (m_trap_is_debug_entry),
 	.trap_enter_soon            (m_trap_enter_soon),
 	.trap_enter_vld             (m_trap_enter_vld),
 	.trap_enter_rdy             (m_trap_enter_rdy),
