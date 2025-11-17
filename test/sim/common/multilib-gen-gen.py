@@ -8,37 +8,38 @@
 base = "rv32i"
 abi = "-ilp32--"
 options = [
-	# GCC13+:
 	"m",
 	"a",
 	"c",
-	"zicsr",
-	"zifencei",
 	"zba",
 	"zbb",
 	"zbc",
 	"zbs",
 	"zbkb",
-	# GCC14 only:
+	"zbkx",
 	"zca",
 	"zcb",
-	# "zcmp" (waiting on binutils 2.43)
+	"zcmp",
+	"zmmul"
 ]
 
 # Do not build for LHS except when *all of* RHS is also present. This cuts
 # down on the number of configurations. A leading "!" means antidependency,
 # i.e. an incompatibility.
 depends_on = {
+	"m":        ["!zmmul"                   ],
+	"zmmul":    ["!m"                       ],
 	"zbb":      ["m", "zba", "zbs"          ],
 	"zba":      ["m", "zbb", "zbs"          ],
 	"zbs":      ["m", "zba", "zbb"          ],
 	"zbkb":     ["zbb"                      ],
 	"zbc":      ["zba", "zbb", "zbs", "zbkb"],
+	"zbkx":     ["zba", "zbb", "zbs", "zbkb"],
 	"zifencei": ["zicsr"                    ],
 	"c":        ["!zca"                     ],
 	"zca":      ["!c"                       ],
 	"zcb":      ["zca"                      ],
-	# "zcmp":     ["zca", "zcb",              ],
+	"zcmp":     ["zca", "zcb",              ],
 }
 
 l = []
@@ -59,10 +60,15 @@ for i in range(2 ** len(options)):
 		if len(opt) > 1:
 			isa += "_"
 		isa += opt
+	isa += "_zicsr_zifencei"
 	if not violates_dependencies:
 		l.append(isa + abi)
 
-assert((base + abi) in l)
+# Bonus RV32E configs:
+l.append("rv32e_zicsr_zifencei-ilp32e--")
+l.append("rv32ema_zicsr_zifencei-ilp32e--")
+l.append("rv32emac_zicsr_zifencei-ilp32e--")
+l.append("rv32ema_zicsr_zifencei_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp-ilp32e--")
 
 print(";".join(l))
 

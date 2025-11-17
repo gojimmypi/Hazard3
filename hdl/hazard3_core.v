@@ -1,7 +1,11 @@
 /*****************************************************************************\
-|                      Copyright (C) 2021-2023 Luke Wren                      |
+|                      Copyright (C) 2021-2025 Luke Wren                      |
 |                     SPDX-License-Identifier: Apache-2.0                     |
 \*****************************************************************************/
+
+`ifdef HAZARD3_RVFI_STANDALONE
+`include "hazard3_rvfi_standalone_defs.vh"
+`endif
 
 `default_nettype none
 
@@ -53,6 +57,11 @@ module hazard3_core #(
 	output reg  [W_DATA-1:0]   bus_wdata_d,
 	input  wire [W_DATA-1:0]   bus_rdata_d,
 
+	// Memory ordering signals
+	output wire                fence_i_vld,
+	output wire                fence_d_vld,
+	input  wire                fence_rdy,
+
 	// Debugger run/halt control
 	input  wire                dbg_req_halt,
 	input  wire                dbg_req_halt_on_reset,
@@ -70,6 +79,10 @@ module hazard3_core #(
 	output wire                dbg_instr_caught_exception,
 	output wire                dbg_instr_caught_ebreak,
 
+	// Identification CSR values
+	input  wire [W_DATA-1:0]   mhartid_val,
+	input  wire [3:0]          eco_version,
+
 	// Level-sensitive interrupt sources
 	input  wire [NUM_IRQS-1:0] irq,       // -> mip.meip
 	input  wire                soft_irq,  // -> mip.msip
@@ -77,6 +90,7 @@ module hazard3_core #(
 );
 
 `include "hazard3_ops.vh"
+`include "rv_opcodes.vh"
 
 wire x_stall;
 wire m_stall;
@@ -84,6 +98,8 @@ wire m_stall;
 localparam HSIZE_WORD  = 3'd2;
 localparam HSIZE_HWORD = 3'd1;
 localparam HSIZE_BYTE  = 3'd0;
+
+localparam [4:0] REGADDR_MASK = {~|EXTENSION_E, 4'hf};
 
 wire debug_mode;
 assign dbg_halted = DEBUG_SUPPORT && debug_mode;
@@ -107,12 +123,25 @@ wire [W_REGADDR-1:0] f_rs1_fine;
 wire [W_REGADDR-1:0] f_rs2_fine;
 
 wire [31:0]          fd_cir;
+wire [31:0]          fd_cir_raw;
 wire [1:0]           fd_cir_err;
+wire                 fd_cir_break_any;
+wire                 fd_cir_break_d_mode;
 wire [1:0]           fd_cir_predbranch;
 wire [1:0]           fd_cir_vld;
+wire                 fd_cir_is_32bit;
+wire                 fd_cir_invalid_16bit;
+wire                 fd_cir_is_uop;
+wire                 fd_cir_uop_nonfinal;
+wire                 fd_cir_uop_no_pc_update;
+wire                 fd_cir_uop_atomic;
+
 wire [1:0]           df_cir_use;
 wire                 df_cir_flush_behind;
-wire [3:0]           df_uop_step_next;
+
+wire                 df_uop_stall;
+wire                 df_uop_clear;
+wire                 df_lspair_phase_next;
 
 wire                 x_btb_set;
 wire [W_ADDR-1:0]    x_btb_set_src_addr;
@@ -121,6 +150,15 @@ wire [W_ADDR-1:0]    x_btb_set_target_addr;
 wire                 x_btb_clear;
 
 wire [W_ADDR-1:0]    d_btb_target_addr;
+
+wire [W_ADDR-1:0]    f_pmp_i_addr;
+wire                 f_pmp_i_m_mode;
+wire                 f_pmp_i_kill;
+
+wire [W_ADDR-1:0]    f_trigger_addr;
+wire                 f_trigger_m_mode;
+wire [1:0]           f_trigger_break_any;
+wire [1:0]           f_trigger_break_d_mode;
 
 assign bus_aph_panic_i = 1'b0;
 
@@ -156,12 +194,24 @@ hazard3_frontend #(
 	.btb_target_addr_out  (d_btb_target_addr),
 
 	.cir                  (fd_cir),
+	.cir_raw              (fd_cir_raw),
 	.cir_err              (fd_cir_err),
 	.cir_predbranch       (fd_cir_predbranch),
+	.cir_break_any        (fd_cir_break_any),
+	.cir_break_d_mode     (fd_cir_break_d_mode),
 	.cir_vld              (fd_cir_vld),
+	.cir_is_32bit         (fd_cir_is_32bit),
+	.cir_invalid_16bit    (fd_cir_invalid_16bit),
+	.cir_is_uop           (fd_cir_is_uop),
+	.cir_uop_nonfinal     (fd_cir_uop_nonfinal),
+	.cir_uop_no_pc_update (fd_cir_uop_no_pc_update),
+	.cir_uop_atomic       (fd_cir_uop_atomic),
+
 	.cir_use              (df_cir_use),
 	.cir_flush_behind     (df_cir_flush_behind),
-	.df_uop_step_next     (df_uop_step_next),
+	.uop_stall            (df_uop_stall),
+	.uop_clear            (df_uop_clear),
+	.df_lspair_phase_next (df_lspair_phase_next),
 
 	.pwrdown_ok           (f_frontend_pwrdown_ok),
 	.delay_first_fetch    (!pwrup_ack),
@@ -174,7 +224,16 @@ hazard3_frontend #(
 	.debug_mode           (debug_mode),
 	.dbg_instr_data       (dbg_instr_data),
 	.dbg_instr_data_vld   (dbg_instr_data_vld),
-	.dbg_instr_data_rdy   (dbg_instr_data_rdy)
+	.dbg_instr_data_rdy   (dbg_instr_data_rdy),
+
+	.pmp_i_addr           (f_pmp_i_addr),
+	.pmp_i_m_mode         (f_pmp_i_m_mode),
+	.pmp_i_kill           (f_pmp_i_kill),
+
+	.trigger_addr         (f_trigger_addr),
+	.trigger_m_mode       (f_trigger_m_mode),
+	.trigger_break_any    (f_trigger_break_any),
+	.trigger_break_d_mode (f_trigger_break_d_mode)
 );
 
 // ----------------------------------------------------------------------------
@@ -220,10 +279,12 @@ wire                 d_sleep_unblock;
 wire                 d_no_pc_increment;
 wire                 d_uninterruptible;
 wire                 d_fence_i;
+wire                 d_fence_d;
 wire                 d_csr_ren;
 wire                 d_csr_wen;
 wire [1:0]           d_csr_wtype;
 wire                 d_csr_w_imm;
+wire [W_ADDR-1:0]    d_lspair_offset;
 
 wire                 x_jump_not_except;
 wire                 x_mmode_execution;
@@ -236,58 +297,70 @@ wire [W_ADDR-1:0]    debug_dpc_rdata;
 hazard3_decode #(
 `include "hazard3_config_inst.vh"
 ) decode_u (
-	.clk                  (clk),
-	.rst_n                (rst_n),
+	.clk                     (clk),
+	.rst_n                   (rst_n),
 
-	.fd_cir               (fd_cir),
-	.fd_cir_err           (fd_cir_err),
-	.fd_cir_predbranch    (fd_cir_predbranch),
-	.fd_cir_vld           (fd_cir_vld),
-	.df_cir_use           (df_cir_use),
-	.df_cir_flush_behind  (df_cir_flush_behind),
-	.df_uop_step_next     (df_uop_step_next),
-	.d_pc                 (d_pc),
-	.x_jump_not_except    (x_jump_not_except),
+	.fd_cir                  (fd_cir),
+	.fd_cir_err              (fd_cir_err),
+	.fd_cir_predbranch       (fd_cir_predbranch),
+	.fd_cir_vld              (fd_cir_vld),
+	.fd_cir_is_32bit         (fd_cir_is_32bit),
+	.fd_cir_invalid_16bit    (fd_cir_invalid_16bit),
+	.fd_cir_is_uop           (fd_cir_is_uop),
+	.fd_cir_uop_nonfinal     (fd_cir_uop_nonfinal),
+	.fd_cir_uop_no_pc_update (fd_cir_uop_no_pc_update),
+	.fd_cir_uop_atomic       (fd_cir_uop_atomic),
 
-	.debug_mode           (debug_mode),
-	.m_mode               (x_mmode_execution),
-	.trap_wfi             (x_trap_wfi),
+	.df_cir_use              (df_cir_use),
+	.df_cir_flush_behind     (df_cir_flush_behind),
+	.df_uop_stall            (df_uop_stall),
+	.df_uop_clear            (df_uop_clear),
+	.df_lspair_phase_next    (df_lspair_phase_next),
 
-	.debug_dpc_wdata      (debug_dpc_wdata),
-	.debug_dpc_wen        (debug_dpc_wen),
-	.debug_dpc_rdata      (debug_dpc_rdata),
+	.d_pc                    (d_pc),
+	.x_jump_not_except       (x_jump_not_except),
 
-	.d_starved            (d_starved),
-	.x_stall              (x_stall),
-	.f_jump_now           (f_jump_now),
-	.f_jump_target        (f_jump_target),
-	.d_btb_target_addr    (d_btb_target_addr),
+	.debug_mode              (debug_mode),
+	.m_mode                  (x_mmode_execution),
+	.trap_wfi                (x_trap_wfi),
 
-	.d_imm                (d_imm),
-	.d_rs1                (d_rs1),
-	.d_rs2                (d_rs2),
-	.d_rd                 (d_rd),
-	.d_funct3_32b         (d_funct3_32b),
-	.d_funct7_32b         (d_funct7_32b),
-	.d_alusrc_a           (d_alusrc_a),
-	.d_alusrc_b           (d_alusrc_b),
-	.d_aluop              (d_aluop),
-	.d_memop              (d_memop),
-	.d_mulop              (d_mulop),
-	.d_csr_ren            (d_csr_ren),
-	.d_csr_wen            (d_csr_wen),
-	.d_csr_wtype          (d_csr_wtype),
-	.d_csr_w_imm          (d_csr_w_imm),
-	.d_branchcond         (d_branchcond),
-	.d_addr_offs          (d_addr_offs),
-	.d_addr_is_regoffs    (d_addr_is_regoffs),
-	.d_except             (d_except),
-	.d_sleep_wfi          (d_sleep_wfi),
-	.d_sleep_block        (d_sleep_block),
-	.d_sleep_unblock      (d_sleep_unblock),
-	.d_no_pc_increment    (d_no_pc_increment),
-	.d_uninterruptible    (d_uninterruptible),
-	.d_fence_i            (d_fence_i)
+	.debug_dpc_wdata         (debug_dpc_wdata),
+	.debug_dpc_wen           (debug_dpc_wen),
+	.debug_dpc_rdata         (debug_dpc_rdata),
+
+	.d_starved               (d_starved),
+	.x_stall                 (x_stall),
+	.f_jump_now              (f_jump_now),
+	.f_jump_target           (f_jump_target),
+	.d_btb_target_addr       (d_btb_target_addr),
+
+	.d_imm                   (d_imm),
+	.d_rs1                   (d_rs1),
+	.d_rs2                   (d_rs2),
+	.d_rd                    (d_rd),
+	.d_funct3_32b            (d_funct3_32b),
+	.d_funct7_32b            (d_funct7_32b),
+	.d_alusrc_a              (d_alusrc_a),
+	.d_alusrc_b              (d_alusrc_b),
+	.d_aluop                 (d_aluop),
+	.d_memop                 (d_memop),
+	.d_mulop                 (d_mulop),
+	.d_csr_ren               (d_csr_ren),
+	.d_csr_wen               (d_csr_wen),
+	.d_csr_wtype             (d_csr_wtype),
+	.d_csr_w_imm             (d_csr_w_imm),
+	.d_branchcond            (d_branchcond),
+	.d_addr_offs             (d_addr_offs),
+	.d_addr_is_regoffs       (d_addr_is_regoffs),
+	.d_except                (d_except),
+	.d_sleep_wfi             (d_sleep_wfi),
+	.d_sleep_block           (d_sleep_block),
+	.d_sleep_unblock         (d_sleep_unblock),
+	.d_no_pc_increment       (d_no_pc_increment),
+	.d_uninterruptible       (d_uninterruptible),
+	.d_lspair_offset         (d_lspair_offset),
+	.d_fence_i               (d_fence_i),
+	.d_fence_d               (d_fence_d)
 );
 
 // ----------------------------------------------------------------------------
@@ -313,7 +386,6 @@ wire                 x_alu_cmp;
 
 wire [W_DATA-1:0]    m_trap_addr;
 wire                 m_trap_is_irq;
-wire                 m_trap_is_debug_entry;
 wire                 m_trap_enter_vld;
 wire                 m_trap_enter_soon;
 wire                 m_trap_enter_rdy = f_jump_rdy;
@@ -372,10 +444,10 @@ wire x_stall_on_amo = |EXTENSION_A && d_memop_is_amo && !m_trap_enter_soon && (
 
 wire m_fast_mul_result_vld;
 wire m_generating_result =
-	xm_memop < MEMOP_SW ||
-	|EXTENSION_A && xm_memop == MEMOP_LR_W ||
-	|EXTENSION_A && xm_memop == MEMOP_SC_W || // sc.w success result is data phase
-	|EXTENSION_M && m_fast_mul_result_vld;
+	(xm_memop < MEMOP_SW) ||
+	(|EXTENSION_A && xm_memop == MEMOP_LR_W) ||
+	(|EXTENSION_A && xm_memop == MEMOP_SC_W) || // sc.w success result is data phase
+	(|EXTENSION_M && m_fast_mul_result_vld);
 
 reg x_stall_on_raw;
 
@@ -397,6 +469,7 @@ always @ (*) begin
 	end
 end
 
+wire x_stall_on_fence;
 wire x_stall_muldiv;
 wire x_jump_req;
 
@@ -406,6 +479,7 @@ assign x_stall =
 	x_stall_on_exclusive_overlap ||
 	x_stall_on_amo ||
 	x_stall_on_raw ||
+	x_stall_on_fence ||
 	x_stall_muldiv ||
 	bus_aph_req_d && !bus_aph_ready_d ||
 	x_jump_req && !f_jump_rdy;
@@ -413,9 +487,9 @@ assign x_stall =
 wire m_sleep_stall_release;
 
 wire x_loadstore_pmp_fail;
-wire x_exec_pmp_fail;
-wire x_trig_break;
-wire x_trig_break_d_mode;
+wire x_trig_step_break;
+wire x_trig_break = fd_cir_break_any || x_trig_step_break;
+wire x_trig_break_d_mode = fd_cir_break_d_mode;
 
 // ----------------------------------------------------------------------------
 // Execution logic
@@ -436,15 +510,17 @@ always @ (posedge clk or negedge rst_n) begin
 		d_rs1_predecoded <= {W_REGADDR{1'b0}};
 		d_rs2_predecoded <= {W_REGADDR{1'b0}};
 	end else if (d_starved || !x_stall) begin
-		d_rs1_predecoded <= f_rs1_fine;
-		d_rs2_predecoded <= f_rs2_fine;
+		d_rs1_predecoded <= f_rs1_fine & REGADDR_MASK;
+		d_rs2_predecoded <= f_rs2_fine & REGADDR_MASK;
 	end
 end
 
-wire [W_REGADDR-1:0] d_rs1_predecoded_nxt =
-	d_starved || !x_stall ? f_rs1_fine : d_rs1_predecoded;
-wire [W_REGADDR-1:0] d_rs2_predecoded_nxt =
-	d_starved || !x_stall ? f_rs2_fine : d_rs2_predecoded;
+wire [W_REGADDR-1:0] d_rs1_predecoded_nxt = REGADDR_MASK & (
+	d_starved || !x_stall ? f_rs1_fine : d_rs1_predecoded
+);
+wire [W_REGADDR-1:0] d_rs2_predecoded_nxt = REGADDR_MASK & (
+	d_starved || !x_stall ? f_rs2_fine : d_rs2_predecoded
+);
 
 wire [W_REGADDR-1:0] xm_rd_nxt;
 wire [W_REGADDR-1:0] mw_rd_nxt;
@@ -547,9 +623,11 @@ wire x_memop_vld = d_memop != MEMOP_NONE && !(
 );
 
 wire x_memop_write =
-	d_memop == MEMOP_SW || d_memop == MEMOP_SH || d_memop == MEMOP_SB ||
-	|EXTENSION_A && d_memop == MEMOP_SC_W ||
-	|EXTENSION_A && d_memop_is_amo && x_amo_phase == 3'h2;
+	d_memop == MEMOP_SW ||
+	d_memop == MEMOP_SH ||
+	d_memop == MEMOP_SB ||
+	(|EXTENSION_A && d_memop == MEMOP_SC_W) ||
+	(|EXTENSION_A && d_memop_is_amo && x_amo_phase == 3'h2);
 
 // Always query the global monitor, except for store-conditional suppressed by local monitor.
 assign bus_aph_excl_d = |EXTENSION_A && (
@@ -566,37 +644,21 @@ always @ (posedge clk or negedge rst_n) begin
 		x_amo_phase <= 3'h0;
 	end else if (|EXTENSION_A && d_memop_is_amo && (
 		bus_aph_ready_d || bus_dph_ready_d ||
-		m_trap_enter_vld || x_unaligned_addr ||
+		m_trap_enter_vld || x_unaligned_addr || x_loadstore_pmp_fail ||
 		x_amo_phase == 3'h4
 	)) begin
 		if (m_trap_enter_vld) begin
 			// Bail out, squash the in-progress AMO.
 			x_amo_phase <= 3'h0;
-`ifdef HAZARD3_ASSERTIONS
-			// Should only happen during an address phase, *or* the fault phase.
-			assert(x_amo_phase == 3'h0 || x_amo_phase == 3'h2 || x_amo_phase == 3'h4);
-			// The fault phase only holds when we have a misaligned AMO directly behind
-			// a regular memory access that subsequently excepts, and the AMO has gone
-			// straight to fault phase due to misalignment.
-			if (x_amo_phase == 3'h4)
-				assert(x_unaligned_addr);
-`endif
 		end else if (x_stall_on_raw || x_stall_on_exclusive_overlap || m_trap_enter_soon) begin
 			// First address phase stalled due to address dependency on
 			// previous load/mul/etc. Shouldn't be possible in later phases.
 			x_amo_phase <= 3'h0;
-`ifdef HAZARD3_ASSERTIONS
-			assert(x_amo_phase == 3'h0);
-`endif
 		end else if (x_amo_phase == 3'h4) begin
 			// Clear fault phase once it goes through to stage 3 and excepts
 			if (!x_stall)
 				x_amo_phase <= 3'h0;
-`ifdef HAZARD3_ASSERTIONS
-			// This should only happen when we are stalled on an older load/store etc
-			assert(!(x_stall && !m_stall));
-`endif
-		end else if (x_unaligned_addr) begin
+		end else if (x_unaligned_addr || x_loadstore_pmp_fail) begin
 			x_amo_phase <= 3'h4;
 		end else if (x_amo_phase == 3'h1 && !bus_dph_exokay_d) begin
 			// Load reserve fail indicates the memory region does not support
@@ -616,7 +678,43 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 `ifdef HAZARD3_ASSERTIONS
+// Assertions for above block, extracted to avoid making assertions
+// reset-sensitive (limitation of yosys-smtbmc)
 always @ (posedge clk) if (rst_n) begin
+	if (|EXTENSION_A && d_memop_is_amo && (
+		bus_aph_ready_d || bus_dph_ready_d ||
+		m_trap_enter_vld || x_unaligned_addr ||
+		x_amo_phase == 3'h4
+	)) begin
+		if (m_trap_enter_vld) begin
+			// Should only happen during an address phase, *or* the fault phase.
+			assert(x_amo_phase == 3'h0 || x_amo_phase == 3'h2 || x_amo_phase == 3'h4);
+			// The fault phase only holds when we have a misaligned AMO directly behind
+			// a regular memory access that subsequently excepts, and the AMO has gone
+			// straight to fault phase due to misalignment.
+			if (x_amo_phase == 3'h4)
+				assert(x_unaligned_addr);
+		end else if (x_stall_on_raw || x_stall_on_exclusive_overlap || m_trap_enter_soon) begin
+			assert(x_amo_phase == 3'h0);
+		end else if (x_amo_phase == 3'h4) begin
+			// This should only happen when we are stalled on an older load/store etc
+			assert(!(x_stall && !m_stall));
+		end
+	end
+end
+`endif
+
+`ifdef HAZARD3_ASSERTIONS
+// General AMO design assertions
+reg prop_dph_is_excl = 1'b0;
+always @ (posedge clk) if (rst_n) begin
+	if (bus_aph_ready_d && bus_aph_req_d) begin
+		prop_dph_is_excl <= bus_aph_excl_d;
+	end else if (bus_dph_ready_d) begin
+		// It's possible for the dphase to end without the aphase ending due
+		// to e.g. SBA arbitration
+		prop_dph_is_excl <= 1'b0;
+	end
 	// Other states should be unreachable
 	assert(x_amo_phase <= 3'h4);
 	// First state should be 0 -- don't want anything carried from one AMO to the next.
@@ -644,6 +742,12 @@ always @ (posedge clk) if (rst_n) begin
 	// Make sure M is unstalled for passing store data through in phase 2
 	if (x_amo_phase == 3'h2)
 		assert(!m_stall);
+	// Make sure we don't pipeline AMO aphases with other exclusive dphases
+	if (d_memop_is_amo && bus_aph_req_d)
+		assert(!prop_dph_is_excl);
+	// Only phases 0 (read aphase) and 2 (write aphase) assert new bus transfers
+	if (d_memop_is_amo && bus_aph_req_d)
+		assert(x_amo_phase == 3'h0 || x_amo_phase == 3'h2);
 end
 `endif
 
@@ -651,7 +755,10 @@ end
 // Supporting all branch types already requires rs1 + I-fmt, and pc + B-fmt.
 // B-fmt are almost identical to S-fmt, so we rs1 + S-fmt is almost free.
 
-wire [W_ADDR-1:0] x_addr_sum = (d_addr_is_regoffs ? x_rs1_bypass : d_pc) + d_addr_offs;
+wire [W_ADDR-1:0] x_addr_sum =
+	(d_lspair_offset & {W_ADDR{|EXTENSION_ZILSD}}) +
+	(d_addr_is_regoffs ? x_rs1_bypass : d_pc) +
+	d_addr_offs;
 
 always @ (*) begin
 	// Need to be careful not to use anything hready-sourced to gate htrans!
@@ -673,7 +780,6 @@ always @ (*) begin
 		x_stall_on_raw ||
 		x_stall_on_exclusive_overlap ||
 		x_loadstore_pmp_fail ||
-		x_exec_pmp_fail ||
 		x_trig_break ||
 		x_unaligned_addr ||
 		m_trap_enter_soon ||
@@ -681,16 +787,31 @@ always @ (*) begin
 	);
 end
 
+// Fences are not issued until relevant buses are quiet.
+wire m_dphase_in_flight;
+assign x_stall_on_fence =
+	(d_fence_i && !(fence_rdy && !m_dphase_in_flight && f_frontend_pwrdown_ok)) ||
+	(d_fence_d && !(fence_rdy && !m_dphase_in_flight));
+
+wire x_fence_mask =
+	x_trig_break ||
+	m_dphase_in_flight ||
+	m_trap_enter_soon ||
+	((xm_sleep_wfi || xm_sleep_block) && !m_sleep_stall_release);
+
+assign fence_i_vld = d_fence_i && !x_fence_mask && f_frontend_pwrdown_ok;
+assign fence_d_vld = d_fence_d && !x_fence_mask;
+
 // Multiply/divide
 
 wire [W_DATA-1:0] x_muldiv_result;
 wire [W_DATA-1:0] m_fast_mul_result;
 
 wire x_use_fast_mul = d_aluop == ALUOP_MULDIV && (
-	MUL_FAST  && d_mulop == M_OP_MUL   ||
-	MULH_FAST && d_mulop == M_OP_MULH  ||
-	MULH_FAST && d_mulop == M_OP_MULHU ||
-	MULH_FAST && d_mulop == M_OP_MULHSU
+	(MUL_FAST  && d_mulop == M_OP_MUL   ) ||
+	(MULH_FAST && d_mulop == M_OP_MULH  ) ||
+	(MULH_FAST && d_mulop == M_OP_MULHU ) ||
+	(MULH_FAST && d_mulop == M_OP_MULHSU)
 );
 
 generate
@@ -784,7 +905,7 @@ endgenerate
 // Branch handling
 
 // For JALR, the LSB of the result must be cleared by hardware
-wire [W_ADDR-1:0] x_jump_target = x_addr_sum & ~32'h1;
+wire [W_ADDR-1:0] x_jump_target = x_addr_sum & ~32'd1;
 wire              x_jump_misaligned = ~|EXTENSION_C && x_addr_sum[1];
 wire              x_branch_cmp_noinvert;
 
@@ -801,7 +922,7 @@ end else begin: fast_branchcmp
 	hazard3_branchcmp #(
 	`include "hazard3_config_inst.vh"
 	) branchcmp_u (
-		.aluop (d_aluop),
+		.cir   (fd_cir),
 		.op_a  (x_rs1_bypass),
 		.op_b  (x_rs2_bypass),
 		.cmp   (x_branch_cmp_noinvert)
@@ -817,7 +938,7 @@ wire x_jump_req_unchecked = !x_stall_on_raw && (
 	d_branchcond == BCOND_NZERO && x_branch_cmp
 );
 
-assign x_jump_req = x_jump_req_unchecked && !x_jump_misaligned && !x_exec_pmp_fail && !x_trig_break;
+assign x_jump_req = x_jump_req_unchecked && !x_jump_misaligned && !x_trig_break;
 
 assign x_btb_set = |BRANCH_PREDICTOR && (
 	x_jump_req_unchecked && d_addr_offs[W_ADDR - 1] && !x_branch_was_predicted &&
@@ -830,7 +951,7 @@ assign x_btb_clear = d_fence_i || (m_trap_enter_vld && m_trap_enter_rdy) || (|BR
 
 assign x_btb_set_src_addr = d_pc;
 assign x_btb_set_target_addr = x_jump_target;
-assign x_btb_set_src_size = &fd_cir[1:0];
+assign x_btb_set_src_size = fd_cir_is_32bit;
 
 // Memory protection
 
@@ -843,35 +964,42 @@ generate
 if (PMP_REGIONS > 0) begin: have_pmp
 
 	wire x_loadstore_pmp_badperm;
-	assign x_loadstore_pmp_fail = x_loadstore_pmp_badperm && x_memop_vld;
+	assign x_loadstore_pmp_fail = x_loadstore_pmp_badperm && x_memop_vld && !debug_mode;
+
+	// R and W are enforced at the point the load/store address is generated,
+	// in time to mask the address-phase request. X is enforced by checking
+	// fetch addresses during fetch data phase (stage F) and promoting PMP
+	// fails to bus faults.
 
 	hazard3_pmp #(
 	`include "hazard3_config_inst.vh"
 	) pmp (
-		.clk              (clk),
-		.rst_n            (rst_n),
+		.clk                       (clk),
+		.rst_n                     (rst_n),
 
-		.cfg_addr         (x_pmp_cfg_addr),
-		.cfg_wen          (x_pmp_cfg_wen),
-		.cfg_wdata        (x_pmp_cfg_wdata),
-		.cfg_rdata        (x_pmp_cfg_rdata),
+		.cfg_addr                  (x_pmp_cfg_addr),
+		.cfg_wen                   (x_pmp_cfg_wen),
+		.cfg_wdata                 (x_pmp_cfg_wdata),
+		.cfg_rdata                 (x_pmp_cfg_rdata),
 
-		.i_addr           (d_pc),
-		.i_instr_is_32bit (&fd_cir[1:0]),
-		.i_m_mode         (x_mmode_execution),
-		.i_kill           (x_exec_pmp_fail),
+		.i_addr                    (f_pmp_i_addr),
+		.i_m_mode                  (f_pmp_i_m_mode),
+		.i_kill                    (f_pmp_i_kill),
 
-		.d_addr           (bus_haddr_d),
-		.d_m_mode         (x_mmode_loadstore),
-		.d_write          (bus_hwrite_d),
-		.d_kill           (x_loadstore_pmp_badperm)
+		.d_addr                    (bus_haddr_d),
+		.d_addr_addend_rs1         (x_rs1_bypass),
+		.d_addr_addend_imm         (d_addr_offs),
+		.d_addr_addend_lspair_offs (d_lspair_offset),
+		.d_m_mode                  (x_mmode_loadstore),
+		.d_write                   (bus_hwrite_d),
+		.d_kill                    (x_loadstore_pmp_badperm)
 	);
 
 end else begin: no_pmp
 
 	assign x_pmp_cfg_rdata = 32'd0;
 	assign x_loadstore_pmp_fail = 1'b0;
-	assign x_exec_pmp_fail = 1'b0;
+	assign f_pmp_i_kill = 1'b0;
 
 end
 endgenerate
@@ -884,8 +1012,17 @@ wire [W_DATA-1:0] x_trig_cfg_wdata;
 wire [W_DATA-1:0] x_trig_cfg_rdata;
 wire              x_trig_m_en;
 
+wire              m_trig_event_interrupt;
+wire              m_trig_event_exception;
+wire [3:0]        m_trig_event_trap_cause;
+
+wire              x_instr_ret;
+
 generate
-if (BREAKPOINT_TRIGGERS > 0) begin: have_triggers
+if (DEBUG_SUPPORT != 0) begin: have_triggers
+
+	// Connection of .fetch_d_mode is from the wrong stage: safe because we
+	// enter/exit debug mode via exceptions, which flush the frontend.
 
 	hazard3_triggers #(
 	`include "hazard3_config_inst.vh"
@@ -899,30 +1036,45 @@ if (BREAKPOINT_TRIGGERS > 0) begin: have_triggers
 		.cfg_rdata        (x_trig_cfg_rdata),
 		.trig_m_en        (x_trig_m_en),
 
-		.pc               (d_pc),
-		.m_mode           (x_mmode_execution),
-		.d_mode           (debug_mode),
+		.fetch_addr       (f_trigger_addr),
+		.fetch_m_mode     (f_trigger_m_mode),
+		.fetch_d_mode     (debug_mode),
 
-		.break_any        (x_trig_break),
-		.break_d_mode     (x_trig_break_d_mode)
+		.event_instr_ret  (x_instr_ret),
+
+		.event_interrupt  (m_trig_event_interrupt),
+		.event_exception  (m_trig_event_exception),
+		.event_trap_cause (m_trig_event_trap_cause),
+		.event_trap_enter (m_trap_enter_vld && m_trap_enter_rdy),
+
+		.break_any        (f_trigger_break_any),
+		.break_d_mode     (f_trigger_break_d_mode),
+
+		.break_m_step     (x_trig_step_break),
+
+		.x_d_mode         (debug_mode),
+		.x_m_mode         (x_mmode_execution)
 	);
 
 end else begin: no_triggers
 
 	assign x_trig_cfg_rdata = {W_DATA{1'b0}};
-	assign x_trig_break = 1'b0;
-	assign x_trig_break_d_mode = 1'b0;
+	assign f_trigger_break_any = 2'b00;
+	assign f_trigger_break_d_mode = 2'b00;
+	assign x_trig_step_break = 1'b0;
 
 end
 endgenerate
 
 // CSRs and Trap Handling
 
+// Use opcode bits directly because d_rs1 is masked when RVE is enabled:
 wire [W_DATA-1:0] x_csr_wdata = d_csr_w_imm ?
-	{{W_DATA-5{1'b0}}, d_rs1} : x_rs1_bypass;
+	{{W_DATA-5{1'b0}}, fd_cir[RV_RS1_LSB +: 5]} : x_rs1_bypass;
 
 wire [W_DATA-1:0] x_csr_rdata;
 wire              x_csr_illegal_access;
+wire              x_csr_write_is_fetch_ordered;
 
 // "Previous" refers to next-most-recent instruction to be in D/X, i.e. the
 // most recent instruction to reach stage M (which may or may not still be in M).
@@ -946,7 +1098,9 @@ always @ (posedge clk or negedge rst_n) begin
 			d_memop_is_amo && !(
 				x_amo_phase == 3'h3 && bus_dph_ready_d && !bus_dph_err_d ||
 				// Read reservation failure failure also generates error
-				x_amo_phase == 3'h1 & bus_dph_ready_d && !bus_dph_err_d && bus_dph_exokay_d
+				x_amo_phase == 3'h1 && bus_dph_ready_d && !bus_dph_err_d && bus_dph_exokay_d
+			) || (
+				(fence_i_vld || fence_d_vld) && !fence_rdy
 			);
 
 		if (!x_stall)
@@ -958,7 +1112,6 @@ wire [W_ADDR-1:0] m_exception_return_addr;
 
 wire [W_EXCEPT-1:0] x_except =
 	x_trig_break                                             ? EXCEPT_EBREAK         :
-	x_exec_pmp_fail                                          ? EXCEPT_INSTR_FAULT    :
 	x_jump_req_unchecked && x_jump_misaligned                ? EXCEPT_INSTR_MISALIGN :
 	x_csr_illegal_access                                     ? EXCEPT_INSTR_ILLEGAL  :
 	|EXTENSION_A && x_unaligned_addr &&  d_memop_is_amo      ? EXCEPT_STORE_ALIGN    :
@@ -967,17 +1120,20 @@ wire [W_EXCEPT-1:0] x_except =
 	x_unaligned_addr &&  x_memop_write                       ? EXCEPT_STORE_ALIGN    :
 	x_unaligned_addr && !x_memop_write                       ? EXCEPT_LOAD_ALIGN     :
 	x_loadstore_pmp_fail && (d_memop_is_amo || bus_hwrite_d) ? EXCEPT_STORE_FAULT    :
-	x_loadstore_pmp_fail                                     ? EXCEPT_LOAD_FAULT     : d_except;
+	x_loadstore_pmp_fail                                     ? EXCEPT_LOAD_FAULT     :
+	x_csr_write_is_fetch_ordered                             ? EXCEPT_REFETCH        : d_except;
 
 // If an instruction causes an exceptional condition we do not consider it to have retired.
 wire x_except_counts_as_retire =
 	x_except == EXCEPT_EBREAK  ||
+	x_except == EXCEPT_REFETCH ||
 	x_except == EXCEPT_MRET    ||
 	x_except == EXCEPT_ECALL_M ||
 	x_except == EXCEPT_ECALL_U;
 
-wire x_instr_ret = |df_cir_use && (x_except == EXCEPT_NONE || x_except_counts_as_retire);
-wire m_dphase_in_flight = xm_memop != MEMOP_NONE && xm_memop != MEMOP_AMO;
+assign x_instr_ret = |df_cir_use && (x_except == EXCEPT_NONE || x_except_counts_as_retire);
+
+assign m_dphase_in_flight = xm_memop != MEMOP_NONE && xm_memop != MEMOP_AMO;
 
 // Need to delay IRQ entry on sleep exit because, for deep sleep states, we
 // can't access the bus until the power handshake has completed.
@@ -988,6 +1144,7 @@ wire m_pwr_allow_clkgate;
 wire m_pwr_allow_power_down;
 wire m_pwr_allow_sleep_on_block;
 wire m_wfi_wakeup_req;
+wire m_clear_excl_on_trap_exit;
 
 hazard3_csr #(
 	.XLEN            (W_DATA),
@@ -1027,11 +1184,11 @@ hazard3_csr #(
 	.ren_soon                   (d_csr_ren && !m_trap_enter_soon),
 	.ren                        (d_csr_ren && !m_trap_enter_soon && !x_stall),
 	.illegal                    (x_csr_illegal_access),
+	.write_is_fetch_ordered     (x_csr_write_is_fetch_ordered),
 
 	// Trap signalling
 	.trap_addr                  (m_trap_addr),
 	.trap_is_irq                (m_trap_is_irq),
-	.trap_is_debug_entry        (m_trap_is_debug_entry),
 	.trap_enter_soon            (m_trap_enter_soon),
 	.trap_enter_vld             (m_trap_enter_vld),
 	.trap_enter_rdy             (m_trap_enter_rdy),
@@ -1066,16 +1223,24 @@ hazard3_csr #(
 	.trig_cfg_rdata             (x_trig_cfg_rdata),
 	.trig_m_en                  (x_trig_m_en),
 
+	.trig_event_interrupt       (m_trig_event_interrupt),
+	.trig_event_exception       (m_trig_event_exception),
+	.trig_event_trap_cause      (m_trig_event_trap_cause),
+
 	// Other CSR-specific signalling
+	.clear_excl_on_trap_exit    (m_clear_excl_on_trap_exit),
 	.trap_wfi                   (x_trap_wfi),
-	.instr_ret                  (x_instr_ret)
+	.instr_ret                  (x_instr_ret),
+	.mhartid_val                (mhartid_val),
+	.eco_version                (eco_version)
 );
 
 // Pipe register
 
-assign xm_rd_nxt =
+assign xm_rd_nxt = REGADDR_MASK & (
 	m_stall                                   ? xm_rd :
-	x_stall || d_starved || m_trap_enter_soon ? 5'h0  : d_rd;
+	x_stall || d_starved || m_trap_enter_soon ? 5'h0  : d_rd
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1092,9 +1257,9 @@ always @ (posedge clk or negedge rst_n) begin
 	end else begin
 		unblock_out <= 1'b0;
 		if (!m_stall) begin
-			xm_rs1 <= d_rs1;
-			xm_rs2 <= d_rs2;
-			xm_rd <= d_rd;
+			xm_rs1 <= REGADDR_MASK & d_rs1;
+			xm_rs2 <= REGADDR_MASK & d_rs2;
+			xm_rd  <= REGADDR_MASK & d_rd;
 			// PC increment is suppressed non-final micro-ops, only needed for Zcmp:
 			xm_no_pc_increment <= d_no_pc_increment && |EXTENSION_ZCMP;
 			// If some X-sourced exception has squashed the address phase, need to squash the data phase too.
@@ -1117,14 +1282,6 @@ always @ (posedge clk or negedge rst_n) begin
 				xm_sleep_block      <= 1'b0;
 				unblock_out         <= 1'b0;
 			end
-`ifdef HAZARD3_ASSERTIONS
-			// Assuming downstream bus is compliant, err && !stalled is the
-			// last cycle of an error response, in which case this must have
-			// been previously captured as an exception.
-			if (bus_dph_err_d && x_amo_phase == 3'h0) begin
-				assert(xm_except == EXCEPT_LOAD_FAULT || xm_except == EXCEPT_STORE_FAULT);
-			end
-`endif
 		end else if (bus_dph_err_d) begin
 			// First phase of 2-phase AHB5 error response. Pass the exception along on
 			// this cycle, and on the next cycle the trap entry will be asserted,
@@ -1132,33 +1289,44 @@ always @ (posedge clk or negedge rst_n) begin
 			xm_except <=
 				|EXTENSION_A && xm_memop == MEMOP_LR_W ? EXCEPT_LOAD_FAULT :
 				                xm_memop <= MEMOP_LBU  ? EXCEPT_LOAD_FAULT : EXCEPT_STORE_FAULT;
-`ifdef HAZARD3_ASSERTIONS
-			// There should be a bus transfer in stage 3 corresponding to this bus error
-			assert(xm_memop != MEMOP_NONE);
-			// We should capture this error exactly once, and if there were
-			// any other source of exception then the load/store should not
-			// have happened in the first place. Only exception is when the
-			// entry of the load/store trap is stalled on the frontend.
-			assert(xm_except == EXCEPT_NONE || (!m_trap_enter_rdy && (
-				xm_except == EXCEPT_LOAD_FAULT || xm_except == EXCEPT_STORE_FAULT
-			)));
-			// Make sure we don't have to clear any of the other stage 3 flags
-			assert(!xm_except_to_d_mode);
-			assert(!xm_sleep_wfi);
-			assert(!xm_sleep_block);
-			assert(!unblock_out);
-`endif
 		end
-`ifdef HAZARD3_ASSERTIONS
-		// Some of the exception->ls paths are cut as they are supposed to be
-		// impossible -- make sure there is no way to have a load/store that
-		// is not squashed. (This includes debug entry!)
-		if (m_trap_enter_vld) begin
-			assert(!bus_aph_req_d);
-		end
-`endif
 	end
 end
+
+`ifdef HAZARD3_ASSERTIONS
+// Properties for previous block
+always @ (posedge clk) if (rst_n) begin
+	if (!m_stall) begin
+		// Assuming downstream bus is compliant, err && !stalled is the
+		// last cycle of an error response, in which case this must have
+		// been previously captured as an exception.
+		if (bus_dph_err_d && x_amo_phase == 3'h0) begin
+			assert(xm_except == EXCEPT_LOAD_FAULT || xm_except == EXCEPT_STORE_FAULT);
+		end
+	end else if (bus_dph_err_d) begin
+		// There should be a bus transfer in stage 3 corresponding to this bus error
+		assert(xm_memop != MEMOP_NONE);
+		// We should capture this error exactly once, and if there were
+		// any other source of exception then the load/store should not
+		// have happened in the first place. Only exception is when the
+		// entry of the load/store trap is stalled on the frontend.
+		assert(xm_except == EXCEPT_NONE || (!m_trap_enter_rdy && (
+			xm_except == EXCEPT_LOAD_FAULT || xm_except == EXCEPT_STORE_FAULT
+		)));
+		// Make sure we don't have to clear any of the other stage 3 flags
+		assert(!xm_except_to_d_mode);
+		assert(!xm_sleep_wfi);
+		assert(!xm_sleep_block);
+		assert(!unblock_out);
+	end
+	// Some of the exception->ls paths are cut as they are supposed to be
+	// impossible -- make sure there is no way to have a load/store that
+	// is not squashed. (This includes debug entry!)
+	if (m_trap_enter_vld) begin
+		assert(!bus_aph_req_d);
+	end
+end
+`endif
 
 `ifdef HAZARD3_ASSERTIONS
 always @ (posedge clk) if (rst_n) begin
@@ -1225,9 +1393,9 @@ assign m_stall = m_bus_stall ||
 // exception, we know that the previous instruction to be in X (now in M)
 // was *not* a taken branch, which is why we can just walk back the PC.
 assign m_exception_return_addr = d_pc - (
-	m_trap_is_irq         ? 32'h0 :
-	xm_no_pc_increment    ? 32'h0 :
-	prev_instr_was_32_bit ? 32'h4 : 32'h2
+	m_trap_is_irq         ? 32'd0 :
+	xm_no_pc_increment    ? 32'd0 :
+	prev_instr_was_32_bit ? 32'd4 : 32'd2
 );
 
 hazard3_power_ctrl power_ctrl (
@@ -1304,7 +1472,7 @@ end
 // Local monitor update.
 // - Set on a load-reserved with good response from global monitor
 // - Cleared by any store-conditional
-// - Cleared by non-debug-related trap entry/exit
+// - Cleared by non-debug-related trap exit
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1318,11 +1486,11 @@ always @ (posedge clk or negedge rst_n) begin
 			end else if (xm_memop == MEMOP_LR_W && bus_dph_ready_d) begin
 				// In theory, the bus should never report HEXOKAY when HRESP is asserted.
 				// Still might happen (e.g. if HEXOKAY is tied high), so mask HEXOKAY with
-				// HREADY to be sure a failed lr.w clears the monitor.
+				// HRESP to be sure a failed lr.w clears the monitor.
 				mw_local_exclusive_reserved <= bus_dph_exokay_d && !bus_dph_err_d;
 			end
 		end
-		if (m_trap_enter_vld && m_trap_enter_rdy && !(debug_mode || m_trap_is_debug_entry)) begin
+		if (m_clear_excl_on_trap_exit) begin
 			mw_local_exclusive_reserved <= 1'b0;
 		end
 	end
@@ -1369,7 +1537,9 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
-assign mw_rd_nxt = m_reg_wen_if_nonzero ? xm_rd : mw_rd;
+assign mw_rd_nxt = REGADDR_MASK & (
+	m_reg_wen_if_nonzero ? xm_rd : mw_rd
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -1381,15 +1551,14 @@ always @ (posedge clk or negedge rst_n) begin
 			$finish;
 		end
 `endif
-		if (m_reg_wen_if_nonzero)
-			mw_rd <= xm_rd;
+		if (m_reg_wen_if_nonzero) begin
+			mw_rd <= REGADDR_MASK & xm_rd;
+		end
 	end
 end
 
 hazard3_regfile_1w2r #(
-	.RESET_REGS (RESET_REGFILE),
-	.N_REGS     (32),
-	.W_DATA     (W_DATA)
+`include "hazard3_config_inst.vh"
 ) regs (
 	.clk    (clk),
 	.rst_n  (rst_n),

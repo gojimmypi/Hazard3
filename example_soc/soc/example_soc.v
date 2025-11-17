@@ -9,7 +9,7 @@
 `default_nettype none
 
 module example_soc #(
-	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG" or "ECP5"
+	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
 
@@ -31,9 +31,6 @@ module example_soc #(
 	input  wire              uart_rx
 );
 
-localparam W_ADDR = 32;
-localparam W_DATA = 32;
-
 // ----------------------------------------------------------------------------
 // Processor debug
 
@@ -42,7 +39,7 @@ wire              dmi_penable;
 wire              dmi_pwrite;
 wire [8:0]        dmi_paddr;
 wire [31:0]       dmi_pwdata;
-reg  [31:0]       dmi_prdata;
+wire [31:0]       dmi_prdata;
 wire              dmi_pready;
 wire              dmi_pslverr;
 
@@ -99,6 +96,26 @@ end else if (DTM_TYPE == "ECP5") begin
 	assign tdo = 1'b0;
 
 	hazard3_ecp5_jtag_dtm dtm_u (
+		.dmihardreset_req (dmihardreset_req),
+
+		.clk_dmi          (clk),
+		.rst_n_dmi        (rst_n_dmi),
+
+		.dmi_psel         (dmi_psel),
+		.dmi_penable      (dmi_penable),
+		.dmi_pwrite       (dmi_pwrite),
+		.dmi_paddr        (dmi_paddr),
+		.dmi_pwdata       (dmi_pwdata),
+		.dmi_prdata       (dmi_prdata),
+		.dmi_pready       (dmi_pready),
+		.dmi_pslverr      (dmi_pslverr)
+	);
+
+end else if (DTM_TYPE == "XILINX7") begin
+
+	assign tdo = 1'b0;
+
+	hazard3_xilinx7_jtag_dtm dtm_u (
 		.dmihardreset_req (dmihardreset_req),
 
 		.clk_dmi          (clk),
@@ -229,6 +246,7 @@ wire [2:0]        proc_hsize;
 wire [2:0]        proc_hburst;
 wire [3:0]        proc_hprot;
 wire              proc_hmastlock;
+wire [7:0]        proc_hmaster;
 wire              proc_hexcl;
 wire              proc_hready;
 wire              proc_hresp;
@@ -255,13 +273,19 @@ hazard3_cpu_1port #(
 	// instantiation of example_soc():
 	.EXTENSION_A         (EXTENSION_A),
 	.EXTENSION_C         (EXTENSION_C),
+	.EXTENSION_E         (EXTENSION_E),
 	.EXTENSION_M         (EXTENSION_M),
 	.EXTENSION_ZBA       (EXTENSION_ZBA),
 	.EXTENSION_ZBB       (EXTENSION_ZBB),
 	.EXTENSION_ZBC       (EXTENSION_ZBC),
-	.EXTENSION_ZBS       (EXTENSION_ZBS),
 	.EXTENSION_ZBKB      (EXTENSION_ZBKB),
+	.EXTENSION_ZBKX      (EXTENSION_ZBKX),
+	.EXTENSION_ZBS       (EXTENSION_ZBS),
+	.EXTENSION_ZCB       (EXTENSION_ZCB),
+	.EXTENSION_ZCLSD     (EXTENSION_ZCLSD),
+	.EXTENSION_ZCMP      (EXTENSION_ZCMP),
 	.EXTENSION_ZIFENCEI  (EXTENSION_ZIFENCEI),
+	.EXTENSION_ZILSD     (EXTENSION_ZILSD),
 	.EXTENSION_XH3BEXTM  (EXTENSION_XH3BEXTM),
 	.EXTENSION_XH3IRQ    (EXTENSION_XH3IRQ),
 	.EXTENSION_XH3PMPM   (EXTENSION_XH3PMPM),
@@ -276,8 +300,6 @@ hazard3_cpu_1port #(
 	.MVENDORID_VAL       (MVENDORID_VAL),
 	.BREAKPOINT_TRIGGERS (BREAKPOINT_TRIGGERS),
 	.IRQ_PRIORITY_BITS   (IRQ_PRIORITY_BITS),
-	.MIMPID_VAL          (MIMPID_VAL),
-	.MHARTID_VAL         (MHARTID_VAL),
 	.REDUCED_BYPASS      (REDUCED_BYPASS),
 	.MULDIV_UNROLL       (MULDIV_UNROLL),
 	.MUL_FAST            (MUL_FAST),
@@ -304,12 +326,17 @@ hazard3_cpu_1port #(
 	.hburst                     (proc_hburst),
 	.hprot                      (proc_hprot),
 	.hmastlock                  (proc_hmastlock),
+	.hmaster                    (proc_hmaster),
 	.hexcl                      (proc_hexcl),
 	.hready                     (proc_hready),
 	.hresp                      (proc_hresp),
 	.hexokay                    (proc_hexokay),
 	.hwdata                     (proc_hwdata),
 	.hrdata                     (proc_hrdata),
+
+	.fence_i_vld                (/* unused */),
+	.fence_d_vld                (/* unused */),
+	.fence_rdy                  (1'b1),
 
 	.dbg_req_halt               (hart_req_halt),
 	.dbg_req_halt_on_reset      (hart_req_halt_on_reset),
@@ -335,6 +362,9 @@ hazard3_cpu_1port #(
 	.dbg_sbus_err               (sbus_err),
 	.dbg_sbus_wdata             (sbus_wdata),
 	.dbg_sbus_rdata             (sbus_rdata),
+
+	.mhartid_val                (32'd0),
+	.eco_version                (4'd0),
 
 	.irq                        (uart_irq),
 

@@ -55,6 +55,7 @@ module hazard3_csr #(
 	input  wire               ren,
 	input  wire               ren_soon, // ren will be asserted once some stall condition clears
 	output wire               illegal,
+	output wire               write_is_fetch_ordered,
 
 	// Trap signalling
 	// *We* tell the core that we are taking a trap, and where to, based on:
@@ -70,7 +71,6 @@ module hazard3_csr #(
 	// case we lower trap_enter_vld.
 	output wire [XLEN-1:0]     trap_addr,
 	output wire                trap_is_irq,
-	output wire                trap_is_debug_entry,
 	output wire                trap_enter_vld,
 	input  wire                trap_enter_rdy,
 	// True when we are about to trap, but are waiting for an excepting or
@@ -120,9 +120,17 @@ module hazard3_csr #(
 	input  wire [W_DATA-1:0]   trig_cfg_rdata,
 	output wire                trig_m_en,
 
+	// Interrupt/exception trigger events
+	output wire                trig_event_interrupt,
+	output wire                trig_event_exception,
+	output wire [3:0]          trig_event_trap_cause,
+
 	// Other CSR-specific signalling
+	output wire                clear_excl_on_trap_exit,
 	output wire                trap_wfi,
-	input  wire                instr_ret
+	input  wire                instr_ret,
+	input  wire [W_DATA-1:0]   mhartid_val,
+	input  wire [3:0]          eco_version
 );
 
 `include "hazard3_ops.vh"
@@ -170,8 +178,12 @@ wire ren_m_mode = ren && (m_mode || debug_mode);
 wire debug_suppresses_trap_update = DEBUG_SUPPORT && (debug_mode || enter_debug_mode);
 
 wire trapreg_update = trap_enter_vld && trap_enter_rdy && !debug_suppresses_trap_update;
-wire trapreg_update_enter = trapreg_update && except != EXCEPT_MRET;
+wire trapreg_update_enter = trapreg_update && except != EXCEPT_MRET && except != EXCEPT_REFETCH;
 wire trapreg_update_exit = trapreg_update && except == EXCEPT_MRET;
+
+// Local monitor flag cleared on trap exit (but not on debug-mode exit, to
+// permit stepping through LR/SC sequences):
+assign clear_excl_on_trap_exit = trapreg_update_exit;
 
 reg mstatus_mpie;
 reg mstatus_mie;
@@ -195,7 +207,17 @@ always @ (posedge clk or negedge rst_n) begin
 		mstatus_mpp <= 1'b1;
 		mstatus_mprv <= 1'b0;
 		mstatus_tw <= 1'b0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented; avoid synthesis warning about
+		// flops insensitive to clk. Should match the rst_n case above so that
+		// flops are constant-propagated away.
+		m_mode <= 1'b1;
+		mstatus_mpie <= 1'b0;
+		mstatus_mie <= 1'b0;
+		mstatus_mpp <= 1'b1;
+		mstatus_mprv <= 1'b0;
+		mstatus_tw <= 1'b0;
+	end else begin
 		if (trapreg_update_exit) begin
 			mstatus_mpie <= 1'b1;
 			mstatus_mie <= mstatus_mpie;
@@ -227,6 +249,12 @@ always @ (posedge clk or negedge rst_n) begin
 			// is halted for debug.)
 			m_mode <= wdata_update[1];
 		end
+		if (!U_MODE) begin
+			// Explicitly tie-off to constant; some synthesis tools don't like
+			// it when variables are only sensitive to the reset.
+			m_mode <= 1'b1;
+			mstatus_mpp <= 1'b1;
+		end
 	end
 end
 
@@ -241,9 +269,13 @@ reg [XLEN-1:0] mscratch;
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mscratch <= X0;
-	end else if (CSR_M_TRAP) begin
-		if (wen_m_mode && addr == MSCRATCH)
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mscratch <= X0;
+	end else begin
+		if (wen_m_mode && addr == MSCRATCH) begin
 			mscratch <= wdata_update;
+		end
 	end
 end
 
@@ -255,9 +287,13 @@ wire            irq_vector_enable = mtvec_reg[0];
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mtvec_reg <= MTVEC_INIT;
-	end else if (CSR_M_TRAP) begin
-		if (wen_m_mode && addr == MTVEC)
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mtvec_reg <= MTVEC_INIT;
+	end else begin
+		if (wen_m_mode && addr == MTVEC) begin
 			mtvec_reg <= update_nonconst(mtvec_reg, MTVEC_WMASK);
+		end
 	end
 end
 
@@ -269,7 +305,10 @@ localparam MEPC_MASK = {{XLEN-2{1'b1}}, |EXTENSION_C, 1'b0};
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mepc <= X0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mepc <= X0;
+	end else begin
 		if (trapreg_update_enter) begin
 			mepc <= mepc_in & MEPC_MASK;
 		end else if (wen_m_mode && addr == MEPC) begin
@@ -287,7 +326,10 @@ wire meicontext_clearts;
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mie <= X0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mie <= X0;
+	end else begin
 		if (wen_m_mode && addr == MIE) begin
 			mie <= update_nonconst(mie, MIE_WMASK);
 		end else if (wen_m_mode && addr == MEICONTEXT) begin
@@ -318,7 +360,11 @@ always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
 		mcause_irq <= 1'b0;
 		mcause_code <= 4'h0;
-	end else if (CSR_M_TRAP) begin
+	end else if (!CSR_M_TRAP) begin
+		// Explicit tie-off when unimplemented
+		mcause_irq <= 1'b0;
+		mcause_code <= 4'h0;
+	end else begin
 		if (trapreg_update_enter) begin
 			mcause_irq <= mcause_irq_next;
 			mcause_code <= mcause_code_next;
@@ -327,6 +373,58 @@ always @ (posedge clk or negedge rst_n) begin
 		end
 	end
 end
+
+// ----------------------------------------------------------------------------
+// Standard identification CSRs
+
+// mimpid records the Hazard3 release version. This is updated manually with
+// each release.
+
+// Set to 1 if this RTL has not been released to the stable branch:
+localparam [0:0] MIMPID_PRERELEASE = 1'b0;
+
+// Major version, e.g the 1 in v1.2.3:
+localparam [3:0] MIMPID_MAJOR      = 4'd1;
+// Minor version, e.g. the 2 in v1.2.3:
+localparam [7:0] MIMPID_MINOR      = 8'd1;
+// Patch version, e.g. the 3 in v1.2.3:
+localparam [7:0] MIMPID_PATCH      = 8'd0;
+
+// Note the eco_version field is connected externally -- on ASIC this may be
+// connected to tie cells so it can be incremented following a metal ECO.
+wire [31:0] mimpid_rdata = {
+	MIMPID_PRERELEASE,
+	3'd0,
+	MIMPID_MAJOR,
+	MIMPID_MINOR,
+	MIMPID_PATCH,
+	eco_version,
+	4'h0
+};
+
+localparam [31:0] MISA_VAL = {
+	2'h1,              // MXL: 32-bit
+	{XLEN-28{1'b0}},   // WLRL
+
+	2'd0,              // Z, Y, no
+	1'b1,              // X is always set due to (at least) Xh3misa
+	2'd0,              // V, W, no
+	|U_MODE,
+	7'd0,              // T...N, no
+	|EXTENSION_M,
+	3'd0,              // L...J, no
+	~|EXTENSION_E,     // RVI base ISA
+	3'd0,              // H, G, F, no
+	|EXTENSION_E,      // RVE base ISA
+	1'b0,              // D, no
+	|EXTENSION_C,
+	&{                 // B is defined as ZbaZbbZbs
+		|EXTENSION_ZBA,
+		|EXTENSION_ZBB,
+		|EXTENSION_ZBS
+	},
+	|EXTENSION_A
+};
 
 // ----------------------------------------------------------------------------
 // Custom external IRQ controller
@@ -407,6 +505,74 @@ assign pwr_allow_power_down = msleep_powerdown;
 assign pwr_allow_clkgate = msleep_deepsleep;
 
 // ----------------------------------------------------------------------------
+// Custom identification CSRs
+
+// Derive implied extensions:
+
+// B is a shorthand for ZbaZbbZbs:
+localparam [0:0]   EXTENSION_B     = |EXTENSION_ZBA && |EXTENSION_ZBB && |EXTENSION_ZBS;
+// RV32I and RV32E are complementary:
+localparam [0:0]   EXTENSION_I     = ~|EXTENSION_E;
+// Zbkc is a subset of Zbc:
+localparam [0:0]   EXTENSION_ZBKC  = |EXTENSION_ZBC;
+// Zca is (instructions-wise) a subset of C:
+localparam [0:0]   EXTENSION_ZCA   = |EXTENSION_C;
+// We have data-independent timing for all Zkt instructions except for mulh,
+// mulhsu executed on the sequential multiply/divide circuit:
+localparam [0:0]   EXTENSION_ZKT   = !(|EXTENSION_M && !(|MUL_FAST && |MULH_FAST));
+// Zmmul is (instructions-wise) a subset of M:
+localparam [0:0]   EXTENSION_ZMMUL = |EXTENSION_M;
+
+localparam [31:0]  h3misa_standard_len = 32'd77;
+
+localparam [127:0] h3misa_standard_extensions =
+	({127'd0, |EXTENSION_A       } << 0 ) |
+	({127'd0, |EXTENSION_B       } << 1 ) |
+	({127'd0, |EXTENSION_C       } << 2 ) |
+	({127'd0, |EXTENSION_E       } << 4 ) |
+	({127'd0, |EXTENSION_I       } << 8 ) |
+	({127'd0, |EXTENSION_M       } << 12) |
+	({127'd0, |EXTENSION_ZBA     } << 27) |
+	({127'd0, |EXTENSION_ZBB     } << 28) |
+	({127'd0, |EXTENSION_ZBC     } << 29) |
+	({127'd0, |EXTENSION_ZBKB    } << 30) |
+	({127'd0, |EXTENSION_ZBC     } << 31) |
+	({127'd0, |EXTENSION_ZBKX    } << 32) |
+	({127'd0, |EXTENSION_ZBS     } << 33) |
+	({127'd0, |EXTENSION_ZKT     } << 46) |
+	({127'd0, |EXTENSION_C       } << 66) |
+	({127'd0, |EXTENSION_ZCB     } << 67) |
+	({127'd0, |EXTENSION_ZILSD   } << 72) |
+	({127'd0, |EXTENSION_ZCLSD   } << 73) |
+	({127'd0, |EXTENSION_ZCMP    } << 74) |
+	({127'd0, |EXTENSION_ZIFENCEI} << 75) |
+	({127'd0, |EXTENSION_ZMMUL   } << 76) |
+	128'd0;
+
+localparam [31:0]  h3misa_custom_len = 32'd5;
+
+localparam [255:0] h3misa_custom_extensions = {
+	32'd0,                                       // Reserved
+	32'd0,                                       // Reserved
+	32'd0,                                       // Reserved
+	32'h01_00_00_00 & {32{|EXTENSION_XH3BEXTM}}, // Xh3bextm
+	32'h01_00_00_00 & {32{|EXTENSION_XH3POWER}}, // Xh3power
+	32'h01_00_00_00 & {32{|EXTENSION_XH3PMPM}},  // Xh3pmpm
+	32'h01_00_00_00 & {32{|EXTENSION_XH3IRQ}},   // Xh3irq
+	32'h01_00_00_00 & {32{|CSR_M_MANDATORY}}     // Xh3misa
+};
+
+wire [63:0] h3misa_info = {
+	h3misa_custom_len,
+	h3misa_standard_len
+};
+
+wire [31:0]  h3misa_rdata =
+	!wdata[10] ? h3misa_standard_extensions[32 * wdata[1:0] +: 32] :
+	!wdata[8]  ? h3misa_info               [32 * wdata[  0] +: 32] :
+	             h3misa_custom_extensions  [32 * wdata[2:0] +: 32];
+
+// ----------------------------------------------------------------------------
 // Counters
 
 reg mcountinhibit_cy;
@@ -416,6 +582,17 @@ reg [XLEN-1:0] mcycleh;
 reg [XLEN-1:0] mcycle;
 reg [XLEN-1:0] minstreth;
 reg [XLEN-1:0] minstret;
+
+// Writing to either half suppresses increment of the entire 64-bit register.
+// It doesn't just replace the value of one 32-bit half. See:
+//   https://github.com/riscv/riscv-isa-manual/issues/1255
+wire mcycle_stopped = mcountinhibit_cy || debug_mode || wen_m_mode && (
+	addr == MCYCLEH || addr == MCYCLE
+);
+
+wire minstret_stopped = mcountinhibit_ir || debug_mode || wen_m_mode && (
+	addr == MINSTRETH || addr == MINSTRET
+);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (!rst_n) begin
@@ -427,20 +604,24 @@ always @ (posedge clk or negedge rst_n) begin
 		mcountinhibit_cy <= 1'b1;
 		mcountinhibit_ir <= 1'b1;
 	end else begin
-		if (!(mcountinhibit_cy || debug_mode))
-			{mcycleh, mcycle} <= ({mcycleh, mcycle} + 1'b1) & {2*XLEN{|CSR_COUNTER}};
-		if (!(mcountinhibit_ir || debug_mode) && instr_ret)
-			{minstreth, minstret} <= ({minstreth, minstret} + 1'b1) & {2*XLEN{|CSR_COUNTER}};
+		if (!mcycle_stopped) begin
+			{mcycleh, mcycle} <=
+				({mcycleh, mcycle} + 64'd1) & {2*XLEN{|CSR_COUNTER}};
+		end
+		if (instr_ret && !minstret_stopped) begin
+			{minstreth, minstret} <=
+				({minstreth, minstret} + 64'd1) & {2*XLEN{|CSR_COUNTER}};
+		end
 		if (wen_m_mode) begin
-			if (addr == MCYCLEH)
+			if (addr == MCYCLEH) begin
 				mcycleh <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MCYCLE)
+			end else if (addr == MCYCLE) begin
 				mcycle <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MINSTRETH)
+			end else if (addr == MINSTRETH) begin
 				minstreth <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MINSTRET)
+			end else if (addr == MINSTRET) begin
 				minstret <= wdata_update & {XLEN{|CSR_COUNTER}};
-			if (addr == MCOUNTINHIBIT) begin
+			end else if (addr == MCOUNTINHIBIT) begin
 				{mcountinhibit_ir, mcountinhibit_cy} <= {wdata_update[2], wdata_update[0]} | {2{~|CSR_COUNTER}};
 			end
 		end
@@ -569,32 +750,7 @@ always @ (*) begin
 	MISA: if (CSR_M_MANDATORY) begin
 		// WARL, so it is legal to be tied constant
 		decode_match = match_mrw;
-		rdata = {
-			2'h1,              // MXL: 32-bit
-			{XLEN-28{1'b0}},   // WLRL
-
-			2'd0,              // Z, Y, no
-			|{                 // X is set for any custom extensions
-				|EXTENSION_XH3BEXTM,
-				|EXTENSION_XH3IRQ,
-				|EXTENSION_XH3PMPM,
-				|EXTENSION_XH3POWER
-			},
-			2'd0,              // V, W, no
-			|U_MODE,
-			7'd0,              // T...N, no
-			|EXTENSION_M,
-			3'd0,              // L...J, no
-			1'b1,              // Integer ISA
-			5'd0,              // H...D, no
-			|EXTENSION_C,
-			&{                 // B is now defined as ZbaZbbZbs
-				|EXTENSION_ZBA,
-				|EXTENSION_ZBB,
-				|EXTENSION_ZBS
-			},
-			|EXTENSION_A
-		};
+		rdata = MISA_VAL;
 	end
 	MVENDORID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
@@ -607,11 +763,11 @@ always @ (*) begin
 	end
 	MIMPID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
-		rdata = MIMPID_VAL;
+		rdata = mimpid_rdata;
 	end
 	MHARTID: if (CSR_M_MANDATORY) begin
 		decode_match = match_mro;
-		rdata = MHARTID_VAL;
+		rdata = mhartid_val;
 	end
 
 	MCONFIGPTR: if (CSR_M_MANDATORY) begin
@@ -977,53 +1133,41 @@ always @ (*) begin
 	// ------------------------------------------------------------------------
 	// Trigger Module CSRs
 
-	// If triggers aren't supported, we implement tselect as hardwired 0,
-	// tinfo as hardwired 1 (meaning type=0 always) and tdata as hardwired 0
-	// (meaning type=0). The debugger will see the first trigger as
-	// unimplemented, and immediately halt discovery.
+	// When debug support is enabled, we always have basic trigger support
+	// (instruction count, interrupt and exception). Breakpoints are optional.
 	TSELECT: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
 	TDATA1: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
 	TDATA2: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000000;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
+	end
+
+	TDATA3: if (DEBUG_SUPPORT) begin
+		// Unimplemented but must be accessible, so hardwired to 0.
+		decode_match = match_mrw;
+		rdata = 32'h00000000;
 	end
 
 	TINFO: if (DEBUG_SUPPORT) begin
 		// Note tinfo is a read-write CSR (writes don't trap) even though it
 		// is entirely read-only.
 		decode_match = match_mrw;
-		if (BREAKPOINT_TRIGGERS > 0) begin
-			trig_cfg_wen = match_mrw && wen;
-			rdata = trig_cfg_rdata;
-		end else begin
-			rdata = 32'h00000001;
-		end
+		trig_cfg_wen = match_mrw && wen;
+		rdata = trig_cfg_rdata;
 	end
 
-	TCONTROL: if (DEBUG_SUPPORT && BREAKPOINT_TRIGGERS > 0) begin
+	TCONTROL: if (DEBUG_SUPPORT) begin
 		decode_match = match_mrw;
 		rdata = {
 			24'h0,
@@ -1116,11 +1260,25 @@ always @ (*) begin
 		};
 	end
 
+	H3MISA: if (CSR_M_MANDATORY) begin
+		decode_match = match_mrw;
+		rdata = h3misa_rdata;
+	end
+
 	default: begin end
 	endcase
 end
 
 assign illegal = (wen_soon || ren_soon) && !decode_match;
+
+// Trigger refetch of sequentially-next instructions on certain CSR updates:
+assign write_is_fetch_ordered = wen_raw && !debug_mode && (
+	(PMP_REGIONS   > 0 && addr >= PMPADDR0 && addr <= PMPADDR15) ||
+	(PMP_REGIONS   > 0 && addr >= PMPCFG0  && addr <= PMPCFG3  ) ||
+	(DEBUG_SUPPORT > 0 && addr == TDATA1                       ) ||
+	(DEBUG_SUPPORT > 0 && addr == TDATA2                       ) ||
+	(DEBUG_SUPPORT > 0 && addr == TCONTROL                     )
+);
 
 // ----------------------------------------------------------------------------
 // Debug run/halt
@@ -1134,6 +1292,12 @@ reg dbg_req_halt_on_reset_sticky;
 reg pending_dbg_resume_prev;
 
 wire pending_dbg_resume = (pending_dbg_resume_prev || dbg_req_resume_prev) && debug_mode;
+
+// Note exception entry is also considered a step -- in this case we are
+// supposed to take the trap and then break to debug mode before executing the
+// first trap instruction. *IRQ* entry does not occur when step is 1 (because
+// we hardwire dcsr.stepie to 0)
+wire step_event = instr_ret || (trap_enter_vld && trap_enter_rdy);
 
 // Halt request input register needs to always be clocked, because a WFI needs
 // to fall through if the debugger requests halt of a sleeping core.
@@ -1169,11 +1333,7 @@ always @ (posedge clk or negedge rst_n) begin
 
 		if (debug_mode) begin
 			step_halt_req <= 1'b0;
-		end else if (dcsr_step && (instr_ret || (trap_enter_vld && trap_enter_rdy))) begin
-			// Note exception entry is also considered a step -- in this case
-			// we are supposed to take the trap and then break to debug mode
-			// before executing the first trap instruction. *IRQ* entry does
-			// not occur when step is 1 (because we hardwire dcsr.stepie to 0)
+		end else if (dcsr_step && step_event) begin
 			step_halt_req <= 1'b1;
 		end
 
@@ -1231,7 +1391,7 @@ assign dcause_next =
 	dbg_req_halt_prev || dbg_req_halt_on_reset  ? 3'h3 : // halt or reset-halt (priority 1, 2)
 	                                              3'h4;  // single-step (priority 0)
 
-assign trap_is_debug_entry = |DEBUG_SUPPORT && !debug_mode && (want_halt_irq || want_halt_except);
+wire trap_is_debug_entry = |DEBUG_SUPPORT && !debug_mode && (want_halt_irq || want_halt_except);
 assign enter_debug_mode = trap_is_debug_entry && trap_enter_rdy;
 
 assign exit_debug_mode = debug_mode && pending_dbg_resume && trap_enter_rdy;
@@ -1299,9 +1459,13 @@ wire [3:0] mcause_irq_num =	irq_active ? standard_irq_num : 4'd0;
 
 wire [3:0] vector_sel =	!exception_req_any && irq_vector_enable ? mcause_irq_num : 4'd0;
 
+// Note in the refetch case we're relying on the aliasing of dpc and pc
+// (The intent is to fetch the sequentially-next instruction again)
 assign trap_addr =
-	except == EXCEPT_MRET ? mepc             :
-	pending_dbg_resume    ? debug_dpc_rdata  : mtvec | {26'h0, vector_sel, 2'h0};
+	except == EXCEPT_MRET    ? mepc            :
+	except == EXCEPT_REFETCH ? debug_dpc_rdata :
+	pending_dbg_resume       ? debug_dpc_rdata :
+	                           mtvec | {26'h0, vector_sel, 2'h0};
 
 // Check for exception-like or IRQ-like trap entry; any debug mode entry takes
 // priority over any regular trap.
@@ -1328,6 +1492,11 @@ assign trap_enter_soon = trap_enter_vld || (
 
 assign mcause_irq_next = !exception_req_any;
 assign mcause_code_next = exception_req_any ? except : mcause_irq_num;
+
+// Report trap entry to trigger unit
+assign trig_event_exception = |DEBUG_SUPPORT && trapreg_update_enter && !trap_is_irq;
+assign trig_event_interrupt = |DEBUG_SUPPORT && trapreg_update_enter &&  trap_is_irq;
+assign trig_event_trap_cause = {4{|DEBUG_SUPPORT}} & mcause_code_next;
 
 // ----------------------------------------------------------------------------
 // Privilege state outputs

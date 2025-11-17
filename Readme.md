@@ -1,59 +1,36 @@
 # Hazard3
 
-Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` instruction set and the following optional extensions:
+Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instruction set and the following optional extensions:
 
 * `M`: integer multiply/divide/modulo
 * `A` : atomic memory operations, with AHB5 global exclusives
 * `C`: compressed instructions
 * `Zicsr`: CSR access
+* `Zilsd`: load/store pair instructions
 * `Zba`: address generation
 * `Zbb`: basic bit manipulation
 * `Zbc`: carry-less multiplication
 * `Zbs`: single-bit manipulation
 * `Zbkb`: basic bit manipulation for scalar cryptography
+* `Zbkx`: crossbar permutation instructions
 * `Zcb`: basic additional compressed instructions
+* `Zclsd`: compressed load/store pair instructions
 * `Zcmp`: push/pop instructions
 * Debug, Machine and User privilege/execution modes
 * Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
-* Physical memory protection (PMP) with up to 16 naturally aligned regions (NA4 / NAPOT address matching, TOR not supported)
+* Physical memory protection (PMP) with up to 16 regions (configurable support for NAPOT and/or TOR matching)
+* External debug support (JTAG or APB)
+* Instruction address trigger unit (hardware breakpoints)
 
-You can [read the documentation here](doc/hazard3.pdf). (PDF link)
+Download the Hazard3 reference manual [here (PDF)](https://github.com/Wren6991/Hazard3/releases/download/v1.1/hazard3.pdf). You can also [read the documentation online](https://wren.wtf/hazard3/doc).
 
-This repository also contains a compliant RISC-V Debug Module for Hazard3, which can be accessed over an AMBA 3 APB port or using the optional JTAG Debug Transport Module.
-
-The [example SoC integration](example_soc/soc/example_soc.v) shows how these components can be assembled to create a minimal system with a JTAG-enabled RISC-V processor, some RAM and a serial port.
+This repository contains the source for the Hazard3 core and its associated debug components. The [example SoC integration](example_soc/soc/example_soc.v) shows how you can assemble these components to create a minimal system with a JTAG-enabled RISC-V processor, some RAM, a serial port and a platform timer.
 
 Please read [Contributing.md](Contributing.md) before raising an issue or pull request.
 
-For the latest stable release, check out the [stable](https://github.com/Wren6991/Hazard3/tree/stable) branch. For the latest work-in-progress code including new experimental features, check out the [develop](https://github.com/Wren6991/Hazard3/tree/develop) branch.
-
-# Links to Specifications
-
-These are links to the ratified versions of the extensions.
-
-| Extension  | Specification |
-|----------- |---------------|
-| `RV32I` v2.1 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `M` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `A` v2.1 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `C` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zicsr` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zifencei` v2.0 | [Unprivileged ISA 20191213](https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf) |
-| `Zba` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbb` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbc` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbs` v1.0.0 | [Bit Manipulation ISA extensions 20210628](https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf) |
-| `Zbkb` v1.0.1 | [Scalar Cryptography ISA extensions 20220218](https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf) |
-| `Zcb` v1.0.3-1 | [Code Size Reduction extensions frozen v1.0.3-1](https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf) |
-| `Zcmp` v1.0.3-1 | [Code Size Reduction extensions frozen v1.0.3-1](https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf) |
-| Machine ISA v1.12 | [Privileged Architecture 20211203](https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf) |
-| Debug v0.13.2 | [RISC-V External Debug Support 20190322](https://riscv.org/wp-content/uploads/2019/03/riscv-debug-release.pdf) |
-
-These specifications are abstract descriptions of the architectural features that Hazard3 implements. The [Hazard3 documentation](doc/hazard3.pdf) is a concrete description of how it implements them, especially in regard to the privileged ISA and debug support.
-
 # Cloning This Repository
 
-For the purpose of using Hazard3 in your design, this repository is self-contained. You need the submodules for simulation scripts, compliance tests and example SoC components:
+For the purpose of using Hazard3 in your design, this repository is self-contained. However, you need the submodules for simulation scripts, tests and example SoC components. In the latter case you should do a recursive clone:
 
 ```bash
 git clone --recursive https://github.com/Wren6991/Hazard3.git hazard3
@@ -64,6 +41,10 @@ To initialise submodules in an already-cloned repository:
 ```bash
 git submodule update --init --recursive
 ```
+
+The default branch for clones is [stable](https://github.com/Wren6991/Hazard3/tree/stable). I strongly recommend this branch for ASIC tapeouts. The head of stable is always the latest non-development release under [releases](https://github.com/Wren6991/Hazard3/releases).
+
+See the [develop](https://github.com/Wren6991/Hazard3/tree/develop) branch to try the latest features and optimisations.
 
 # Running Hello World
 
@@ -77,7 +58,7 @@ These instructions are for Ubuntu 24.04. If you are running on Windows you may h
 
 You will need:
 
-* A recent Yosys build to process the Verilog (these instructions were last tested with `b1569de5`)
+* A recent Yosys build to process the Verilog (these instructions were last tested with `a0e94e506`)
 * A `riscv32-unknown-elf-` toolchain to build software for the core
 * A native `clang-16` to build the simulator
 
@@ -87,7 +68,7 @@ You will need:
 
 The [Yosys GitHub repo](https://github.com/YosysHQ/yosys) has instructions for building Yosys from source.
 
-The following steps work for me on Ubuntu 24.04 using version `b1569de5` mentioned above.
+The following steps work for me on Ubuntu 24.04 using version `a0e94e506` mentioned above.
 
 ```bash
 sudo apt install build-essential clang lld bison flex libreadline-dev gawk tcl-dev libffi-dev git graphviz xdot pkg-config python3 libboost-system-dev libboost-python-dev libboost-filesystem-dev zlib1g-dev
@@ -101,7 +82,7 @@ sudo make install
 
 ## RISC-V Toolchain
 
-I recommend building a toolchain to get libraries with the correct ISA support. Follow the below instructions to build a 32-bit GCC 14 version of the [RISC-V GNU toolchain](https://github.com/riscv/riscv-gnu-toolchain) with a multilib setup suitable for Hazard3 development.
+I recommend _building_ a toolchain to get libraries with the correct ISA support. Follow the below instructions to build a 32-bit version of the [RISC-V GNU toolchain](https://github.com/riscv/riscv-gnu-toolchain) with a multilib setup suitable for Hazard3 development.
 
 ```bash
 # Prerequisites for Ubuntu 24.04
@@ -110,21 +91,19 @@ sudo apt install autoconf automake autotools-dev curl python3 python3-pip libmpc
 cd /tmp
 git clone https://github.com/riscv/riscv-gnu-toolchain
 cd riscv-gnu-toolchain
-git clone --depth=1 https://github.com/gcc-mirror/gcc gcc-14 -b releases/gcc-14
-./configure --with-gcc-src=$(pwd)/gcc-14 --prefix=/opt/riscv/gcc14-no-zcmp --with-arch=rv32ia_zicsr --with-abi=ilp32 --with-multilib-generator="rv32i-ilp32--;rv32im-ilp32--;rv32ia-ilp32--;rv32ima-ilp32--;rv32ic-ilp32--;rv32imc-ilp32--;rv32iac-ilp32--;rv32imac-ilp32--;rv32i_zicsr-ilp32--;rv32im_zicsr-ilp32--;rv32ia_zicsr-ilp32--;rv32ima_zicsr-ilp32--;rv32ic_zicsr-ilp32--;rv32imc_zicsr-ilp32--;rv32iac_zicsr-ilp32--;rv32imac_zicsr-ilp32--;rv32i_zicsr_zifencei-ilp32--;rv32im_zicsr_zifencei-ilp32--;rv32ia_zicsr_zifencei-ilp32--;rv32ima_zicsr_zifencei-ilp32--;rv32ic_zicsr_zifencei-ilp32--;rv32imc_zicsr_zifencei-ilp32--;rv32iac_zicsr_zifencei-ilp32--;rv32imac_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs-ilp32--;rv32ima_zba_zbb_zbs-ilp32--;rv32imc_zba_zbb_zbs-ilp32--;rv32imac_zba_zbb_zbs-ilp32--;rv32im_zicsr_zba_zbb_zbs-ilp32--;rv32ima_zicsr_zba_zbb_zbs-ilp32--;rv32imc_zicsr_zba_zbb_zbs-ilp32--;rv32imac_zicsr_zba_zbb_zbs-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs-ilp32--;rv32imc_zicsr_zifencei_zba_zbb_zbs-ilp32--;rv32imac_zicsr_zifencei_zba_zbb_zbs-ilp32--;rv32im_zba_zbb_zbs_zbkb-ilp32--;rv32ima_zba_zbb_zbs_zbkb-ilp32--;rv32imc_zba_zbb_zbs_zbkb-ilp32--;rv32imac_zba_zbb_zbs_zbkb-ilp32--;rv32im_zicsr_zba_zbb_zbs_zbkb-ilp32--;rv32ima_zicsr_zba_zbb_zbs_zbkb-ilp32--;rv32imc_zicsr_zba_zbb_zbs_zbkb-ilp32--;rv32imac_zicsr_zba_zbb_zbs_zbkb-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs_zbkb-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs_zbkb-ilp32--;rv32imc_zicsr_zifencei_zba_zbb_zbs_zbkb-ilp32--;rv32imac_zicsr_zifencei_zba_zbb_zbs_zbkb-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imc_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imac_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32im_zicsr_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32ima_zicsr_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imc_zicsr_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imac_zicsr_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imc_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32imac_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb-ilp32--;rv32i_zca-ilp32--;rv32im_zca-ilp32--;rv32ia_zca-ilp32--;rv32ima_zca-ilp32--;rv32i_zicsr_zca-ilp32--;rv32im_zicsr_zca-ilp32--;rv32ia_zicsr_zca-ilp32--;rv32ima_zicsr_zca-ilp32--;rv32i_zicsr_zifencei_zca-ilp32--;rv32im_zicsr_zifencei_zca-ilp32--;rv32ia_zicsr_zifencei_zca-ilp32--;rv32ima_zicsr_zifencei_zca-ilp32--;rv32im_zba_zbb_zbs_zca-ilp32--;rv32ima_zba_zbb_zbs_zca-ilp32--;rv32im_zicsr_zba_zbb_zbs_zca-ilp32--;rv32ima_zicsr_zba_zbb_zbs_zca-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs_zca-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs_zca-ilp32--;rv32im_zba_zbb_zbs_zbkb_zca-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zca-ilp32--;rv32im_zicsr_zba_zbb_zbs_zbkb_zca-ilp32--;rv32ima_zicsr_zba_zbb_zbs_zbkb_zca-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs_zbkb_zca-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs_zbkb_zca-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32im_zicsr_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32ima_zicsr_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb_zca-ilp32--;rv32i_zca_zcb-ilp32--;rv32im_zca_zcb-ilp32--;rv32ia_zca_zcb-ilp32--;rv32ima_zca_zcb-ilp32--;rv32i_zicsr_zca_zcb-ilp32--;rv32im_zicsr_zca_zcb-ilp32--;rv32ia_zicsr_zca_zcb-ilp32--;rv32ima_zicsr_zca_zcb-ilp32--;rv32i_zicsr_zifencei_zca_zcb-ilp32--;rv32im_zicsr_zifencei_zca_zcb-ilp32--;rv32ia_zicsr_zifencei_zca_zcb-ilp32--;rv32ima_zicsr_zifencei_zca_zcb-ilp32--;rv32im_zba_zbb_zbs_zca_zcb-ilp32--;rv32ima_zba_zbb_zbs_zca_zcb-ilp32--;rv32im_zicsr_zba_zbb_zbs_zca_zcb-ilp32--;rv32ima_zicsr_zba_zbb_zbs_zca_zcb-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs_zca_zcb-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs_zca_zcb-ilp32--;rv32im_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32im_zicsr_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zicsr_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbs_zbkb_zca_zcb-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--;rv32im_zicsr_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zicsr_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--;rv32im_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--;rv32ima_zicsr_zifencei_zba_zbb_zbc_zbs_zbkb_zca_zcb-ilp32--"
-sudo mkdir -p /opt/riscv/gcc14-no-zcmp
-sudo chown $(whoami) /opt/riscv/gcc14-no-zcmp
+
+./configure --prefix=/opt/riscv/gcc15 --with-arch=rv32ia_zicsr_zifencei --with-abi=ilp32 --with-multilib-generator="rv32i_zicsr_zifencei-ilp32--;rv32im_zicsr_zifencei-ilp32--;rv32ia_zicsr_zifencei-ilp32--;rv32ima_zicsr_zifencei-ilp32--;rv32ic_zicsr_zifencei-ilp32--;rv32imc_zicsr_zifencei-ilp32--;rv32iac_zicsr_zifencei-ilp32--;rv32imac_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zicsr_zifencei-ilp32--;rv32imc_zba_zbb_zbs_zicsr_zifencei-ilp32--;rv32imac_zba_zbb_zbs_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zicsr_zifencei-ilp32--;rv32imc_zba_zbb_zbs_zbkb_zicsr_zifencei-ilp32--;rv32imac_zba_zbb_zbs_zbkb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zicsr_zifencei-ilp32--;rv32imc_zba_zbb_zbc_zbs_zbkb_zicsr_zifencei-ilp32--;rv32imac_zba_zbb_zbc_zbs_zbkb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32imc_zba_zbb_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32imac_zba_zbb_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32imc_zba_zbb_zbc_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32imac_zba_zbb_zbc_zbs_zbkb_zbkx_zicsr_zifencei-ilp32--;rv32i_zca_zicsr_zifencei-ilp32--;rv32im_zca_zicsr_zifencei-ilp32--;rv32ia_zca_zicsr_zifencei-ilp32--;rv32ima_zca_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zca_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zca_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zca_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zca_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zca_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zca_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zbkx_zca_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zbkx_zca_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zicsr_zifencei-ilp32--;rv32i_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zca_zcb_zicsr_zifencei-ilp32--;rv32ia_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zcb_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zcb_zicsr_zifencei-ilp32--;rv32i_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ia_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32im_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32ima_zba_zbb_zbc_zbs_zbkb_zbkx_zca_zcb_zcmp_zicsr_zifencei-ilp32--;rv32i_zmmul_zicsr_zifencei-ilp32--;rv32ia_zmmul_zicsr_zifencei-ilp32--;rv32ic_zmmul_zicsr_zifencei-ilp32--;rv32iac_zmmul_zicsr_zifencei-ilp32--;rv32i_zca_zmmul_zicsr_zifencei-ilp32--;rv32ia_zca_zmmul_zicsr_zifencei-ilp32--;rv32i_zca_zcb_zmmul_zicsr_zifencei-ilp32--;rv32ia_zca_zcb_zmmul_zicsr_zifencei-ilp32--;rv32i_zca_zcb_zcmp_zmmul_zicsr_zifencei-ilp32--;rv32ia_zca_zcb_zcmp_zmmul_zicsr_zifencei-ilp32--;rv32e_zicsr_zifencei-ilp32e--;rv32ema_zicsr_zifencei-ilp32e--;rv32emac_zicsr_zifencei-ilp32e--;rv32ema_zicsr_zifencei_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp-ilp32e--"
+sudo mkdir -p /opt/riscv/gcc15
+sudo chown $(whoami) /opt/riscv/gcc15
 make -j $(nproc)
 ```
 
-The `--with-multilib-generator=` flag builds multiple versions of the standard library, to match possible `-march` flags provided at link time. Recent versions of GCC seem to remove the fallback to the `--with-arch` architecture when there is no exact match, so if you are developing for multiple ISA variants then you need a fairly expansive multilib setup. The multilib-generator command line above was generated using [multilib-gen-gen.py](test/sim/common/multilib-gen-gen.py)
-
-As of writing (August 2024) there are issues with Zcmp support on `riscv-gnu-toolchain`. The above multilib command line excludes Zcmp from the library setup for this reason.
+The `--with-multilib-generator=` flag builds multiple versions of the standard library, to match possible `-march` flags provided at link time. The multilib-generator command line above was generated using [multilib-gen-gen.py](test/sim/common/multilib-gen-gen.py)
 
 Make sure this toolchain can be found on your `PATH` (as `riscv32-unknown-elf-*`):
 
 ```bash
-export PATH="$PATH:/opt/riscv/gcc14-no-zcmp/bin"
+export PATH="$PATH:/opt/riscv/gcc15/bin"
 ```
 
 ### Non-multilib (Smaller Install Size)
@@ -132,12 +111,29 @@ export PATH="$PATH:/opt/riscv/gcc14-no-zcmp/bin"
 For a faster build and a smaller install size, use this `./configure` line instead:
 
 ```bash
-./configure --with-gcc-src=$(pwd)/gcc-14 --prefix=/opt/riscv/gcc14-no-zcmp --with-arch=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs --with-abi=ilp32
+./configure --prefix=/opt/riscv/gcc15 --with-arch=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs --with-abi=ilp32
 ```
 
 Adjust the `--with-arch` line as necessary for your Hazard3 configuration. You may need to adjust architectures used in software Makefiles in this repository to fit your chosen architecture variant.
 
-You can also remove the `--with-gcc-src` flag if you would prefer to use the GCC version pinned by the toolchain repository.
+### Building Toolchain on MacOS
+
+These are my hacks to build the latest `riscv-gnu-toolchain` on MacOS Sequoia on M4 (Arm).
+
+```bash
+brew install python3 gawk gnu-sed make gmp mpfr libmpc isl zlib expat texinfo flock libslirp
+git clone https://github.com/riscv/riscv-gnu-toolchain
+cd riscv-gnu-toolchain
+git submodule update --init -- binutils gdb
+# HACK for a macro definition which conflicts with a system header:
+gsed -i 's,#        define fdopen,//#define fdopen,' binutils/zlib/zutil.h gdb/zlib/zutil.h
+
+export PATH="/opt/homebrew/bin:$PATH"
+export LDFLAGS="-L/opt/homebrew/lib"
+export CPPFLAGS="-I/opt/homebrew/include"
+./configure --prefix=/opt/riscv/gcc15 --with-arch=rv32imac_zicsr_zifencei_zba_zbb_zbkb_zbs --with-abi=ilp32
+gmake -j10
+```
 
 ## Actually Running Hello World
 
@@ -184,7 +180,7 @@ Installing GTKWave on Ubuntu 24.04 is just `sudo apt install gtkwave`.
 Invoking the simulator built in the previous step, with no arguments, shows the following usage message:
 
 ```
-$ ./tb 
+$ ./tb
 At least one of --bin or --port must be specified.
 Usage: tb [--bin x.bin] [--vcd x.vcd] [--dump start end] [--cycles n] [--port n]
     --bin x.bin      : Flat binary file loaded to address 0x0 in RAM
@@ -216,6 +212,8 @@ We need to build a copy of `riscv-openocd` before going any further. OpenOCD's r
 
 We need a recent build of [riscv-openocd](https://github.com/riscv/riscv-openocd) with the `remote-bitbang` protocol enabled.
 
+On Ubuntu:
+
 ```bash
 cd /tmp
 git clone https://github.com/riscv/riscv-openocd.git
@@ -227,6 +225,19 @@ make -j $(nproc)
 sudo make install
 ```
 
+On MacOS:
+
+```bash
+brew install autoconf automake libusb
+cd /tmp
+git clone https://github.com/riscv/riscv-openocd.git
+cd riscv-openocd
+./bootstrap
+# Workarounds:
+# - System clang has a warning for the GCC constant VLA thing, and OpenOCD is -Werror by default
+# - amtjtagaccel driver tries to pull in a Linux header
+CFLAGS=-Wno-gnu-folding-constant ./configure --enable-remote-bitbang --enable-ftdi --enable-amtjtagaccel=no --program-prefix=riscv-
+```
 ## Loading and Running
 
 You're going to want three terminal tabs in the `tb_cxxrtl` directory.
@@ -262,8 +273,6 @@ Info : remote_bitbang driver initialized
 Info : Note: The adapter "remote_bitbang" doesn't support configurable speed
 Info : JTAG tap: hazard3.cpu tap/device found: 0xdeadbeef (mfg: 0x777 (Fabric of Truth Inc), part: 0xeadb, ver: 0xd)
 Info : [hazard3.cpu] datacount=1 progbufsize=2
-Info : [hazard3.cpu] Disabling abstract command reads from CSRs.
-Info : [hazard3.cpu] Disabling abstract command writes to CSRs.
 Info : [hazard3.cpu] Examined RISC-V core
 Info : [hazard3.cpu]  XLEN=32, misa=0x40901107
 [hazard3.cpu] Target successfully examined.
@@ -298,24 +307,51 @@ run
 info reg a0
 ```
 
+# Simulating with Verilator
+
+There is a Verilator harness with the same features and interface as the CXXRTL harness, except it does not support VCD dumping. First build Verilator:
+
+```
+git clone https://github.com/verilator/verilator.git
+cd verilator
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+```
+
+Then go to the Hazard3 repository and build the simulator. You should be able to run the hello world binary you compiled earlier:
+
+```bash
+cd test/sim/tb_verilator
+make tb
+./tb --bin ../hellow/tmp/hellow.bin
+```
+
 # Building an Example SoC
 
-There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on both iCEBreaker and ULX3S. The SoC contains:
+There is a tiny [example SoC](example_soc/soc/example_soc.v) which builds on iCEBreaker, ULX3S and Arty A7-100T boards. The SoC contains:
 
 - A Hazard3 processor, in a single-ported RV32IMA configuration, with debug support
 - A Debug Transport Module and Debug Module to access Hazard3's debug interface
 - 128 kB of RAM (fits in UP5k SPRAMs)
 - A UART
+- A standard RISC-V platform timer
 
-On iCEBreaker (a iCE40 UP5k development board), the processor can be debugged using the onboard FT2232H bridge, through a standard RISCV-V JTAG-DTM exposed on four IO pins. Connecting JTAG requires two solder jumpers to be bridged on the back to connect the JTAG -- see the comments in the [pin constraints file](example_soc/synth/fpga_icebreaker.pcf). FT2232H is a dual-channel FTDI device, so the UART and JTAG can be accessed simultaneously for a very civilised debug experience, with JTAG running at the full 30 MHz supported by the FTDI.
+Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
 
-ULX3S is based on a much larger ECP5 FPGA. Thanks to [this ECP5 JTAG adapter](hdl/debug/dtm/hazard3_ecp5_jtag_dtm.v), it is possible to attach the guts of a RISC-V JTAG-DTM to the custom DR hooks in ECP5's chip TAP. With the right config file you can then convince OpenOCD that the FPGA's own TAP *is* a JTAG-DTM. You can debug Hazard3 on ULX3S using the same micro USB cable you use to load the bitstream, no soldering required. The downside is that the FT231X device on the ULX3S is actually a UART bridge which supports JTAG by bitbanging the auxiliary UART signals, which is incredibly slow. The UART cannot be used simultaneously with JTAG access. 
+## Comparison of Supported Boards
 
-For these reasons -- much faster JTAG, and simultaneous UART access -- iCEBreaker is currently a more pleasant platform to debug if you don't have any external JTAG probe.
+On [iCEBreaker](https://1bitsquared.com/products/icebreaker) (a iCE40 UP5k development board), the processor can be debugged using the onboard FT2232H bridge, through a standard RISCV-V JTAG-DTM exposed on four IO pins. Connecting JTAG requires two solder jumpers to be bridged on the back to connect the JTAG -- see the comments in the [pin constraints file](example_soc/synth/fpga_icebreaker.pcf). FT2232H is a dual-channel FTDI device, so the UART and JTAG can be accessed simultaneously for a very civilised debug experience, with JTAG running at the full 30 MHz supported by the FTDI.
 
-Note there is no software tree for this SoC. For now you'll have to read the source and hack on the test software build. All very much WIP. At least you can attach to the processor, poke registers/memory, and convince yourself you really are debugging a RISC-V core.
+[ULX3S](https://radiona.org/ulx3s/) is based on a much larger ECP5 FPGA. Thanks to [this ECP5 JTAG adapter](hdl/debug/dtm/hazard3_ecp5_jtag_dtm.v), it is possible to attach the guts of a RISC-V JTAG-DTM to the custom DR hooks in ECP5's chip TAP. With the right config file you can then convince OpenOCD that the FPGA's own TAP *is* a JTAG-DTM. You can debug Hazard3 on ULX3S using the same micro USB cable you use to load the bitstream, no soldering required. The downside is that the FT231X device on the ULX3S is actually a UART bridge which supports JTAG by bitbanging the auxiliary UART signals, which is incredibly slow. The UART cannot be used simultaneously with JTAG access. The debugging experience is worse than iCEBreaker because of this.
+
+Arty A7-100T uses an Artix-7 FPGA. This is the fastest and most capacious of the boards supported by this example SoC integration, but it's also the most expensive. The board has an FT2232H debug probe, similar to iCEBreaker. The probe is intended for programming the FPGA, or for Xilinx debug functionality like ILA. Using the probe, you can tunnel RISC-V debug traffic through the Artix-7 chip TAP [in a similar way](hdl/debug/dtm/hazard3_xilinx7_jtag_dtm.v) to ECP5, using the `BSCANE2` primitive. There is no performance cost to this tunnelling as the DTM registers are exposed directly as DRs on the FPGA chip TAP, so this is an excellent combination of a fast FPGA and a fast debug interface.
 
 ## Building for iCEBreaker
+
+You must have `nextpnr-ice40`, `yosys`, and `iceprog` (from icestorm) on your PATH.
 
 ```bash
 cd hazard3
@@ -327,6 +363,8 @@ riscv-openocd -f ../icebreaker-openocd.cfg
 
 ## Building for ULX3S
 
+You must have `nextpnr-ecp5`, `yosys` and [ujprog](https://github.com/f32c/tools/blob/master/ujprog/README.md) on your PATH.
+
 ```bash
 cd hazard3
 cd example_soc/synth
@@ -335,18 +373,34 @@ make -f ULX3S.mk flash
 riscv-openocd -f ../ulx3s-openocd.cfg
 ```
 
+## Building for Arty A7-100T
+
+These scripts use Vivado to build and load the bitstream. You must have `vivado` on your `PATH`; I used version 2025.1. The free version of Vivado supports the A7-100T, so just type some swear words into AMD's export compliance form and away you go.
+
+```bash
+cd hazard3
+cd example_soc/synth_vivado
+make prog
+# Should be able to attach to the processor
+riscv-openocd -f ../arty7-openocd.cfg
+```
+
+Vivado and OpenOCD cannot simultaneously connect to the FTDI. If OpenOCD is connected then Vivado will fail to reprogram the FPGA.
+
 # Performance
 
-The RP2350 configuration of Hazard3 achieves 3.81 CoreMark/MHz.
+## RP2350
+
+The RP2350 configuration of Hazard3 achieves 4.15 CoreMark/MHz.
 
 ```
 2K performance run parameters for coremark.
 CoreMark Size    : 666
-Total ticks      : 15758494
-Total time (secs): 15.758494
-Iterations/Sec   : 3.807470
+Total ticks      : 14440822
+Total time (secs): 14.440822
+Iterations/Sec   : 4.154888
 Iterations       : 60
-Compiler version : GCC14.2.1 20240807
+Compiler version : GCC15.1.0
 Compiler flags   : -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1  
 Memory location  : STACK
 seedcrc          : 0xe9f5
@@ -355,11 +409,61 @@ seedcrc          : 0xe9f5
 [0]crcstate      : 0x8e3a
 [0]crcfinal      : 0xa14c
 Correct operation validated. See README.md for run and reporting rules.
-CoreMark 1.0 : 3.807470 / GCC14.2.1 20240807 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1   / STACK
+CoreMark 1.0 : 4.154888 / GCC15.1.0 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -DPERFORMANCE_RUN=1   / STACK
 ```
 
-To reproduce this in the RTL simulator, use the top-level Makefile in [test/sim/coremark](test/sim/coremark) after you have followed all the steps to get set up for running a "Hello, world!" binary above.
+To reproduce this in the RTL simulator, use the top-level Makefile in [test/sim/coremark](test/sim/coremark) after you have followed all the steps to get set up for running a "Hello, world!" binary above. Expect the simulation to take a couple of minutes.
 
-The default flags are appropriate for the non-multilib toolchain build, and achieve 3.74 CoreMark/MHz. To achieve the full 3.81 CoreMark/MHz, change the ISA variant in `core_portme.mak` to `rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs`. See the comments in that file for an explanation of why this makes a difference.
+```bash
+cd test/sim/coremark
+make
+```
+
+The default flags are appropriate for the non-multilib toolchain build, and achieve 4.10 CoreMark/MHz. To achieve the full 4.15 CoreMark/MHz, change the ISA variant in `core_portme.mak` to `rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs`. See the comments in that file for an explanation of why this makes a difference.
 
 See the RP2350 datasheet for details of the Hazard3 configuration used by that chip. The default `tb_cxxrtl` build uses the same configuration as RP2350, except that it also enables the Zbc extension (which is not emitted by GCC 14 as it is not useful for general-purpose code).
+
+## Maximum
+
+As of GCC 15, GCC can infer `clmul` and `clmulh` instructions in the CoreMark CRC function. The Zbc extension was dropped from the RP2350 configuration as compilers were not able to exploit it at the time. Enabling Zbc increases the score to 4.25 CoreMark/MHz.
+
+```
+CoreMark Size    : 666
+Total ticks      : 14121622
+Total time (secs): 14.121622
+Iterations/Sec   : 4.248804
+Iterations       : 60
+Compiler version : GCC15.1.0
+Compiler flags   : -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs_zbc -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1  
+Memory location  : STACK
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xa14c
+Correct operation validated. See README.md for run and reporting rules.
+CoreMark 1.0 : 4.248804 / GCC15.1.0 -O3 -g -march=rv32ima_zicsr_zifencei_zba_zbb_zbkb_zbs_zbc -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1   / STACK
+```
+
+## RV32E
+
+Reducing the number of GPRs from 31 to 15 carries around a 5% penalty, at 4.02 CoreMark/MHz.
+
+```
+2K performance run parameters for coremark.
+CoreMark Size    : 666
+Total ticks      : 14908801
+Total time (secs): 14.908801
+Iterations/Sec   : 4.024469
+Iterations       : 60
+Compiler version : GCC15.1.0
+Compiler flags   : -O3 -g -march=rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zicsr_zifencei -mabi=ilp32e -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1  
+Memory location  : STACK
+seedcrc          : 0xe9f5
+[0]crclist       : 0xe714
+[0]crcmatrix     : 0x1fd7
+[0]crcstate      : 0x8e3a
+[0]crcfinal      : 0xa14c
+Correct operation validated. See README.md for run and reporting rules.
+CoreMark 1.0 : 4.024469 / GCC15.1.0 -O3 -g -march=rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zicsr_zifencei -mabi=ilp32e -mbranch-cost=1 -funroll-all-loops --param max-inline-insns-auto=200 -finline-limit=10000 -fno-code-hoisting -fno-if-conversion2 -falign-functions=4 -falign-jumps=4 -falign-loops=4 -DPERFORMANCE_RUN=1   / STACK
+```

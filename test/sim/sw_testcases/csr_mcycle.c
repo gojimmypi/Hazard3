@@ -1,6 +1,16 @@
 #include "tb_cxxrtl_io.h"
 #include "hazard3_csr.h"
 
+// Note: Hazard3 originally did not suppress the increment of one half of
+// mcycle when writing to the other. The spec wording was recently changed
+// (April 2025) to make spike's behaviour correct, i.e. the entire 64-bit
+// increment is suppressed when you write to either half. See:
+//
+//   https://github.com/riscv/riscv-isa-manual/issues/1255
+//
+// NOPs have been added to make sure the counter still increments at points
+// where it previously incremented.
+
 /*EXPECTED-OUTPUT***************************************************************
 
 Clear, read, read
@@ -58,10 +68,15 @@ int main() {
 	asm volatile (
 		"csrw mcycle, zero \n"
 		"csrw mcycleh, zero\n" // in-cycle register values:
+		"nop\n"
 		"csrw mcycle,%3    \n" // mcycle ==  1, mcycleh == 0
+		"nop\n"
 		"csrw mcycle,%3    \n" // mcycle == -1, mcycleh == 0
+		"nop\n"
 		"csrw mcycle,%3    \n" // mcycle == -1, mcycleh == 1
+		"nop\n"
 		"csrw mcycle,%3    \n" // mcycle == -1, mcycleh == 2
+		"nop\n"
 		"csrw mcycle,%3    \n" // mcycle == -1, mcycleh == 3
 		"csrr %0, mcycleh  \n" // mcycle == -1, mcycleh == 4
 		"csrr %1, mcycleh  \n" // mcycle ==  0, mcycleh == 5
@@ -78,7 +93,9 @@ int main() {
 	asm volatile (
 		"csrw mcycle, zero \n"
 		"csrw mcycleh, zero\n" // in-cycle register values:
+		"nop\n"
 		"csrw mcycle, %3   \n" // mcycle ==  1, mcycleh ==  0
+		"nop\n"
 		"csrw mcycleh, %4  \n" // mcycle == -2, mcycleh ==  0
 		"csrr %0, mcycleh  \n" // mcycle == -1, mcycleh == -1
 		"csrr %1, mcycleh  \n" // mcycle ==  0, mcycleh ==  0

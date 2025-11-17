@@ -69,7 +69,7 @@ generate
 if (MAX_BUS_STALL >= 0) begin: constrain_max_bus_stall
 
 reg [7:0] bus_stall_ctr;
-always @ (posedge clk or negedge rst_n) begin
+always @ (posedge clk) begin
 	if (!rst_n) begin
 		bus_stall_ctr <= 8'h0;
 	end else begin

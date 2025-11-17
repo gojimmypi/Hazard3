@@ -10,7 +10,6 @@
 #define MCAUSE_ECALL_UMODE 8
 
 /*EXPECTED-OUTPUT***************************************************************
-
 Initial word read/write check
 mcause = 8
 mcause = 8
@@ -32,7 +31,6 @@ mcause = 5
 Restore read permission, remove write permission, byte read/write
 mcause = 7
 mcause = 8
-
 *******************************************************************************/
 
 typedef uint32_t uxlen_t;

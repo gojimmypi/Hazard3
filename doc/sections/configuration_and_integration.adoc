@@ -1,10 +1,23 @@
 == Configuration and Integration
 
+Hazard3 is a soft processor design distributed as HDL source files. To use it in your project you must:
+
+* Download the source files from the public git repository.
+* Configure your synthesis and simulation flows to read Hazard3 source files.
+* Select the appropriate top-level module for your bus architecture (`hazard3_cpu_1port` or `hazard3_cpu_2port`).
+* Select the appropriate configuration parameters for your use case.
+* Instantiate the top-level module, and connect or tie-off _all_ ports.
+* Instantiate any optional external components such as the Debug Module (`hazard3_dm`) and JTAG Debug Transport Module (`hazard3_jtag_dtm`).
+
+The choice of configuration depends on your requirements for performance, code density, area, maximum frequency, level of memory protection, and number of system interrupts and interrupt priority levels. <<config-parameters-section>> documents the available configuration parameters.
+
+The minimal https://github.com/Wren6991/Hazard3/blob/stable/example_soc/soc/example_soc.v[example SoC] shows a complete example of a single-ported Hazard3 core connected to SRAM, a UART, a RISC-V platform timer and external debug components.
+
 === Hazard3 Source Files
 
-Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/master/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3.
+Hazard3's source is written in Verilog 2005, and is self-contained. It can be found here: https://github.com/Wren6991/Hazard3/tree/stable/hdl[github.com/Wren6991/Hazard3/blob/stable/hdl]. The file https://github.com/Wren6991/Hazard3/blob/stable/hdl/hazard3.f[hdl/hazard3.f] is a list of all the source files required to instantiate Hazard3. Hazard3 is distributed under the permissive Apache 2.0 licence; a full copy of the licence text is available in the git repository.
 
-For more information on the Verilog 2005 language, refer to IEEE 1364-2005 (a PDF can be found online).
+For more information on the Verilog 2005 language, refer to standard IEEE 1364-2005.
 
 Files ending with `.vh` are preprocessor include files used by the Hazard3 source. The following two are particularly noteworthy:
 
@@ -18,6 +31,7 @@ There are two ways to configure Hazard3 using these two files:
 
 The latter method is recommended for mature projects because it supports multiple distinct configurations of Hazard3 in the same system (for instance, a high-performance applications core and a low-area control-plane core). You may find the former method more convenient for quick hacking on the configuration.
 
+[[top-level-modules]]
 === Top-level Modules
 
 Hazard3 has two top-level modules:
@@ -31,44 +45,104 @@ The core module `hazard3_core` can also be instantiated directly, which may be m
 
 === FPGA Synthesis
 
-Hazard3 supports FPGA synthesis using tools such as Yosys. You should set <<param-RESET_REGFILE>> to zero, as FPGA block RAMs and LUT RAMs often do not support reset, or are limited in the types of reset they support. Setting <<param-RESET_REGFILE>> to one is likely to result in the register file being implemented with logic fabric flops, which has a significant area and frequency impact.
+Hazard3 supports FPGA synthesis using tools such as Yosys and Vivado. You should set <<param-RESET_REGFILE>> to zero, as FPGA block RAMs and LUT RAMs often do not support reset, or are limited in the types of reset they support. Setting <<param-RESET_REGFILE>> to one is likely to result in the register file being implemented with logic fabric flops, which has a significant area and frequency impact.
 
 You should synchronise the `rst_n` reset input externally. An example reset synchroniser is included in the example SoC file, but the details depend on your FPGA synthesis flow and your platform-level reset requirements.
 
-It's recommended to tie `clk` and `clk_always_on` to the exact same clock net to conserve global buffer resources. Clock gating _is_ supported on FPGA, but you must consult your toolchain documentation for the correct primitives or infererence techniques.
+It's recommended to tie `clk` and `clk_always_on` to the exact same clock net to conserve global buffer resources. Clock gating _is_ supported on FPGA, but you must consult your toolchain documentation for the correct primitives or inference techniques.
 
 === ASIC Synthesis
 
-Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue if you find a compatibility issue with your tools.
+Hazard3 supports ASIC synthesis using common commercial tool flows. There are no particular requirements for configuration parameters, but your choice of configuration has an impact on area and frequency. Please raise an issue https://github.com/Wren6991/Hazard3/issues[here] if you find a compatibility issue with your tools.
 
 When applying the `clk_en` clock enable signal to the `clk` input in conjunction with the Xh3power extension, you must instantiate an external clock gate cell appropriate to your platform (such as an AND-and-latch type). Do not use a behavioural AND gate to gate the clock.
 
 You must synchronise resets externally according to your STA constraints and your system-level reset strategy. Hazard3 uses an asynchronous active-low reset internally, but this can be adapted to other types by inserting an appropriate synchroniser in your core integration.
 
+==== Register File Macros
+
+Generally the register file should be synthesised. Synthesised register files offer the best portability and the most flexibility during layout. However there may be an area advantage to implementing the register file using a hard layout macro.
+
+Hazard3 supports the use of register file or SRAM macros, by modifying `hazard3_regfile_1w2r.v` to instantiate the appropriate macros. The configuration should be one of the following:
+
+* One instance: two read ports, one write port
+* Two instances: one read port, one write port, with the write ports tied together
+
+The memory dimensions are:
+
+* 32 bits wide
+* 32 rows deep (RV32I) or 16 rows deep (RV32E) -- depends on configuration of <<param-EXTENSION_E>>
+* No requirement for bit write enable
+
+When a write and a read simultaneously occur at the same address, the write must succeed. The read data in this case is don't-care.
+
+The read data from address 0 is don't-care, because the special case for register `x0` is handled in the register bypass logic. This means a full 32-row or 16-row RAM can be used.
+
+[[port-descriptions]]
 === Interfaces (Top-level Ports)
 
 Most ports are common to the two top-level wrappers, `hazard3_cpu_1port` and `hazard3_cpu_2port`. The only difference is the number of AHB5 manager ports used to access the bus: `hazard3_cpu_1port` has a single port used for all accesses, whereas `hazard3_cpu_2port` adds a separate, dedicated port for instruction fetch.
 
-==== Interfaces Common to All Wrappers
+NOTE: Hazard3 adopts the convention that all signals are active-high, with the exception of the reset input `rst_n`.
+
+[[interfaces-clock-and-reset]]
+==== Clock and Reset Inputs
 
 [options="header",cols="1,1,3,4"]
 |===
 | Width | In/Out | Name | Description
-4+| **Clock and reset inputs**
-| 1          | In  | `clk`                        | Clock for all processor logic not driven by `clk_always_on`. Must be the same as the AHB5 bus clock. If the Xh3power extension is configured, you should instantiate an external clock gate on this clock, controlled by the `clk_en` output.
+| 1          | In  | `clk`                        | Clock for all processor logic not driven by `clk_always_on`. Must be the same as the AHB5 bus clock (`HCLK`). If the Xh3power extension is configured, you should instantiate an external clock gate on this clock, controlled by the `clk_en` output.
 | 1          | In  | `clk_always_on`              | Clock for logic required to wake from a low-power state. Connect to the same clock as `clk`, but do not insert an external clock gate.
 | 1          | In  | `rst_n`                      | Active-low asynchronous reset for all processor logic. There is no internal synchroniser, so you must arrange externally for reset assertion/removal times to be met. For example, add an external reset synchroniser.
 
 When <<param-RESET_REGFILE>> is one, this input also resets the register file. You should avoid resetting the register file on FPGA, as this can prevent the register file being implemented with block RAM or LUT RAM primitives.
-4+| **Power control signals**
-4+| These signals are used in the implementation of internal sleep states as configured by the <<reg-msleep>> csr. They are used only when the Xh3power extension is enabled.
-| 1          | Out | `pwrup_req`                  | Power-up request. Disconnect if Xh3power is not configured. Part of a four-phase (Gray code) req/ack handshake for negotiating power or clocks with your system power controller. The processor releases `pwrup_req` on entering a sufficiently deep `wfi` or `h3.block` state, as configured by the `msleep` CSR. It then waits for deassertion of `pwrup_ack`, before taking further action. The processor asserts `pwrup_req` when the processor intends to wake from the low-power state, and then waits for `pwrup_ack` before fetching the first instruction from the bus.
+|===
+
+==== Power Control Signals
+
+These signals are used in the implementation of internal sleep states as configured by the <<reg-h3.msleep>> csr. They are used only when the Xh3power extension is enabled.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
+| 1          | Out | `pwrup_req`                  | Power-up request. Disconnect if Xh3power is not configured. Part of a four-phase (Gray code) req/ack handshake for negotiating power or clocks with your system power controller. The processor releases `pwrup_req` on entering a sufficiently deep `wfi` or `h3.block` state, as configured by the `h3.msleep` CSR. It then waits for deassertion of `pwrup_ack` before taking further action.
+
+The processor asserts `pwrup_req` when it intends to wake from its low-power state. It then waits for `pwrup_ack` before fetching the first instruction from the bus.
 | 1          | In  | `pwrup_ack`                  | Power-up acknowledged. Tie back to `pwrup_req` if Xh3power is not configured, or if there is no external system power controller. The processor does not access the bus when either `pwrup_req` or `pwrup_ack` is low.
 | 1          | Out | `clk_en`                     | Control output for an external top-level clock gate on `clk`. Active-high enable. Hazard3 tolerates up to one cycle of delay between the assertion of `clk_en` and the resulting clock pulse on `clk`.
 | 1          | Out | `unblock_out`                | Pulses high when an `h3.unblock` instruction executes. Disconnect if Xh3power is not configured.
-| 1          | In  | `unblock_in`                 | A high input pulse will release a blocked `h3.block` instruction, or cause the next `h3.block` instruction to immediately fall through.
-4+| **Debug Module controls**
-4+| All Debug Module signals should be connected to the signal with the matching name on the Hazard3 Debug Module implementation.
+| 1          | In  | `unblock_in`                 | A high input pulse will release a blocked `h3.block` instruction, or cause the next `h3.block` instruction to immediately fall through. Tie low if Xh3power is not configured.
+|===
+
+[[memory-ordering-signals]]
+==== Memory Ordering Signals
+
+Also see <<section-memory-ordering>> for more information on Hazard3's memory model.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
+| 1          | Out | `fence_i_vld`                | Indicates the core is executing a `fence.i` instruction. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_d_vld`.
+
+The core waits for all in-progress bus accesses (load/store and instruction fetch) to complete before asserting this signal, and does not issue further instruction fetches for as long as this signal is asserted.
+
+Once `fetch_rdy` is seen high, the core flushes its prefetch buffer to order the fetch of younger instructions against the fence. It then resumes normal execution.
+
+| 1          | Out | `fence_d_vld`                | Indicates the core is executing a non-instruction fence, such as `fence rw, rw`. Remains asserted until `fence_rdy` goes high. Never asserted at the same time as `fence_i_vld`.
+
+The core waits for any in-progress load/store bus accesses to complete before asserting this signal, and does not issue further loads/stores for as long as this signal is asserted.
+| 1          | In  | `fence_rdy`                  | Signal to the core that the memory subsystem has finished processing the fence requested by `fence_i_vld` or `fence_d_vld`.
+
+If no special handling of fences is required, tie this signal high.
+|===
+
+==== Debug Module Controls
+
+All Debug Module signals should be connected to the signal with the matching name on the Hazard3 Debug Module implementation (https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dm/hazard3_dm.v[hazard3_dm]).
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
 | 1          | In  | `dbg_req_halt`               | Debugger halt request. Tie low if debug support is not configured.
 | 1          | In  | `dbg_req_halt_on_reset`      | Debugger halt-on-reset request. Tie low if debug support is not configured.
 | 1          | In  | `dbg_req_resume`             | Debugger resume request. Tie low if debug support is not configured.
@@ -80,25 +154,66 @@ When <<param-RESET_REGFILE>> is one, this input also resets the register file. Y
 | 32         | In  | `dbg_instr_data`             | Instruction injection interface. Tie to zeroes if debug support is not configured.
 | 1          | In  | `dbg_instr_data_vld`         | Instruction injection interface. Tie low if debug support is not configured.
 | 1          | Out | `dbg_instr_data_rdy`         | Instruction injection interface. Disconnect if debug support is not configured.
-| 1          | Out | `dbg_instr_caught_exception` | Exception caught during Program Buffer excecution. Disconnect if debug support is not configured.
+| 1          | Out | `dbg_instr_caught_exception` | Exception caught during Program Buffer execution. Disconnect if debug support is not configured.
 | 1          | Out | `dbg_instr_caught_ebreak`    | Breakpoint instruction caught during Program Buffer execution. Disconnect if debug support is not configured.
-4+| **Shared System Bus Access**
-4+| This subordinate bus port allows the standard System Bus Access (SBA) feature of the Debug Module to share bus access with the core. Alternatively, use the standalone `hazard3_sbus_to_ahb` adapter to provide dedicated SBA access to the system bus.
-| 32         | In  | `dbg_sbus_addr`              | Address for System Bus Access arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
-| 1          | In  | `dbg_sbus_write`             | Write/not-Read flag for System Bus Access arbitrated with this core's load/store access. Tie low if this feature is not used.
-| 2          | In  | `dbg_sbus_size`              | Transfer size (0/1/2 = byte/halfword/word) for System Bus Access arbitrated with this core's load/store access. Tie low if this feature is not used.
-| 1          | In  | `dbg_sbus_vld`               | Transfer enable signal for System Bus Access arbitrated with this core's load/store access. Tie low if this feature is not used.
-| 1          | Out | `dbg_sbus_rdy`               | Transfer stall signal for System Bus Access arbitrated with this core's load/store access. Disconnect if this feature is not used.
-| 1          | Out | `dbg_sbus_err`               | Bus fault signal for System Bus Access arbitrated with this core's load/store access. Disconnect if this feature is not used.
-| 32         | In  | `dbg_sbus_wdata`             | Write data bus for System Bus Access arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
-| 32         | Out | `dbg_sbus_rdata`             | Read data bus for System Bus Access arbitrated with this core's load/store access. Disconnect if this feature is not used.
-4+| **Interrupt requests**
-| `NUM_IRQS` | In  | `irq`                        | If Xh3irq is not configured, this is the RISC-V external interrupt line (`mip.meip`) which you should connect to an external interrupt controller such as a standard RISC-V PLIC. If Xh3irq is configured, this is a vector of level-sensitive active-high system interrupt requests, which the core's internal interrupt controller can route through the `mip.meip` vector. Tie low if unused.
+|===
+
+==== Shared System Bus Access
+
+This subordinate bus port allows the standard System Bus Access (SBA) feature of the Debug Module to share bus access with the core. Alternatively, use the standalone https://github.com/Wren6991/Hazard3/blob/stable/hdl/debug/dm/hazard3_sbus_to_ahb.v[hazard3_sbus_to_ahb] adapter to provide dedicated SBA access from the Debug Module to the system bus.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
+| 32         | In  | `dbg_sbus_addr`              | Address for SBA arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
+| 1          | In  | `dbg_sbus_write`             | Write/not-Read flag for SBA arbitrated with this core's load/store access. Tie low if this feature is not used.
+| 2          | In  | `dbg_sbus_size`              | Transfer size (`0`/`1`/`2` = byte/halfword/word) for SBA arbitrated with this core's load/store access. Tie low if this feature is not used.
+| 1          | In  | `dbg_sbus_vld`               | Transfer enable signal for SBA arbitrated with this core's load/store access. Tie low if this feature is not used.
+| 1          | Out | `dbg_sbus_rdy`               | Transfer stall signal for SBA arbitrated with this core's load/store access. Disconnect if this feature is not used.
+| 1          | Out | `dbg_sbus_err`               | Bus fault signal for SBA arbitrated with this core's load/store access. Disconnect if this feature is not used.
+| 32         | In  | `dbg_sbus_wdata`             | Write data bus for SBA arbitrated with this core's load/store access. Tie to zeroes if this feature is not used.
+| 32         | Out | `dbg_sbus_rdata`             | Read data bus for SBA arbitrated with this core's load/store access. Disconnect if this feature is not used.
+|===
+
+==== Interrupt Requests
+
+All interrupts are level-sensitive and synchronous to `clk`. Asynchronous interrupts must be synchronised externally before entering the processor. You must use the ungated version of `clk` (`clk_always_on`) for synchronisation if you use the interrupt to wake from sleep states.
+
+Briefly asserting then deasserting an interrupt signal is not guaranteed to cause the processor to enter the relevant handler; the processor ignores interrupts it is not able to take at that time, for example when interrupts are disabled via `mstatus.mie`. There is also no guarantee that the processor will _not_ take such an interrupt. Peripherals and software should follow these guidelines for reliable interrupt handling:
+
+* When an interrupt is asserted, it should remain asserted until the condition which caused the interrupt is cleared. For example, an RX FIFO valid interrupt should remain asserted until the processor pops data from the FIFO.
+* Interrupt handlers should check the peripheral status at the top of the handler to see if it still requires servicing. If an interrupt is synchronised externally, it may still briefly be observed as asserted after returning from the handler, causing re-entry.
+* To avoid the previous issue, interrupt handlers should acknowledge (clear) the peripheral interrupt as soon as possible in the handler, to ensure the interrupt is seen deasserted before the processor returns from the interrupt handler.
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
+| `NUM_IRQS` | In  | `irq`                        | If Xh3irq is not configured, this is the RISC-V external interrupt line (`mip.meip`) which you should connect to an external interrupt controller such as a standard RISC-V PLIC.
+
+If Xh3irq is configured, this is a vector of level-sensitive active-high system interrupt requests, which the core's internal interrupt controller can route through the `mip.meip` vector. Tie low if unused.
 | 1          | In  | `soft_irq`                   | This is the standard RISC-V software interrupt signal, `mip.msip`. It should be connected to a register accessible to M-mode software on your system bus. Tie low if unused.
 | 1          | In  | `timer_irq`                  | This is the standard RISC-V timer interrupt signal, `mip.mtip`. It should be connected to a standard RISC-V platform timer peripheral (`mtime`/`mtimecmp`) accessible to M-mode software on your system bus. Tie low if unused.
 |===
 
-==== Interfaces for 1-port AHB5 CPU
+[[identification-signals]]
+==== Identification Signals
+
+[options="header",cols="1,1,3,4"]
+|===
+| Width | In/Out | Name | Description
+| 32         | In  | `mhartid_val`                | Set the value of the <<reg-mhartid>> CSR, which software uses to determine on which hart it is running. Hazard3 implements one hart per core, so this is effectively a per-core identification value.
+
+At least one hart must have the value of all-zeroes.
+
+Generally you should tie this off to a unique constant value per core. Dynamic <<reg-mhartid>> is useful in scenarios such as dual-core lockstep: cores must execute identically when lockstep is engaged so their `mhartid_val` should be driven to the same value.
+| 4          | In  | `eco_version`                | Set the value of the `eco` version number in <<reg-mimpid>>.
+
+On ASIC this should be connected to metal-programmable tie cells so that it can be incremented with metal changes. The initial value should be all-zeroes. On FPGA this should be tied to all-zeroes.
+
+|===
+
+[[port-descriptions-1port]]
+==== AHB5 Signals for 1-port CPU
 
 This wrapper (`hazard3_cpu_1port`) adds a single standard AHB5 manager port. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
 
@@ -107,7 +222,7 @@ This wrapper (`hazard3_cpu_1port`) adds a single standard AHB5 manager port. See
 | Width | In/Out | Name | Description
 | 32 | Out | `haddr`      | Address output. AHB is always byte-addressed. Hazard3 always issues naturally-aligned accesses.
 | 1  | Out | `hwrite`     | Driven high for a write transfer, low for a read transfer.
-| 2  | Out | `htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (NSEQ) to indicate there is a transfer. Other types are not used.
+| 2  | Out | `htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (`NSEQ`) to indicate there is a transfer. Other types are not used.
 | 3  | Out | `hsize`      | Driven to `0`, `1` or `2` to indicate byte, halfword or word sized transfers respectively. Other sizes are not used.
 | 3  | Out | `hburst`     | Tied off to `0` (`SINGLE`). Hazard3 does not issue bursts.
 | 4  | Out | `hprot`      | Bits `3:2` are always `0` to indicate nonbufferable and noncacheable access.
@@ -116,16 +231,19 @@ Bit `1` (privileged) is `0` for U-mode access, and `1` for M-mode and Debug-mode
 
 Bit `0` is `0` for instruction fetch and `1` for data access (load/store or SBA).
 | 1  | Out | `hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
-| 8  | Out | `hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access. (Non-SBA Debug mode load/store access can be detected by checking the `dbg_halted` status.)
+| 8  | Out | `hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access.
+
+Non-SBA Debug-mode load/store access can be detected by checking the `dbg_halted` status.
 | 1  | Out | `hexcl`      | Asserts high to indicate the current transfer is an Exclusive read/write as part of a read-modify-write sequence. This can be disconnected if you have not configured the A extension, or if you do not require global exclusive monitoring (for example in a single-core deployment).
 | 1  | In  | `hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 1  | In  | `hexokay`    | Exclusive transfer success. Hazard3 always queries the global monitor, so tie this input *high* if you do not implement global exclusive monitoring (for example in a single-core deployment). Similarly, ensure your global monitor returns a successful status for non-shared memory regions such as tightly-coupled memories.
 | 32 | Out | `hwdata`     | Write data bus. The LSB of the bus is always aligned to a 4-byte boundary. Hazard3 drives the correct byte lanes depending on the transfer size and bits `1:0` of the address. Remaining byte lanes have undefined contents.
 | 32 | In  | `hrdata`     | Read data bus. The LSB of the bus is always aligned to a 4-byte boundary, so ensure you drive the correct byte lanes for narrow transfers.
 |===
 
-==== Interfaces for 2-port AHB5 CPU
+[[port-descriptions-2port]]
+==== AHB5 Signals for 2-port CPU
 
 This wrapper (`hazard3_cpu_2port`) adds two standard AHB5 manager ports, with signals prefixed `i_` for instruction and `d_` for data. See the AMBA 5 AHB specification from Arm for definitions of these signals in the context of the bus protocol.
 
@@ -138,8 +256,8 @@ When shared System Bus Access (SBA) is used, the SBA bus accesses are routed thr
 4+| **Port I (Instruction)**
 | Width | In/Out | Name | Description
 | 32 | Out | `i_haddr`      | Address output. AHB is always byte-addressed. This port always issues word-aligned accesses (address bits `1:0` are zero).
-| 1  | Out | `i_hwrite`     | Always driven low for to indicate a read transfer.
-| 2  | Out | `i_htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (NSEQ) to indicate there is a transfer. Other types are not used.
+| 1  | Out | `i_hwrite`     | Always driven low to indicate a read transfer.
+| 2  | Out | `i_htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (`NSEQ`) to indicate there is a transfer. Other types are not used.
 | 3  | Out | `i_hsize`      | Always driven to `2` to indicate a word-sized transfer. Other sizes are not used.
 | 3  | Out | `i_hburst`     | Tied off to `0` (`SINGLE`). Hazard3 does not issue bursts.
 | 4  | Out | `i_hprot`      | Bits `3:2` are always `0` to indicate nonbufferable and noncacheable access.
@@ -150,13 +268,13 @@ Bit `0` is tied to `0` to indicate instruction fetch.
 | 1  | Out | `i_hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
 | 8  | Out | `i_hmaster`    | 8-bit manager ID. Tied to `0x00`.
 | 1  | In  | `i_hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `i_hresp`      | Bus error signal. You *must* generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `i_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 32 | Out | `i_hwdata`     | Write data bus. Tied to all-zeroes as this port is read-only.
 | 32 | In  | `i_hrdata`     | Read data bus. Valid on cycles where `i_hready` is high during non-`IDLE` data phases.
 4+| **Port D (Data)**
 | 32 | Out | `d_haddr`      | Address output. AHB is always byte-addressed. Hazard3 always issues naturally-aligned accesses.
 | 1  | Out | `d_hwrite`     | Driven high for a write transfer, low for a read transfer.
-| 2  | Out | `d_htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (NSEQ) to indicate there is a transfer. Other types are not used.
+| 2  | Out | `d_htrans`     | Driven to `0` (`IDLE`) to indicate no transfer in the current address phase, and `2` (`NSEQ`) to indicate there is a transfer. Other types are not used.
 | 3  | Out | `d_hsize`      | Driven to `0`, `1` or `2` to indicate byte, halfword or word sized transfers respectively. Other sizes are not used.
 | 3  | Out | `d_hburst`     | Tied off to `0` (`SINGLE`). Hazard3 does not issue bursts.
 | 4  | Out | `d_hprot`      | Bits `3:2` are always `0` to indicate nonbufferable and noncacheable access.
@@ -165,10 +283,12 @@ Bit `1` (privileged) is `0` for U-mode access, and `1` for M-mode access.
 
 Bit `0` is tied to `1` to indicate data access (load/store or SBA).
 | 1  | Out | `d_hmastlock`  | Hazard3 does not use legacy bus locking, so this bit is tied to 0.
-| 8  | Out | `d_hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug mode access via the Program Buffer), and `0x01` indicates an SBA access. (Non-SBA Debug mode load/store access can be detected by checking the `dbg_halted` status.)
+| 8  | Out | `d_hmaster`    | 8-bit manager ID. A value of `0x00` indicates access from the core (including Debug-mode access via the Program Buffer), and `0x01` indicates an SBA access.
+
+Non-SBA Debug-mode load/store access can be detected by checking the `dbg_halted` status.
 | 1  | Out | `d_hexcl`      | Asserts high to indicate the current transfer is an Exclusive read/write as part of a read-modify-write sequence. This can be disconnected if you have not configured the A extension, or if you do not require global exclusive monitoring (for example in a single-core deployment).
 | 1  | In  | `d_hready`     | Negative stall signal. Assert low to indicate the current data phase continues on the next cycle.
-| 1  | In  | `d_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB response as per the AHB5 specification.
+| 1  | In  | `d_hresp`      | Bus error signal. You _must_ generate the complete two-phase AHB `ERROR` response as per the AHB5 specification.
 | 1  | In  | `d_hexokay`    | Exclusive transfer success. Hazard3 always queries the global monitor, so tie this input _high_ if you do not implement global exclusive monitoring (for example in a single-core deployment). Similarly, ensure your global monitor returns a successful status for non-shared memory regions such as tightly-coupled memories.
 | 32 | Out | `d_hwdata`     | Write data bus. The LSB of the bus is always aligned to a 4-byte boundary. Hazard3 drives the correct byte lanes depending on the transfer size and bits `1:0` of the address. Remaining byte lanes have undefined contents.
 | 32 | In  | `d_hrdata`     | Read data bus. The LSB of the bus is always aligned to a 4-byte boundary, so ensure you drive the correct byte lanes for narrow transfers.
@@ -179,12 +299,14 @@ Bit `0` is tied to `1` to indicate data access (load/store or SBA).
 
 ==== Reset state configuration
 
+[[param-RESET_VECTOR]]
 ===== RESET_VECTOR
 
 Address of the first instruction executed after Hazard3 comes out of reset.
 
 Default value: all-zeroes.
 
+[[param-MTVEC_INIT]]
 ===== MTVEC_INIT
 
 Initial value of the machine trap vector base CSR (<<reg-mtvec>>).
@@ -199,91 +321,135 @@ Default value: all-zeroes.
 [[param-EXTENSION_A]]
 ===== EXTENSION_A
 
-Support for the A extension: atomic read/modify/write. 0 for disable, 1 for enable.
+Support for the A extension: atomic read/modify/write. `0` for disable, `1` for enable.
 
-Default value: 1
+Default value: `1`
 
 [[param-EXTENSION_C]]
 ===== EXTENSION_C
 
-Support for the C extension: compressed (variable-width). 0 for disable, 1 for enable.
+Support for the C extension: compressed (variable-width). `0` for disable, `1` for enable.
 
-Default value: 1
+C is equivalent here to the Zca extension, because Hazard3 does not implement F or D.
+
+Hazard3 supports some other extensions which use 16-bit instructions: Zcmp (<<param-EXTENSION_ZCMP>>), Zcb (<<param-EXTENSION_ZCB>>) and Zclsd (<<param-EXTENSION_ZCLSD>>). You must set <<param-EXTENSION_C>> to enable basic compressed instruction support before enabling any of these other extensions.
+
+Default value: `1`
+
+[[param-EXTENSION_E]]
+===== EXTENSION_E
+
+Implement the RV32E base extension rather than RV32I. RV32E reduces the number of integer registers from 31 to 15. Set `1` to select RV32E, `0` to select RV32I.
+
+Default value: `0`
 
 [[param-EXTENSION_M]]
 ===== EXTENSION_M
 
-Support for the M extension: hardware multiply/divide/modulo. 0 for disable, 1 for enable.
+Support for the M extension: hardware multiply/divide/modulo. `0` for disable, `1` for enable.
 
-Default value: 1
+The exact circuit used to implement these instructions, and the resulting area and performance, depends on the following parameters: <<param-MULDIV_UNROLL>>, <<param-MUL_FAST>>, <<param-MUL_FASTER>>, and <<param-MULH_FAST>>.
+
+Default value: `1`
 
 [[param-EXTENSION_ZBA]]
 ===== EXTENSION_ZBA
 
-Support for Zba address generation instructions. 0 for disable, 1 for enable.
+Support for Zba address generation instructions. `0` for disable, `1` for enable.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_ZBB]]
 ===== EXTENSION_ZBB
 
-Support for Zbb basic bit manipulation instructions. 0 for disable, 1 for enable.
+Support for Zbb basic bit manipulation instructions. `0` for disable, `1` for enable.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_ZBC]]
 ===== EXTENSION_ZBC
 
-Support for Zbc carry-less multiplication instructions. 0 for disable, 1 for enable.
+Support for Zbc carry-less multiplication instructions. `0` for disable, `1` for enable.
 
-Default value: 0
-
-[[param-EXTENSION_ZBS]]
-===== EXTENSION_ZBS
-
-Support for Zbs single-bit manipulation instructions. 0 for disable, 1 for enable.
-
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_ZBKB]]
 ===== EXTENSION_ZBKB
 
 Support for Zbkb basic bit manipulation for cryptography.
 
-Requires: <<param-EXTENSION_ZBB>>. (Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.)
+Requires: <<param-EXTENSION_ZBB>> = `1`.
 
-Default value: 0
+NOTE: Since Zbb and Zbkb have a large overlap, this flag enables only those instructions which are in Zbkb but aren't in Zbb. Therefore both flags must be set for full Zbkb support.
+
+Default value: `0`
+
+[[param-EXTENSION_ZBKX]]
+===== EXTENSION_ZBKX
+
+Support for Zbkx crossbar permutation instructions. `0` for disable, `1` for enable.
+
+Default value: `0`
+
+
+[[param-EXTENSION_ZBS]]
+===== EXTENSION_ZBS
+
+Support for Zbs single-bit manipulation instructions. `0` for disable, `1` for enable.
+
+Default value: `0`
 
 [[param-EXTENSION_ZCB]]
-===== EXTENSION_ZCB:
+===== EXTENSION_ZCB
 
-Support for Zcb basic additional compressed instructions
+Support for Zcb basic additional compressed instructions.
 
-Requires: <<param-EXTENSION_C>>. (Some Zcb instructions also require Zbb or M, as they are 16-bit aliases of 32-bit instructions present in those extensions.)
+Requires: <<param-EXTENSION_C>> = `1`, <<param-EXTENSION_M>> = `1` and <<param-EXTENSION_ZBB>> = `1`.
 
-Note Zca is equivalent to C, as we do not support the F extension.
+NOTE: The RISC-V specifications state that Zcb depends on Zca; on Hazard3, Zca is synonymous with C, as the F and D extensions are not supported.
 
-Default value: 0
+NOTE: Some of the 16-bit opcodes from Zcb are compressed aliases for 32-bit opcodes from M and Zbb, which is why those extensions must also be enabled.
+
+Default value: `0`
+
+
+[[param-EXTENSION_ZCLSD]]
+===== EXTENSION_ZCLSD
+
+Support for Zclsd compressed load/store pair instructions.
+
+Requires: <<param-EXTENSION_ZILSD>> = `1` and <<param-EXTENSION_C>> = `1`.
+
+Default value: `0`
 
 [[param-EXTENSION_ZCMP]]
 ===== EXTENSION_ZCMP
 Support for Zcmp push/pop and double-move instructions.
 
-Requires: <<param-EXTENSION_C>>.
+Requires: <<param-EXTENSION_C>> = `1`.
 
-Note Zca is equivalent to C, as we do not support the F extension.
+NOTE: The RISC-V specifications state that Zcmp depends on Zca; on Hazard3, Zca is synonymous with C, as the F and D extensions are not supported.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_ZIFENCEI]]
 ===== EXTENSION_ZIFENCEI
 
-Support for the fence.i instruction. When the branch predictor is not present,
+Support for the `fence.i` instruction. When the branch predictor is not present,
 this instruction is optional, since a plain branch/jump is sufficient to
 flush the instruction prefetch queue. When the branch predictor is enabled
-(<<param-BRANCH_PREDICTOR>> is 1), this instruction must be implemented.
+(<<param-BRANCH_PREDICTOR>> = 1), this instruction must be implemented.
 
-Default value: 0
+Default value: `0`
+
+[[param-EXTENSION_ZILSD]]
+===== EXTENSION_ZILSD
+
+Support for Zilsd load/store pair instructions.
+
+Hazard3 issues a 64-bit load or store instruction as two 32-bit memory accesses. Therefore this extension improves code density but does not directly improve performance.
+
+Default value: `0`
 
 [[cfg-custom-extensions]]
 ==== Custom Hazard3 Extensions
@@ -293,30 +459,32 @@ Default value: 0
 
 Custom bit manipulation instructions for Hazard3: `h3.bextm` and `h3.bextmi`. See <<extension-xh3bextm-section>>.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_XH3IRQ]]
 ===== EXTENSION_XH3IRQ
 
 Custom preemptive, prioritised interrupt support. Can be disabled if an
 external interrupt controller (e.g. PLIC) is used. If disabled, and
-NUM_IRQS > 1, the external interrupts are simply OR'd into mip.meip. See <<extension-xh3irq-section>>.
+<<param-NUM_IRQS>> > `1`, the external interrupts are simply OR'd into
+`mip.meip`. See <<extension-xh3irq-section>>.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_XH3PMPM]]
 ===== EXTENSION_XH3PMPM
 
-Custom PMPCFGMx CSRs to enforce PMP regions in M-mode without locking. See <<extension-xh3pmpm-section>>.
+Enable the custom PMPCFGMx CSRs, which can enforce PMP regions in M-mode
+without locking the regions. See <<extension-xh3pmpm-section>>.
 
-Default value: 0
+Default value: `0`
 
 [[param-EXTENSION_XH3POWER]]
 ===== EXTENSION_XH3POWER
 
-Custom power management controls for Hazard3. This adds the <<reg-msleep>> CSR, and the `h3.block` and `h3.unblock` hint instructions. See <<extension-xh3power-section>>
+Custom power management controls for Hazard3. This adds the <<reg-h3.msleep>> CSR, and the `h3.block` and `h3.unblock` hint instructions. See <<extension-xh3power-section>>
 
-Default value: 0
+Default value: `0`
 
 ==== CSR support
 
@@ -332,21 +500,23 @@ the privileged specification itself is an optional extension. Hazard3 allows
 the mandatory CSRs to be disabled to save a small amount of area in
 deeply-embedded implementations.
 
-Default value: 1
+Default value: `1`
 
 [[param-CSR_M_TRAP]]
 ===== CSR_M_TRAP
 
 Include M-mode trap-handling CSRs, and enable trap support.
 
-Default value: 1
+Setting this parameter to `0` makes the core incapable of handling exceptions and interrupts. Instructions which would raise exceptions, such as illegal opcodes or unaligned load/store addresses, instead execute as NOPs.
+
+Default value: `1`
 
 [[param-CSR_COUNTER]]
 ===== CSR_COUNTER
 
 Include the basic performance counters (`cycle`/`instret`) and relevant CSRs. Note that these performance counters are now in their own separate extension (Zicntr) and are no longer mandatory.
 
-Default value: 0
+Default value: `0`
 
 [[param-U_MODE]]
 ===== U_MODE
@@ -356,9 +526,9 @@ bus accesses, and software's access to CSRs is restricted. Additionally, if
 the PMP is included, the core may restrict U-mode software's access to
 memory.
 
-Requires: <<param-CSR_M_TRAP>>.
+Requires: <<param-CSR_M_TRAP>> = `1`.
 
-Default value: 0
+Default value: `0`
 
 [[param-PMP_REGIONS]]
 ===== PMP_REGIONS
@@ -366,41 +536,61 @@ Default value: 0
 Number of physical memory protection regions, or 0 for no PMP. PMP is more
 useful if U-mode is supported, but this is not a requirement.
 
-Hazard3's PMP supports only the NAPOT and(if <<param-PMP_GRAIN>> is 0) NA4
-region types.
+Hazard3 implements all PMP registers `pmpaddr0` through `pmpaddr15` and `pmpcfg0` through `pmpcfg3` if <<param-PMP_REGIONS>> is greater than zero. They are implemented in the sense that software can read and write them without trapping. However, configuration bits for regions <<param-PMP_REGIONS>> through 15 are hardwired to zero.
 
-Requires: <<param-CSR_M_TRAP>>.
+Requires: <<param-CSR_M_TRAP>> = `1`.
 
-Default value: 0
+Default value: `0`
 
 [[param-PMP_GRAIN]]
 ===== PMP_GRAIN
 
 This is the _G_ parameter in the privileged spec, which defines the
-granularity of PMP regions. Minimum PMP region size is 1 << (_G_ + 2) bytes. 
+granularity of PMP regions. Minimum PMP region size is 1 << (_G_ + 2) bytes. For example, _G_ = `3` means 32-byte protection granularity.
 
-If _G_ > 0, `pmcfg.a` can not be set to NA4 (attempting to do so will set the
-region to OFF instead).
+If _G_ > 0, `pmcfg.a` cannot be set to NA4; attempting to do so will set the region to OFF instead. The _G_ LSBs of each `pmpaddr` register read back as all-zeroes when `pmpcfg.a` is set to TOR or OFF.
 
-If _G_ > 1, the _G_ - 1 LSBs of pmpaddr are read-only-0 when `pmpcfg.a` is
-OFF, and read-only-1 when `pmpcfg.a` is NAPOT.
+If _G_ > 1, the _G_ - 1 LSBs of pmpaddr are read-only-1 when `pmpcfg.a` is
+NAPOT.
 
-Default value: 0
+Increasing <<param-PMP_GRAIN>> from its default value reduces the area and
+delay cost associated with the PMP unit.
+
+Default value: `0`
+
+[[param-PMP_MATCH_NAPOT]]
+===== PMP_MATCH_NAPOT
+
+PMP_MATCH_NAPOT: Enable PMP support for the NAPOT (naturally-aligned
+power-of-two) and NA4 (naturally-aligned four-byte) matching modes. When
+disabled, attempting to select these modes will set the PMP region to OFF.
+
+Default value: `1`
+
+[[param-PMP_MATCH_TOR]]
+===== PMP_MATCH_TOR
+
+PMP_MATCH_TOR: Enable PMP support for the TOR (top-of-range) matching mode.
+When disabled, attempting to select this mode will set the region to OFF.
+
+Note that NA4 and NAPOT use a separate comparator circuit from TOR
+comparisons. Setting both <<param-PMP_MATCH_NAPOT>> and
+<<param-PMP_MATCH_TOR>> incurs the area cost of both circuits. For best area
+efficiency, select the best single comparator type for your application,
+noting that TOR covers all the possibilities of NAPOT if there are no gaps
+between the regions. Also consider whether <<param-PMP_GRAIN>> can be
+increased from its default value.
+
+Default value: `0`
 
 [[param-PMP_HARDWIRED]]
 ===== PMP_HARDWIRED
 
-PMPADDR_HARDWIRED: If a bit is 1, the corresponding region's pmpaddr and
-pmpcfg registers are read-only, with their values fixed when the processor is
-instantiated. PMP_GRAIN is ignored on hardwired regions.
+If a bit is 1, the corresponding region's `pmpaddr` and `pmpcfg` registers are read-only, with their values fixed when the processor is instantiated. PMP_GRAIN is ignored on hardwired regions.
 
-Hardwired regions are far cheaper, both in area and comparison delay, than
-dynamically configurable regions.
+Hardwired regions are far cheaper, both in area and comparison delay, than dynamically configurable regions.
 
-Hardwired PMP regions are a good option for setting default U-mode permissions
-on regions which have access controls outside of the processor, such as
-peripheral regions. For this case it's recommended to make hardwired regions
-the highest-numbered, so they can be overridden by lower-numbered dynamic
+Hardwired PMP regions are a good option for setting default U-mode permissions on regions which have access controls outside of the processor, such as peripheral regions. For this case it's recommended to make hardwired regions the highest-numbered, so they can be overridden by lower-numbered dynamic
 regions.
 
 Default value: all-zeroes.
@@ -408,26 +598,38 @@ Default value: all-zeroes.
 [[param-PMP_HARDWIRED_ADDR]]
 ===== PMP_HARDWIRED_ADDR
 
-Values of pmpaddr registers whose PMP_HARDWIRED bits are set to 1. Has no effect on PMP regions which are not hardwired.
+Values of `pmpaddr` registers whose <<param-PMP_HARDWIRED>> bits are set to `1`. Has no effect on PMP regions which are not hardwired.
 
 Default value: all-zeroes.
 
 [[param-PMP_HARDWIRED_CFG]]
 ===== PMP_HARDWIRED_CFG
 
-Values of pmpcfg registers whose PMP_HARDWIRED bits are set to 1. Has no effect on PMP regions which are not hardwired.
+Values of `pmpcfg` registers whose <<param-PMP_HARDWIRED>> bits are set to `1`. Has no effect on PMP regions which are not hardwired.
 
 Default value: all-zeroes.
 
 [[param-DEBUG_SUPPORT]]
 ===== DEBUG_SUPPORT
 
-Support for run/halt and instruction injection from an external Debug Module,
-support for Debug Mode, and Debug Mode CSRs.
+Enable the following hardware functionality:
 
-Requires: <<param-CSR_M_MANDATORY>>, <<param-CSR_M_TRAP>>.
+* Support for run/halt and instruction injection from an external Debug Module,
+* Support for Debug Mode
+* Debug Mode CSRs
+* A minimal Trigger Module with an exception trigger, an interrupt trigger and an instruction count trigger (see <<section-trigger-module>>)
 
-Default value: 0
+If the Hazard3 Debug Module is also instantiated and correctly connected to
+the core, this is sufficient for debugging the core from any RISC-V-compliant
+debug host.
+
+Consider also enabling hardware breakpoints using
+<<param-BREAKPOINT_TRIGGERS>> if debugging code in read-only memory is an
+anticipated use case.
+
+Requires: <<param-CSR_M_MANDATORY>> = `1` and <<param-CSR_M_TRAP>> = `1`.
+
+Default value: `0`
 
 [[param-BREAKPOINT_TRIGGERS]]
 ===== BREAKPOINT_TRIGGERS
@@ -437,38 +639,44 @@ supports only exact execution address matches, ignoring instruction size.
 That is, a trigger which supports type=2 execute=1 (but not store/load=1,
 i.e. not a watchpoint).
 
-Requires: <<param-DEBUG_SUPPORT>>
+Requires: <<param-DEBUG_SUPPORT>> = `1`.
 
-Default value: 0
+Default value: `0`
 
 ==== External interrupt support
 
 [[param-NUM_IRQS]]
 ===== NUM_IRQS
 
-NUM_IRQS: Number of external IRQs. Minimum 1, maximum 512. Note that if
-<<param-EXTENSION_XH3IRQ>> (Hazard3 interrupt controller) is disabled then
-multiple external interrupts are simply OR'd into mip.meip.
+Number of external IRQs. Minimum 1, maximum 512. Note that if
+<<param-EXTENSION_XH3IRQ>> = `0`, the internal interrupt controller is not
+present. In this case multiple external interrupts are simply OR'd into
+`mip.meip`.
 
-Default value: 1
+Default value: `1`
 
 [[param-IRQ_PRIORITY_BITS]]
 ===== IRQ_PRIORITY_BITS
 
-IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt
-in meipra, if EXTENSION_XH3IRQ is enabled. The number of distinct levels
-is (1 << IRQ_PRIORITY_BITS). Minimum 0, max 4. Note that multiple priority
-levels with a large number of IRQs will have a severe effect on timing.
+IRQ_PRIORITY_BITS: Number of priority bits implemented for each interrupt in
+the internal interrupt controller described in <<extension-xh3irq-section>>.
+The <<reg-h3.meipra>> array CSR configures the individual priorities.
 
-Default value: 0
+The number of distinct levels is `(1 << IRQ_PRIORITY_BITS)`. The minimum value
+is `0` (1 level), and the maximum value is `4` (16 levels).  Note that
+multiple priority levels with a large number of IRQs will have a severe effect
+on timing.
+
+Requires: <<param-EXTENSION_XH3IRQ>> = `1`.
+
+Default value: `0`
 
 [[param-IRQ_INPUT_BYPASS]]
 ===== IRQ_INPUT_BYPASS
 
-Disable the input registers on the external interrupts, to reduce latency by
-one cycle. Can be applied on an IRQ-by-IRQ basis.
+Disable the input registers on the external interrupts, to reduce latency by one cycle. Can be applied on an IRQ-by-IRQ basis. Use this when the interrupt already comes straight from a register, e.g. when you have synchronised an interrupt to the processor clock from an asynchronous source; the additional register inside the processor is redundant in this case.
 
-Ignored if <<param-EXTENSION_XH3IRQ>> is disabled.
+Ignored if <<param-EXTENSION_XH3IRQ>> = `0`. In this case, when the internal interrupt controller is not present, all external IRQ inputs are OR'd together before being registered in a single flip-flop.
 
 Default value: all-zeroes (not bypassed).
 
@@ -477,23 +685,20 @@ Default value: all-zeroes (not bypassed).
 [[param-MVENDORID_VAL]]
 ===== MVENDORID_VAL
 
-Value of the <<reg-mvendorid>> CSR. JEDEC JEP106-compliant vendor ID, or
-all-zeroes. 31:7 is continuation code count, 6:0 is ID. Parity bit is not
-stored.
+Value of the <<reg-mvendorid>> CSR. Should be either a JEDEC JEP-106-compliant vendor ID, or
+all-zeroes.
 
-Default value: all-zeroes.
+Bits `31:7` store the continuation code count, and bits `6:0` are the ID. The
+parity bit is not stored.
 
-[[param-MIMPID_VAL]]
-===== MIMPID_VAL
+[IMPORTANT]
+====
+The number of continuation codes is _one less than_ the JEP106 bank number.
 
-Value of the <<reg-mimpid>> CSR. Implementation ID for this specific version of Hazard3. Should be a git hash, or all-zeroes.
+For example, Raspberry Pi has an ID of `0x13` (19 decimal) in bank 10 (decimal). This has a continuation code count of 9, yielding an `mvendorid` of `0x00000493`.
+====
 
-Default value: all-zeroes.
-
-[[param-MHARTID_VAL]]
-===== MHARTID_VAL
-
-Value of the <<reg-mhartid>> CSR. Each Hazard3 core has a single hardware thread. Multiple cores should have unique IDs.
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
@@ -502,6 +707,8 @@ Default value: all-zeroes.
 
 Value of the <<reg-mconfigptr>> CSR. Pointer to configuration structure blob,
 or all-zeroes. Must be at least 4-byte-aligned.
+
+Requires: <<param-CSR_M_MANDATORY>> = `1`.
 
 Default value: all-zeroes.
 
@@ -515,72 +722,73 @@ at 1 CPI), to save area. This has a significant impact on per-clock
 performance, so should only be considered for extremely low-area
 implementations.
 
-Default value: 0
+Default value: `0`
 
 [[param-MULDIV_UNROLL]]
 ===== MULDIV_UNROLL
 
-Bits per clock for multiply/divide circuit, if present. Must be a power of 2.
+Configure bits-per-clock for the sequential multiply/divide circuit, if present. Must be a power of 2.
 
-Default value: 1
+Default value: `1`
 
 [[param-MUL_FAST]]
 ===== MUL_FAST
 
-Use single-cycle multiply circuit for MUL instructions, retiring to stage 3.
-The sequential multiply/divide circuit is still used for MULH*
+Use a single-cycle multiply circuit for `MUL` instructions, retiring to stage 3 by default (one throughput cycle, two latency cycles).
 
-Default value: 0
+The sequential multiply/divide circuit is still used for `mulh`, `mulhu` and `mulhsu`.
+
+Default value: `0`
 
 [[param-MUL_FASTER]]
 ===== MUL_FASTER
 
 Retire fast multiply results to stage 2 instead of stage 3.
-Throughput is the same, but latency is reduced from 2 cycles to 1 cycle.
+The throughput is the same, but latency is reduced from 2 cycles to 1 cycle.
 
-Requires: <<param-MUL_FAST>>.
+Requires: <<param-MUL_FAST>> = `1`.
 
-Default value: 0
+Default value: `0`
 
 [[param-MULH_FAST]]
 ===== MULH_FAST
 
-Extend the fast multiply circuit to also cover MULH*, and remove
-the multiply functionality from the sequential multiply/divide circuit.
+Extend the fast multiply circuit to also cover `mulh`, `mulhu` and `mulhsu`. Removethe multiply functionality from the sequential multiply/divide circuit.
 
-Requires: <<param-MUL_FAST>>
+Requires: <<param-MUL_FAST>> = `1`.
 
-Default value: 0
+Default value: `0`
 
 [[param-FAST_BRANCHCMP]]
 ===== FAST_BRANCHCMP
 
-Instantiate a separate comparator (eq/lt/ltu) for branch comparisons, rather
-than using the ALU. Improves fetch address delay, especially if `Zba`
-extension is enabled. Disabling may save area.
+Instantiate a separate comparator (equal, less-than-signed, less-than-unsigned) for branch comparisons, rather
+than using the ALU. Enabling the separate comparator improves the address-phase timing for instruction fetch, especially if the `Zba`
+extension is enabled (<<param-EXTENSION_ZBA>>). Disabling may save area.
 
-Default value: 1
+Default value: `1`
 
 [[param-RESET_REGFILE]]
 ===== RESET_REGFILE
 
-Whether to support reset of the general purpose registers. There are around 1k
-bits in the register file, so the reset can be disabled e.g. to permit
-block-RAM inference on FPGA.
+If `1`, the `rst_n` input resets all general purpose registers to all-zeroes. If `0`, it does not. There are around 1k
+bits in the register file, so the reset can be disabled to permit
+block RAM and LUT RAM inference on FPGA, or to reduce flop area on ASIC.
 
-Default value: 1
+Outside of the register file, all other flops in Hazard3 are always reset by the `rst_n` input, no matter the value of this parameter.
+
+Default value: `1`
 
 [[param-BRANCH_PREDICTOR]]
 ===== BRANCH_PREDICTOR
 
-Enable branch prediction. The branch predictor consists of a single BTB entry
-which is allocated on a taken backward branch, and cleared on a mispredicted
-nontaken branch, a fence.i or a trap. Successful prediction eliminates the
-1-cyle fetch bubble on a taken branch, usually making tight loops faster.
+Enable branch prediction. The branch predictor consists of a single BTB entry which is allocated on a taken backward branch, and cleared on a mispredicted non-taken branch, a `fence.i` or a trap.
 
-Requires: <<param-EXTENSION_ZIFENCEI>>
+Successful prediction eliminates the 1-cyle fetch bubble on a taken branch, so tight loops execute faster. See <<instruction-timings-branch-predictor>> for more information on this feature.
 
-Default value: 0
+Requires: <<param-EXTENSION_ZIFENCEI>> = `1`.
+
+Default value: `0`
 
 [[param-MTVEC_WMASK]]
 ===== MTVEC_WMASK
@@ -590,8 +798,8 @@ recommended, because a common idiom in setup code is to set mtvec just
 past code that may trap, as a hardware `try {...} catch` block.
 
 
-* The vectoring mode can be made fixed by clearing the LSB of MTVEC_WMASK
-* In vectored mode, the vector table must be aligned to its size, rounded
-  up to a power of two.
+The vectoring mode, in bits `1:0`, can be made fixed by clearing the LSB of `MTVEC_WMASK`.
 
-Default: All writable except for bit 1.
+In vectored mode, the vector table must be aligned to its size, rounded up to a power of two. If all four standard M-mode vectors (exception, `msip`, `mtip` and `meip`) are in use, this means 64-byte alignment.
+
+Default: All writable except for bit `1`.

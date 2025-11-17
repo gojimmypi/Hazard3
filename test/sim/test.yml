@@ -1,0 +1,75 @@
+
+simulators:
+  cxxrtl_default:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=default
+    exec:      tb_cxxrtl/tb
+    march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+  cxxrtl_late_mul:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=late_mul
+    exec:      tb_cxxrtl/tb-late_mul
+    march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+    excluded_tests:
+      # Zkt not supported with sequential mulh/mulhsu
+      - h3misa
+  verilator_default:
+    make_dir:  tb_verilator
+    make_args: CONFIG=default
+    exec:      tb_verilator/tb
+    march:     rv32ima_zca_zcb_zcmp_zicsr_zifencei_zba_zbb_zbkb_zbs
+  cxxrtl_default_rve:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=default_rve
+    exec:      tb_cxxrtl/tb-default_rve
+    march:     rv32ema_zba_zbb_zbc_zbkb_zbkx_zbs_zca_zcb_zcmp_zicsr_zifencei
+    excluded_tests:
+      # Exclude anything with explicit use of x16..x31
+      - ecall_simple
+      - zclsd_irq
+      - zclsd_sp_range
+      - zcmp_irq_kill
+      - zcmp_irq_mvsa_mvas
+      - zcmp_mva01s
+      - zcmp_mvsa01
+      - zcmp_pop
+      - zcmp_push
+      - zcmp_pop_bus_fault
+      - zcmp_popret_bus_fault
+      - zcmp_popretz_bus_fault
+      - zcmp_popret_pmp_fault
+      - zilsd_irq
+      - zilsd_memcpy
+      # Reports E instead of I, so fails:
+      - h3misa
+      - csr_id
+  cxxrtl_min:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=min
+    exec:      tb_cxxrtl/tb-min
+    march:     rv32i_zicsr_zifencei
+    tests:
+      - hellow
+  cxxrtl_min_debug:
+    make_dir:  tb_cxxrtl
+    make_args: CONFIG=min_debug
+    exec:      tb_cxxrtl/tb-min_debug
+    march:     rv32i_zicsr_zifencei
+    tests:
+      - ecall_simple
+      - hellow
+      - instr_access_fault
+      - load_misalign_halfword
+      - load_misalign_word
+      - load_store_fault
+      - pmp_u_rw
+      - pmp_write_and_lock
+      - soft_irq
+      - store_misalign_halfword
+      - store_misalign_word
+      - trigger_step_m_u
+      - umode_mret
+      - umode_wfi
+      - wfi_loop
+
+

@@ -8,7 +8,7 @@
 
 mvendorid:  deadbeef
 marchid:    0000001b
-mimpid:     12345678
+mimpid:     010100a0
 mhartid:    00000000
 mconfigptr: 9abcdef0
 misa:       40901107 // RV32IMABCX + U
@@ -20,8 +20,8 @@ int main() {
 	tb_printf("mvendorid:  %08x\n", read_csr(mvendorid ));
 	// Expected value: 27, the registered ID for Hazard3
 	tb_printf("marchid:    %08x\n", read_csr(marchid   ));
-	// Expected value: 32'h12345678, set in tb Makefile
-	tb_printf("mimpid:     %08x\n", read_csr(mimpid    ));
+	// Expected value: 32'h010100a0, for v1.1 (ignore prerelease) with eco='ha in tb
+	tb_printf("mimpid:     %08x\n", read_csr(mimpid    ) & 0x7ffffffu);
 	// Expected value: 0
 	tb_printf("mhartid:    %08x\n", read_csr(mhartid   ));
 	// Expected value: 32'h9abcdef0, set in tb Makefile

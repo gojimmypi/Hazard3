@@ -2,15 +2,29 @@
 :toc:
 :toclevels: 3
 :doctype: book
-
+:pdf-fontsdir: fonts
+:pdf-theme: hazard3-theme.yml
+ifdef::HTMLBUILD[]
+:data-uri:
+:toc: left
+endif::[]
 :times: ×
 
 include::rev.adoc[]
-= Hazard3
+
+ifdef::HTMLBUILD[]
+= Hazard3: Design Guide and Reference Manual
+endif::[]
+
+ifndef::HTMLBUILD[]
+= Design Guide and Reference Manual
+endif::[]
 
 include::sections/introduction.adoc[]
 
 include::sections/configuration_and_integration.adoc[]
+
+include::sections/bus_behaviour.adoc[]
 
 include::sections/csr.adoc[]
 
@@ -22,6 +36,5 @@ include::sections/debug.adoc[]
 [appendix]
 include::sections/instruction_timings.adoc[]
 
-// removed for now as it's fairly low-value
-// [appendix]
-// include::sections/instruction_pseudocode.adoc[]
+[appendix]
+include::sections/release_notes.adoc[]

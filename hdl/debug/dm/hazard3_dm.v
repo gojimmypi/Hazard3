@@ -584,9 +584,9 @@ wire start_abstract_cmd = abstractcs_cmderr == CMDERR_OK && !abstractcs_busy && 
 wire dmi_access_illegal_when_busy =
 	(dmi_write && (
 		dmi_regaddr == ADDR_ABSTRACTCS || dmi_regaddr == ADDR_COMMAND || dmi_regaddr == ADDR_ABSTRACTAUTO ||
-		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF0)) ||
+		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF1)) ||
 	(dmi_read && (
-		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF0));
+		dmi_regaddr == ADDR_DATA0 || dmi_regaddr == ADDR_PROGBUF0 || dmi_regaddr == ADDR_PROGBUF1));
 
 // Decode what acmd may be triggered on this cycle, and whether it is
 // supported -- command source may be a registered version of most recent
@@ -614,7 +614,7 @@ wire       acmd_new_unsupported =
 reg        acmd_prev_postexec;
 reg        acmd_prev_transfer;
 reg        acmd_prev_write;
-reg  [4:0] acmd_prev_regno;
+reg [4:0]  acmd_prev_regno;
 reg        acmd_prev_unsupported;
 
 always @ (posedge clk or negedge rst_n) begin

@@ -1,0 +1,91 @@
+[[section-release-notes]]
+== Release Notes
+:sectnums!:
+
+=== Version 1.1
+
+Incompatible changes:
+
+* The `MHARTID_VAL` parameter has been removed, and replaced with the `mhartid_val` port.
+* The `MIMPID_VAL` parameter has been removed.
+* The <<reg-mimpid>> CSR has been redefined to contain the hardcoded Hazard3 release version.
+
+New signals:
+
+* `fence_i_vld`, `fence_d_vld` and `fence_rdy` allow external hardware to enforce memory orderings or trigger cache flushes (see <<memory-ordering-signals,Memory Ordering Signals>>).
+* `mhartid_val` allows a dynamic `mhartid` CSR value.
+* `eco_version` allows modifying part of the processor's reported version number (see <<reg-mimpid>>).
+
+New features:
+
+* Implement the Zilsd extension (load/store pair), enabled by <<param-EXTENSION_ZILSD>>.
+* Implement the Zclsd extension (compressed load/store pair), enabled by <<param-EXTENSION_ZCLSD>>.
+* Implement the Zbkx extension (crossbar permutation), enabled by <<param-EXTENSION_ZBKX>>.
+* Implement TOR region support for PMP, enabled by <<param-PMP_MATCH_TOR>>.
+** NAPOT/NA4 matching is now optional, enabled by <<param-PMP_MATCH_NAPOT>>.
+* Implement interrupt, exception and instruction count trigger in the <<section-trigger-module>>.
+** These triggers are present whenever debug support is enabled by <<param-DEBUG_SUPPORT>>.
+* Implement the RV32E base extension, enabled by <<param-EXTENSION_E>>.
+* Implement new custom extension: <<extension-xh3misa-section>>, for detecting processor ISA support at finer granularity than the standard `misa` register. Enabled by `CSR_M_MANDATORY`, so it is reliably present.
+* Add `hazard3_xilinx7_jtag_dtm` for tunneling RISC-V debug through Xilinx 7-series FPGA TAPs.
+*
+Fixed errata:
+
+* Fix `fence.i` only ordering against the address phase of a preceding store (a multi-manager AHB fabric may reorder address phases, so order against the data phase instead).
+* Fix local monitor flag being cleared by trap entry as well as trap exit (only `xRET` should clear it).
+** This behaviour continues to not affect entry/exit to Debug Mode, so LR/SC sequences can be single-stepped.
+* Fix the Debug Module PROGBUF1 register being writable when an abstract command is executing, and not setting `abstracts.cmderr` to `busy` when written.
+* Fix spurious dependency of CSR instructions on `rs2`, causing read-after-write stall.
+* Fix processor lockup on AMOs that fail PMP checks.
+* Fix Debug Mode loads and stores during Program Buffer execution being subject to PMP checks on M-mode-enforced (locked) regions.
+* Fix a data-phase fault on the final load of a `cm.popret` which loads at least two registers reporting the return address as the exception PC.
+** The following were not affected: `cm.pop`, `cm.popretz`, 1-register `cm.popret`, PMP traps and alignment traps.
+
+
+PPA optimisations:
+
+* Move breakpoint PC comparator from stage 2 to stage 1.
+* Move PMP X permission lookup from stage 2 to stage 1.
+* Simplify PMP X permission lookup by looking up naturally-aligned fetches instead of both halfwords of a potentially unaligned instruction.
+* Move compressed instruction expansion from stage 2 to stage 1.
+* Pre-decode `rs1`/`rs2` bypass controls in stage 1.
+* Restore register on `op_b` input of `hazard3_muldiv_seq` for better routing locality.
+
+General improvements:
+
+* Relax PMP X permission checking to allow instructions to straddle two PMP regions which both have the necessary permissions.
+* RTL is now lint-clean with Verilator v5.038.
+* Add Verilator testbench, command-line-compatible with existing CXXRTL testbench.
+* Update to latest versions of `riscv-arch-test`, `riscv-test`  and `riscv-formal`.
+* Enable `riscv-formal` checks for B extension and other bit manipulation extensions.
+* Update `hazard3_rvfi_monitor` to support running existing `riscv-formal` checks with the A, Zcmp, Zilsd and Zclsd extensions enabled.
+* Allow synthesising the processor with the RVFI trace monitor included by defining the `HAZARD3_RVFI_STANDALONE` macro.
+** This is an intermediate step towards E-trace support, and useful for tracing processor execution on FPGA or in simulation.
+
+
+Other changes:
+
+* Writes to CSRs which affect instruction fetch now cost three cycles plus an additional cycle if the following instruction is unaligned 32-bit.
+** Specifically this affects `pmpaddr*`, `pmpcfg*`, `tcontrol`, `tdata1` and `tdata2`.
+** These CSR writes now require an instruction fetch flush to enforce the necessary orderings.
+** All other CSRs remain single-cycle write.
+* Writes to `minstret`/`minstreth` or `mcycle`/`mcycleh` now inhibit the increment of the entire underlying 64-bit counter.
+** The spec wording was recently changed to clarify this issue: see https://github.com/riscv/riscv-isa-manual/issues/1255[here].
+
+See the Github release notes https://github.com/Wren6991/Hazard3/releases/tag/v1.1[here].
+
+=== Version 1.0.2
+
+* Coding style change in `hazard3_frontend` for Verilator compatibility
+
+See the Github release notes https://github.com/Wren6991/Hazard3/releases/tag/v1.0.2[here].
+
+=== Version 1.0.1
+
+* Fix: abstract access commands initiated via `abstractauto` access the wrong core GPR
+
+See the Github release notes https://github.com/Wren6991/Hazard3/releases/tag/v1.0.1[here].
+
+=== Version 1.0
+
+This is the first stable version of Hazard3. See the Github release notes https://github.com/Wren6991/Hazard3/releases/tag/v1.0[here].

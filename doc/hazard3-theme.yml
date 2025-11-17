@@ -1,0 +1,11 @@
+extends: default-sans
+title-page:
+  title:
+    top: 90%
+  logo:
+    image: image:diagrams/hazard3_logo_riscv_colors.svg[pdfwidth=80%]
+    align: center
+    top: 25%
+
+codespan:
+  font-color: "#00509E"

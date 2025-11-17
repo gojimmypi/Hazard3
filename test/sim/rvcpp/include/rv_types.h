@@ -8,3 +8,9 @@ typedef int32_t sx_t;
 typedef unsigned int uint;
 
 typedef int64_t sdx_t;
+
+#ifdef __x86_64__
+#define I64_FMT "%ld"
+#else
+#define I64_FMT "%lld"
+#endif

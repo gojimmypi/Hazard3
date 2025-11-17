@@ -1,6 +1,6 @@
 #include "hazard3_csr.h"
 
-#define IO_BASE 0x80000000
+#define IO_BASE 0xc0000000
 #define IO_PRINT_CHAR (IO_BASE + 0x0)
 #define IO_PRINT_U32  (IO_BASE + 0x4)
 #define IO_EXIT       (IO_BASE + 0x8)
@@ -59,13 +59,26 @@ j \name
 	la a0, 1f
 	csrw mtvec, a0
 	csrci mcountinhibit, 0x5
+	j 2f
 .p2align 2
 1:
+	csrw mcause, zero
+2:
+
 	// Set up trap vector table. mtvec LSB enables vectoring
 	la a0, .vector_table + 1
 	csrw mtvec, a0
 
+	// Ensure gp is initialised on all cores -- don't wait for newlib _start
+	// as that is core-0-only
+.option push
+.option norelax
+	la gp, __global_pointer$
+.option pop
+
 	// Put spare cores to sleep before setting up core 0 stack
+	// Note csrr is a NOP when there are no CSRs at all (no traps!):
+	li a0, 0
 	csrr a0, mhartid
 	bnez a0, .core1_wait
 
@@ -127,6 +140,8 @@ heap_ptr:
 progname:
 	.asciz "hazard3-testbench"
 
+.p2align 2
+
 // ----------------------------------------------------------------------------
 // Weak handler/ISR symbols
 
@@ -135,37 +150,36 @@ progname:
 // so the CPU will print some basic diagnostics on any unhandled trap
 // (assuming the processor is not internally completely broken)
 
-// argument in x28, return in x27, trashes x28...x30
+// argument in t0, IO pointer in t1, return in tp, trashes t0 and t2;
 _tb_puts:
-	li x29, IO_PRINT_CHAR
 1:
-	lbu x30, (x28)
-	addi x28, x28, 1
-	beqz x30, 2f
-	sw x30, (x29)
+	lbu t2, (t0)
+	addi t0, t0, 1
+	beqz t2, 2f
+	sw t2, IO_PRINT_CHAR - IO_BASE(t1)
 	j 1b
 2:
-	jr x27
+	jr tp
 
 .macro print_reg str reg
-	la x28, \str
-	jal x27, _tb_puts
-	sw \reg, (x31)
+	la t0, \str
+	jal tp, _tb_puts
+	sw \reg, IO_PRINT_U32 - IO_BASE(t1)
 .endm
 
-_weak_handler_name_in_x31:
-	la x28, _str_unhandled_trap
-	jal x27, _tb_puts
-	mv x28, x31
-	jal x27, _tb_puts
-	la x28, _str_at_mepc
-	jal x27, _tb_puts
-	li x31, IO_PRINT_U32
-	csrr x28, mepc
-	sw x28, (x31)
-	csrr x26, mcause
-	bltz x26, 1f
-	print_reg _str_mcause x26
+_weak_handler_name_in_gp:
+	la t0, _str_unhandled_trap
+	li t1, IO_BASE
+	jal tp, _tb_puts
+	mv t0, gp
+	jal tp, _tb_puts
+	la t0, _str_at_mepc
+	jal tp, _tb_puts
+	csrr t0, mepc
+	sw t0, IO_PRINT_U32 - IO_BASE(t1)
+	csrr gp, mcause
+	bltz gp, 1f
+	print_reg _str_mcause gp
 1:
 	print_reg _str_s0 s0
 	print_reg _str_s1 s1
@@ -177,9 +191,8 @@ _weak_handler_name_in_x31:
 	print_reg _str_a5 a5
 	print_reg _str_ra ra
 	print_reg _str_sp sp
-	li x31, IO_EXIT
-	li x30, -1
-	sw x30, (x31)
+	li t2, -1
+	sw t2, IO_EXIT - IO_BASE(t1)
 	// Should be unreachable:
 	j .halt
 
@@ -196,17 +209,18 @@ _str_a4:             .asciz "a4: "
 _str_a5:             .asciz "a5: "
 _str_ra:             .asciz "ra: "
 _str_sp:             .asciz "sp: "
+.p2align 2
 
 // Provide a default weak handler for each trap, which calls into the above
-// diagnostic routine with the trap name (a null-terminated string) in x31
+// diagnostic routine with the trap name (a null-terminated string) in gp
 
 .macro weak_handler name:req
 .p2align 2
 .global \name
 .weak \name
 \name:
-	la x31, _str_\name
-	j _weak_handler_name_in_x31
+	la gp, _str_\name
+	j _weak_handler_name_in_gp
 _str_\name:
 	.asciz "\name"
 .endm

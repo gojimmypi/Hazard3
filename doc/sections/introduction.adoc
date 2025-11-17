@@ -2,26 +2,55 @@
 
 Hazard3 is a configurable 3-stage RISC-V processor, implementing:
 
-* `RV32I`: 32-bit base instruction set
+* `RV32I` or `RV32E`: 32-bit base instruction set
 * `M`: integer multiply/divide/modulo
 * `A`: atomic memory operations, with AHB5 global exclusives
 * `C`: compressed instructions
 * `Zicsr`: CSR access
+* `Zilsd`: load/store pair
 * `Zba`: address generation
 * `Zbb`: basic bit manipulation
 * `Zbc`: carry-less multiplication
 * `Zbs`: single-bit manipulation
 * `Zbkb`: basic bit manipulation for scalar cryptography
+* `Zbkx`: crossbar permutation instructions
 * `Zcb`: basic additional compressed instructions
 * `Zcmp`: push/pop and double-move compressed instructions
+* `Zclsd`: compressed load/store pair instructions
 * Debug, Machine and User privilege/execution modes
-* Privileged instructions `ECALL`, `EBREAK`, `MRET` and `WFI`
+* Privileged instructions `ecall`, `ebreak`, `mret` and `wfi`
+* Physical memory protection (PMP) with up to 16 regions (configurable support for NAPOT and/or TOR matching)
 * External debug support
 * Instruction address trigger unit (hardware breakpoints)
 
-=== Architectural Overview
+This document describes Hazard3 version https://github.com/Wren6991/Hazard3/releases/tag/v1.1[v1.1]. See <<section-release-notes>> for changes introduced in this and earlier versions.
+
+<<<
+
+=== Architecture Overview
+
+==== Interfaces
+
+Hazard3 communicates with system hardware using the following groups of signals:
+
+image::diagrams/hazard3_interfaces_both.drawio.png[width=60%, pdfwidth=60%, align="center"]
+
+AHB:: The core accesses the bus using either 1 {times} or 2 {times} 32-bit AHB5 bus manager ports, depending on choice of top-level module (see <<top-level-modules>>).
+IRQ:: The core implements standard RISC-V timer and software IRQ inputs, and a choice of a single external IRQ input or an integrated interrupt controller with support for up to 512 external IRQs.
+Debug:: Allows the Hazard3 Debug Module implementation to access core internals, and optionally to access the system bus directly by arbitrating with the core's load/store access.
+Power:: The core can negotiate power up/down of external hardware based on sleep state, and enter/exit sleep states cooperatively with other cores in the same multiprocessor system.
+Fence:: The core can request memory orderings; the system can stall the request (e.g. for a cache flush).
+
+See <<port-descriptions>> for a full description of these interfaces.
+
+// Hard line break because there is a huge diagram on the next page and it needs to flow with the text
+<<<
 
 ==== Pipeline Stages
+
+The diagram shows how hardware components are distributed through three pipeline stages. A dotted outline means an optional component. Dotted vertical lines are clock boundaries between stages; blocks that straddle these lines are synchronous elements, either registers or bus signals that are notionally registered outside the core. Dependencies (and time) flow from left to right.
+
+image::diagrams/hazard3_pipeline.drawio.png[width=90%, align="center", pdfwidth=100%]
 
 The three stages are:
 
@@ -30,8 +59,11 @@ The three stages are:
 ** Contains the instruction prefetch buffer
 ** Predecodes register numbers `rs1`/`rs2`, for faster register file read and register bypass
 ** Contains the address match logic for the optional branch predictor
+** Compares data-phase fetch address with breakpoint addresses
+** Looks up data-phase fetch address against PMP regions
 * `X`: Execute
 ** Decodes and execute instructions
+** Looks up load/store/AMO addresses against PMP regions
 ** Drives the address phase for load/store/AMO
 ** Generates jump/branch addresses
 ** Contains the read and write ports for the CSR file
@@ -48,9 +80,9 @@ This document often refers to `F`, `X` and `M` as stages 1, 2 and 3 respectively
 
 ==== Bus Interfaces
 
-Hazard3 implements either one or two AHB5 bus manager ports. Use the single-port configuration when ease of integration is a priority, since it supports simpler bus topologies. The dual-port configuration adds a dedicated port for instruction fetch. Use the dual-port configuration for maximum frequency and the best clock-for-clock performance.
+Hazard3 implements either one or two AHB5 bus manager ports. The dual-port configuration adds a dedicated port for instruction fetch. Use the single-port configuration when ease of integration is a priority, since it supports simpler bus topologies. The dual-port configuration supports higher maximum frequency and greater clock-for-clock performance provided you either have a split (Harvard) bus architecture, or can handle multiple AHB5 managers on the same bus.
 
-Hazard3 uses AHB5 specifically, rather than older versions of the AHB standard, because of its support for global exclusives. This is a bus feature that allows a processor to perform an ordered read-modify-write sequence with a guarantee that no other processor has written to the same address range in between. Hazard3 uses this to implement multiprocessor support for the A (atomics) extension. Single-processor support for the A extension does not require these additional signals.
+One of the key additions to AHB5 over older AHB versions is *exclusive accesses*, using the `HEXCL` and `HEXOKAY` signals. Exclusive accesses enable an ordered read-modify-write sequence with the guarantee that no other processor has written to the same memory location in between the read and write. Hazard3 uses AHB5 exclusives to implement multiprocessor support for the A (atomics) extension. Single-processor support for the A extension does not require these additional signals.
 
 AHB5 is one of the two protocols described in the https://documentation-service.arm.com/static/5f91607cf86e16515cdc3b4b[AMBA 5 AHB protocol specification]. Its full name is (perhaps surprisingly) AMBA 5 AHB5. Refer to the protocol specification for more information about this standard bus protocol.
 
@@ -66,6 +98,19 @@ The single-cycle multiplier is implemented as a simple `*` behavioural multiply,
 
 // ** magic comment to reset sublime text asciidoc lexer
 
+==== Constant-time Execution
+
+Hazard3 supports `Zkt` constant-time execution in the following configurations:
+
+* <<param-EXTENSION_M>> is `0`
+* <<param-EXTENSION_M>> is `1`, <<param-MUL_FAST>> is `1` and <<param-MULH_FAST>> is `1`
+
+The source of data-dependent timing is conditional sign correction in the `mulh` and `mulhsu` instructions when executed on the sequential multiply/divide circuit. You can avoid this by configuring these instructions to execute on the single-cycle multiplier instead. The remaining `Zkt` instructions are constant-time for all configurations.
+
+Constant-time here refers to **data-independent timing**. Execution time can still be affected by other factors such as instruction alignment and external bus stalls.
+
+Software can read the `Zkt` bit in <<reg-h3.misa>> to check whether a given implementation has constant execution time for the `Zkt` instruction list.
+
 === List of RISC-V Specifications
 
 These are links to the ratified versions of the base instruction set and extensions implemented by Hazard3.
@@ -79,12 +124,15 @@ These are links to the ratified versions of the base instruction set and extensi
 | `C` v2.0          | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
 | `Zicsr` v2.0      | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
 | `Zifencei` v2.0   | https://github.com/riscv/riscv-isa-manual/releases/download/Ratified-IMAFDQC/riscv-spec-20191213.pdf[Unprivileged ISA 20191213]
+| `Zilsd` v1.0-rc3 | https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf[Load/Store Pair for RV32 frozen v1.0-rc3]
 | `Zba` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbb` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbc` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbs` v1.0.0      | https://github.com/riscv/riscv-bitmanip/releases/download/1.0.0/bitmanip-1.0.0-38-g865e7a7.pdf[Bit Manipulation ISA extensions 20210628]
 | `Zbkb` v1.0.1     | https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf[Scalar Cryptography ISA extensions 20220218]
+| `Zbkx` v1.0.1     | https://github.com/riscv/riscv-crypto/releases/download/v1.0.1-scalar/riscv-crypto-spec-scalar-v1.0.1.pdf[Scalar Cryptography ISA extensions 20220218]
 | `Zcb` v1.0.3-1    | https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf[Code Size Reduction extensions frozen v1.0.3-1]
+| `Zclsd` v1.0-rc3 | https://github.com/riscv/riscv-zilsd/releases/download/v1.0-rc3/riscv-zilsd-v1.0-rc3.pdf[Load/Store Pair for RV32 frozen v1.0-rc3]
 | `Zcmp` v1.0.3-1   | https://github.com/riscv/riscv-code-size-reduction/releases/download/v1.0.3-1/Zc-v1.0.3-1.pdf[Code Size Reduction extensions frozen v1.0.3-1]
 | Machine ISA v1.12 | https://github.com/riscv/riscv-isa-manual/releases/download/Priv-v1.12/riscv-privileged-20211203.pdf[Privileged Architecture 20211203]
 | Debug v0.13.2     | https://riscv.org/wp-content/uploads/2019/03/riscv-debug-release.pdf[RISC-V External Debug Support 20190322]

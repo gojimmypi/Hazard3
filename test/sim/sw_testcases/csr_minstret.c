@@ -3,6 +3,16 @@
 
 // Cribbed heavily from csr_mcycle
 
+// Note: Hazard3 originally did not suppress the increment of one half of
+// minstret when writing to the other. The spec wording was recently changed
+// (April 2025) to make spike's behaviour correct, i.e. the entire 64-bit
+// increment is suppressed when you write to either half. See:
+//
+//   https://github.com/riscv/riscv-isa-manual/issues/1255
+//
+// NOPs have been added to make sure the counter still increments at points
+// where it previously incremented.
+
 /*EXPECTED-OUTPUT***************************************************************
 
 Clear, read, read
@@ -62,10 +72,15 @@ int main() {
 	asm volatile (
 		"csrw minstret, zero \n"
 		"csrw minstreth, zero\n" // in-cycle register values:
+		"nop\n"
 		"csrw minstret,%3    \n" // minstret ==  1, minstreth == 0
+		"nop\n"
 		"csrw minstret,%3    \n" // minstret == -1, minstreth == 0
+		"nop\n"
 		"csrw minstret,%3    \n" // minstret == -1, minstreth == 1
+		"nop\n"
 		"csrw minstret,%3    \n" // minstret == -1, minstreth == 2
+		"nop\n"
 		"csrw minstret,%3    \n" // minstret == -1, minstreth == 3
 		"csrr %0, minstreth  \n" // minstret == -1, minstreth == 4
 		"csrr %1, minstreth  \n" // minstret ==  0, minstreth == 5
@@ -82,8 +97,10 @@ int main() {
 	asm volatile (
 		"csrw minstret, zero \n"
 		"csrw minstreth, zero\n" // in-cycle register values:
+		"nop\n"
 		"csrw minstret, %3   \n" // minstret ==  1, minstreth ==  0
 		"csrw minstreth, %4  \n" // minstret == -2, minstreth ==  0
+		"nop\n"
 		"csrr %0, minstreth  \n" // minstret == -1, minstreth == -1
 		"csrr %1, minstreth  \n" // minstret ==  0, minstreth ==  0
 		"csrr %2, minstret   \n" // minstret ==  1, minstreth ==  0

@@ -2,7 +2,7 @@
 
 All timings are given assuming perfect bus behaviour (no downstream bus stalls), and that the core is configured with `MULDIV_UNROLL = 2` and all other configuration options set for maximum performance.
 
-=== RV32I
+=== Base Instruction Set (RV32I)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -51,7 +51,7 @@ All timings are given assuming perfect bus behaviour (no downstream bus stalls),
 | `sb rs2, imm(rs1)` | 1 |
 |===
 
-=== M Extension
+=== Integer Multiply and Divide (M)
 
 Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1`. I.e. the sequential multiply/divide circuit processes two bits per cycle, and a separate dedicated multiplier is present for the `mul` instruction.
 
@@ -72,7 +72,7 @@ Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1
 | `remu rd, rs1, rs2` | 18 |
 |===
 
-=== A Extension
+=== Atomics (A)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -92,7 +92,7 @@ Timings assume the core is configured with `MULDIV_UNROLL = 2` and `MUL_FAST = 1
 |`amomaxu.w rd, rs2, (rs1)` | 4+ | 4 per attempt. Multiple attempts if reservation is lost.footnote:amo_timing[]
 |===
 
-=== C Extension
+=== Compressed Instructions (C or Zca)
 
 All C extension 16-bit instructions are aliases of base RV32I instructions. On Hazard3, they perform identically to their 32-bit counterparts.
 
@@ -104,18 +104,28 @@ A consequence of the C extension is that 32-bit instructions can be non-naturall
 |===
 | Instruction | Cycles | Note
 3+| CSR Access
-| `csrrw rd, csr, rs1` | 1 |
-| `csrrc rd, csr, rs1` | 1 |
-| `csrrs rd, csr, rs1` | 1 |
-| `csrrwi rd, csr, imm` | 1 |
-| `csrrci rd, csr, imm` | 1 |
-| `csrrsi rd, csr, imm` | 1 |
+| `csrrw rd, csr, rs1` | 1footnote:csr_fetch_ordering[Writes to the following CSRs take 3 cycles, plus an additional 1 cycle if the following instruction is misaligned 32-bit: `pmpaddr*`, `pmpcfg*`, `tcontrol`, `tdata1`, `tdata2`. These CSRs require an instruction fetch flush to enforce CSR-write-to-fetch ordering.] |
+| `csrrc rd, csr, rs1` | 1footnote:csr_fetch_ordering[] |
+| `csrrs rd, csr, rs1` | 1footnote:csr_fetch_ordering[] |
+| `csrrwi rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
+| `csrrci rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
+| `csrrsi rd, csr, imm` | 1footnote:csr_fetch_ordering[] |
 3+| Trap Request
 | `ecall` | 3 | Time given is for jumping to `mtvec`
 | `ebreak` | 3 | Time given is for jumping to `mtvec`
 |===
 
-=== Bit Manipulation
+=== Load/Store Pair (Zilsd)
+
+[%autowidth.stretch, options="header"]
+|===
+| Instruction | Cycles | Note
+3+| Load/Store Pair
+| `ld rd, imm(rs1)` | 2 | Issues as two `lw`
+| `sd rs2, imm(rs1)` | 2 | Issues as two `sw`
+|===
+
+=== Bit Manipulation (Zba, Zbb, Zbc, Zbs)
 
 [%autowidth.stretch, options="header"]
 |===
@@ -165,7 +175,7 @@ A consequence of the C extension is that 32-bit instructions can be non-naturall
 |`unzip rd, rs1`       | 1 |
 |===
 
-=== Zcb Extension
+=== Additional Basic Compressed Instructions (Zcb)
 
 Similarly to the C extension, this extension contains 16-bit variants of common 32-bit instructions:
 
@@ -175,19 +185,29 @@ Similarly to the C extension, this extension contains 16-bit variants of common 
 
 They perform identically to their 32-bit counterparts.
 
-=== Zcmp Extension
+=== Compressed Load/Store Pair (Zclsd)
+
+These 16-bit instructions behave identically to their 32-bit counterparts, namely:
+
+* `c.ld` expands to Zilsd `ld`
+* `c.ldsp` expands to Zilsd `ld`
+* `c.sd` expands to Zilsd `sd`
+* `c.sdsp` expands to Zilsd `sd`
+
+=== Push, Pop and Double Move (Zcmp)
 
 [%autowidth.stretch, options="header"]
 |===
 | Instruction | Cycles | Note
 |`cm.push {rlist}, -imm` | 1 + _n_ | _n_ is number of registers in rlist
 |`cm.pop {rlist}, imm` | 1 + _n_ | _n_ is number of registers in rlist
-|`cm.popret {rlist}, imm` | 4 (_n_ = 1)footnote:popret_stall[The single-register variants of `cm.popret` and `cm.popretz` take the same number of cycles as the two-register variants, because of an internal load-use dependency on the loaded return address.] or 2 + _n_ (_n_ >= 2)footnote:unaligned_branch[] | _n_ is number of registers in rlist
-|`cm.popretz {rlist}, imm` | 5 (_n_ = 1)footnote:popret_stall[] or 3 + _n_ (_n_ >= 2)footnote:unaligned_branch[] | _n_ is number of registers in rlist
+|`cm.popret {rlist}, imm` | 4 (_n_ = 1)footnote:popret_stall[The single-register variant of `cm.popret` takes the same number of cycles as the two-register variant, because of an internal load-use dependency on the loaded return address.] or 2 + _n_ (_n_ >= 2)footnote:unaligned_branch[] | _n_ is number of registers in rlist
+|`cm.popretz {rlist}, imm` | 3 + __n__footnote:unaligned_branch[] | _n_ is number of registers in rlist
 |`cm.mva01s r1s', r2s'` | 2 |
 |`cm.mvsa01 r1s', r2s'` | 2 |
 |===
 
+[[instruction-timings-branch-predictor]]
 === Branch Predictor
 
 Hazard3 includes a minimal branch predictor, to accelerate tight loops:
