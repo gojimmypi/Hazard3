@@ -24,7 +24,17 @@ wire rvfm_x_valid = fd_cir_vld >= 2 || (fd_cir_vld >= 1 && fd_cir_raw[1:0] != 2'
 reg rvfm_m_valid;
 reg [31:0] rvfm_m_instr;
 
-wire rvfm_m_trap = xm_except != EXCEPT_NONE && xm_except != EXCEPT_MRET && m_trap_enter_rdy;
+// Exclude "traps" which are microarchitectural rather than architectural
+wire rvfm_m_take_exception =
+	xm_except != EXCEPT_NONE    &&
+	xm_except != EXCEPT_REFETCH &&
+	xm_except != EXCEPT_MRET    &&
+	m_trap_enter_rdy;
+
+wire rvfm_m_take_irq =
+	m_trap_enter_vld &&
+	m_trap_enter_rdy &&
+	m_trap_is_irq;
 
 reg        rvfi_valid_r;
 reg [31:0] rvfi_insn_r;
@@ -44,7 +54,7 @@ always @ (posedge clk or negedge rst_n) begin
 		if (!x_stall) begin
 			// X instruction squashed by any trap, as it's in the branch
 			// shadow.
-			rvfm_m_valid <= |df_cir_use && !m_trap_enter_vld;
+			rvfm_m_valid <= |df_cir_use && !(m_trap_enter_vld && m_trap_enter_rdy);
 			rvfm_m_instr <= {fd_cir_raw[31:16] & {16{df_cir_use[1]}}, fd_cir_raw[15:0]};
 		end else if (!m_stall) begin
 			rvfm_m_valid <= 1'b0;
@@ -56,7 +66,7 @@ always @ (posedge clk or negedge rst_n) begin
 			xm_except != EXCEPT_INSTR_FAULT &&
 			xm_except != EXCEPT_INSTR_MISALIGN
 		}};
-		rvfi_trap_r <= rvfm_m_trap;
+		rvfi_trap_r <= rvfm_m_take_exception;
 	end
 end
 
@@ -76,14 +86,23 @@ end
 reg rvfm_x_intr;
 reg rvfm_m_intr;
 reg rvfi_intr_r;
+
+wire rvfm_x_intr_retained =
+	x_stall ||
+	d_starved ||
+	fd_cir_uop_nonfinal ||
+	df_lspair_phase_next;
+
 always @ (posedge clk) begin
 	if (!rst_n) begin
 		rvfm_x_intr <= 1'b0;
 		rvfm_m_intr <= 1'b0;
 		rvfi_intr_r <= 1'b0;
 	end else begin
-		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved || fd_cir_uop_nonfinal || df_lspair_phase_next)) ||
-			(m_trap_enter_vld && m_trap_enter_rdy);
+		rvfm_x_intr <=
+			(rvfm_x_intr && rvfm_x_intr_retained) ||
+			rvfm_m_take_exception ||
+			rvfm_m_take_irq;
 		if (!x_stall) begin
 			rvfm_m_intr <= rvfm_x_intr;
 		end
