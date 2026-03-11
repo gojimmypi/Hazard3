@@ -53,7 +53,7 @@ int main() {
 	asm ("csrsi mstatus, 0x8");
 
 	// Count the number of sleep loop iterations to make sure the wfi waits
-	int wait_spin_count;
+	int wait_spin_count = 0;
 	while (irq_count < MAX_IRQ_COUNT) {
 		++wait_spin_count;
 		__wfi();
