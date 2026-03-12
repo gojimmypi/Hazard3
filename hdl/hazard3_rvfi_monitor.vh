@@ -281,6 +281,7 @@ reg [31:0] rvfm_haddr_dph;
 reg        rvfm_hwrite_dph;
 reg [1:0]  rvfm_htrans_dph;
 reg [2:0]  rvfm_hsize_dph;
+reg        rvfm_hexcl_dph;
 
 always @ (posedge clk) begin
 	if (bus_aph_ready_d) begin
@@ -288,6 +289,7 @@ always @ (posedge clk) begin
 		rvfm_haddr_dph <= bus_haddr_d;
 		rvfm_hwrite_dph <= bus_hwrite_d;
 		rvfm_hsize_dph <= bus_hsize_d;
+		rvfm_hexcl_dph <= bus_aph_excl_d;
 	end
 end
 
@@ -340,7 +342,10 @@ always @ (posedge clk) begin
 		// RVFI has an AXI-like concept of byte strobes, rather than AHB-like
 		rvfi_mem_addr_r <= rvfm_haddr_dph & 32'hffff_fffc;
 		{rvfi_mem_rmask_r, rvfi_mem_wmask_r} <= 0;
-		if (rvfm_htrans_dph[1] && rvfm_hwrite_dph) begin
+		if (rvfm_htrans_dph[1] && rvfm_hwrite_dph && rvfm_hexcl_dph && !bus_dph_exokay_d) begin
+			// data-phase failure of exclusive write (declined by global monitor)
+			rvfi_mem_wmask_r <= 4'h0;
+		end else if (rvfm_htrans_dph[1] && rvfm_hwrite_dph) begin
 			rvfi_mem_wmask_r <= rvfm_mem_bytemask_dph;
 			rvfi_mem_wdata_r <= bus_wdata_d;
 		end else if (rvfm_htrans_dph[1] && !rvfm_hwrite_dph) begin
