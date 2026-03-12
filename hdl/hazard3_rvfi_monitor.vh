@@ -322,9 +322,12 @@ always @ (posedge clk) begin
 	rvfm_mem_hold <= (rvfm_mem_hold || (rvfm_htrans_dph && bus_dph_ready_d)) && m_stall;
 	if (xm_memop == MEMOP_AMO) begin
 		// AMO has completed in stage X. Progressing to stage M without MEMOP
-		// going to NONE then there has been no trap, therefore no stall,
+		// going to NONE means there has been no trap, therefore no stall,
 		// therefore no time for another address to have issued:
+`ifndef HAZARD3_RVFI_STANDALONE
+		// ifdef as this is non-synthesisable
 		assert(!m_stall);
+`endif
 		rvfi_mem_addr_r <= rvfm_haddr_dph;
 		// Always 32-bit, always both read and write:
 		rvfi_mem_rmask_r <= 4'hf;
