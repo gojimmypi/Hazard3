@@ -80,6 +80,12 @@ make -j$(nproc)
 sudo make install
 ```
 
+On MacOS the dependencies can be installed with:
+
+```bash
+brew install graphviz python3 boost zlib bison flex xdot pkg-config gawk lld
+```
+
 ## RISC-V Toolchain
 
 I recommend _building_ a toolchain to get libraries with the correct ISA support. Follow the below instructions to build a 32-bit version of the [RISC-V GNU toolchain](https://github.com/riscv/riscv-gnu-toolchain) with a multilib setup suitable for Hazard3 development.
@@ -228,7 +234,7 @@ sudo make install
 On MacOS:
 
 ```bash
-brew install autoconf automake libusb
+brew install autoconf automake libusb jimtcl
 cd /tmp
 git clone https://github.com/riscv/riscv-openocd.git
 cd riscv-openocd

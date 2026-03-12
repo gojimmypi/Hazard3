@@ -1140,6 +1140,11 @@ assign m_dphase_in_flight = xm_memop != MEMOP_NONE && xm_memop != MEMOP_AMO;
 wire m_delay_irq_entry = xm_delay_irq_entry_on_ls_stagex ||
 	((xm_sleep_wfi || xm_sleep_block) && !m_sleep_stall_release);
 
+// Inhibit CSR read/write side effects; note most stage-X exception sources
+// are excluded as these only apply to CSR instructions.
+wire m_csr_access_mask_early = m_trap_enter_soon || fd_cir_break_any;
+wire m_csr_access_mask = m_csr_access_mask_early || x_stall;
+
 wire m_pwr_allow_clkgate;
 wire m_pwr_allow_power_down;
 wire m_pwr_allow_sleep_on_block;
@@ -1177,12 +1182,12 @@ hazard3_csr #(
 	.addr                       (fd_cir[31:20]), // Always I-type immediate
 	.wdata                      (x_csr_wdata),
 	.wen_raw                    (d_csr_wen),
-	.wen_soon                   (d_csr_wen && !m_trap_enter_soon),
-	.wen                        (d_csr_wen && !m_trap_enter_soon && !x_stall),
+	.wen_soon                   (d_csr_wen && !m_csr_access_mask_early),
+	.wen                        (d_csr_wen && !m_csr_access_mask),
 	.wtype                      (d_csr_wtype),
 	.rdata                      (x_csr_rdata),
-	.ren_soon                   (d_csr_ren && !m_trap_enter_soon),
-	.ren                        (d_csr_ren && !m_trap_enter_soon && !x_stall),
+	.ren_soon                   (d_csr_ren && !m_csr_access_mask_early),
+	.ren                        (d_csr_ren && !m_csr_access_mask),
 	.illegal                    (x_csr_illegal_access),
 	.write_is_fetch_ordered     (x_csr_write_is_fetch_ordered),
 

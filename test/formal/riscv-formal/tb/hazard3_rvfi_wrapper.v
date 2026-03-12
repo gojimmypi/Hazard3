@@ -328,7 +328,7 @@ hazard3_cpu_2port #(
 	.d_hmastlock                (d_hmastlock),
 	.d_hready                   (d_hready),
 	.d_hresp                    (d_hresp),
-	.d_hexokay                  (d_hexcl),
+	.d_hexokay                  (d_hexokay),
 	.d_hwdata                   (d_hwdata),
 	.d_hrdata                   (d_hrdata),
 `endif

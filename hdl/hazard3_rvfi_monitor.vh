@@ -24,7 +24,17 @@ wire rvfm_x_valid = fd_cir_vld >= 2 || (fd_cir_vld >= 1 && fd_cir_raw[1:0] != 2'
 reg rvfm_m_valid;
 reg [31:0] rvfm_m_instr;
 
-wire rvfm_m_trap = xm_except != EXCEPT_NONE && xm_except != EXCEPT_MRET && m_trap_enter_rdy;
+// Exclude "traps" which are microarchitectural rather than architectural
+wire rvfm_m_take_exception =
+	xm_except != EXCEPT_NONE    &&
+	xm_except != EXCEPT_REFETCH &&
+	xm_except != EXCEPT_MRET    &&
+	m_trap_enter_rdy;
+
+wire rvfm_m_take_irq =
+	m_trap_enter_vld &&
+	m_trap_enter_rdy &&
+	m_trap_is_irq;
 
 reg        rvfi_valid_r;
 reg [31:0] rvfi_insn_r;
@@ -44,7 +54,7 @@ always @ (posedge clk or negedge rst_n) begin
 		if (!x_stall) begin
 			// X instruction squashed by any trap, as it's in the branch
 			// shadow.
-			rvfm_m_valid <= |df_cir_use && !m_trap_enter_vld;
+			rvfm_m_valid <= |df_cir_use && !(m_trap_enter_vld && m_trap_enter_rdy);
 			rvfm_m_instr <= {fd_cir_raw[31:16] & {16{df_cir_use[1]}}, fd_cir_raw[15:0]};
 		end else if (!m_stall) begin
 			rvfm_m_valid <= 1'b0;
@@ -56,7 +66,7 @@ always @ (posedge clk or negedge rst_n) begin
 			xm_except != EXCEPT_INSTR_FAULT &&
 			xm_except != EXCEPT_INSTR_MISALIGN
 		}};
-		rvfi_trap_r <= rvfm_m_trap;
+		rvfi_trap_r <= rvfm_m_take_exception;
 	end
 end
 
@@ -76,14 +86,23 @@ end
 reg rvfm_x_intr;
 reg rvfm_m_intr;
 reg rvfi_intr_r;
+
+wire rvfm_x_intr_retained =
+	x_stall ||
+	d_starved ||
+	fd_cir_uop_nonfinal ||
+	df_lspair_phase_next;
+
 always @ (posedge clk) begin
 	if (!rst_n) begin
 		rvfm_x_intr <= 1'b0;
 		rvfm_m_intr <= 1'b0;
 		rvfi_intr_r <= 1'b0;
 	end else begin
-		rvfm_x_intr <= (rvfm_x_intr && (x_stall || d_starved || fd_cir_uop_nonfinal || df_lspair_phase_next)) ||
-			(m_trap_enter_vld && m_trap_enter_rdy);
+		rvfm_x_intr <=
+			(rvfm_x_intr && rvfm_x_intr_retained) ||
+			rvfm_m_take_exception ||
+			rvfm_m_take_irq;
 		if (!x_stall) begin
 			rvfm_m_intr <= rvfm_x_intr;
 		end
@@ -262,6 +281,7 @@ reg [31:0] rvfm_haddr_dph;
 reg        rvfm_hwrite_dph;
 reg [1:0]  rvfm_htrans_dph;
 reg [2:0]  rvfm_hsize_dph;
+reg        rvfm_hexcl_dph;
 
 always @ (posedge clk) begin
 	if (bus_aph_ready_d) begin
@@ -269,6 +289,7 @@ always @ (posedge clk) begin
 		rvfm_haddr_dph <= bus_haddr_d;
 		rvfm_hwrite_dph <= bus_hwrite_d;
 		rvfm_hsize_dph <= bus_hsize_d;
+		rvfm_hexcl_dph <= bus_aph_excl_d;
 	end
 end
 
@@ -303,9 +324,12 @@ always @ (posedge clk) begin
 	rvfm_mem_hold <= (rvfm_mem_hold || (rvfm_htrans_dph && bus_dph_ready_d)) && m_stall;
 	if (xm_memop == MEMOP_AMO) begin
 		// AMO has completed in stage X. Progressing to stage M without MEMOP
-		// going to NONE then there has been no trap, therefore no stall,
+		// going to NONE means there has been no trap, therefore no stall,
 		// therefore no time for another address to have issued:
+`ifndef HAZARD3_RVFI_STANDALONE
+		// ifdef as this is non-synthesisable
 		assert(!m_stall);
+`endif
 		rvfi_mem_addr_r <= rvfm_haddr_dph;
 		// Always 32-bit, always both read and write:
 		rvfi_mem_rmask_r <= 4'hf;
@@ -318,7 +342,10 @@ always @ (posedge clk) begin
 		// RVFI has an AXI-like concept of byte strobes, rather than AHB-like
 		rvfi_mem_addr_r <= rvfm_haddr_dph & 32'hffff_fffc;
 		{rvfi_mem_rmask_r, rvfi_mem_wmask_r} <= 0;
-		if (rvfm_htrans_dph[1] && rvfm_hwrite_dph) begin
+		if (rvfm_htrans_dph[1] && rvfm_hwrite_dph && rvfm_hexcl_dph && !bus_dph_exokay_d) begin
+			// data-phase failure of exclusive write (declined by global monitor)
+			rvfi_mem_wmask_r <= 4'h0;
+		end else if (rvfm_htrans_dph[1] && rvfm_hwrite_dph) begin
 			rvfi_mem_wmask_r <= rvfm_mem_bytemask_dph;
 			rvfi_mem_wdata_r <= bus_wdata_d;
 		end else if (rvfm_htrans_dph[1] && !rvfm_hwrite_dph) begin
