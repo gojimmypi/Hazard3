@@ -234,7 +234,7 @@ sudo make install
 On MacOS:
 
 ```bash
-brew install autoconf automake libusb
+brew install autoconf automake libusb jimtcl
 cd /tmp
 git clone https://github.com/riscv/riscv-openocd.git
 cd riscv-openocd

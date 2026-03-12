@@ -8,7 +8,7 @@
 
 mvendorid:  deadbeef
 marchid:    0000001b
-mimpid:     010100a0
+mimpid:     010101a0
 mhartid:    00000000
 mconfigptr: 9abcdef0
 misa:       40901107 // RV32IMABCX + U

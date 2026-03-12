@@ -2,6 +2,21 @@
 == Release Notes
 :sectnums!:
 
+=== Version 1.1.1
+
+Fixed errata:
+
+* Fix repeated transfer when `hazard3_apb_async_bridge` is connected to a standard APB Requester.
+** This behaviour did not affect instantiation inside of `hazard3_jtag_dtm`.
+* Fix breakpoint trigger on a CSR write not inhibiting the write to the CSR register file.
+* Fix non-synthesisable statement included in RVFI monitor when `HAZARD3_RVFI_STANDALONE` is defined.
+
+Other changes:
+
+* Improve riscv-formal coverage for AHB5 exclusives and the A extension.
+
+See the Github release notes https://github.com/Wren6991/Hazard3/releases/tag/v1.1[here].
+
 === Version 1.1
 
 Incompatible changes:
@@ -28,7 +43,7 @@ New features:
 * Implement the RV32E base extension, enabled by <<param-EXTENSION_E>>.
 * Implement new custom extension: <<extension-xh3misa-section>>, for detecting processor ISA support at finer granularity than the standard `misa` register. Enabled by `CSR_M_MANDATORY`, so it is reliably present.
 * Add `hazard3_xilinx7_jtag_dtm` for tunneling RISC-V debug through Xilinx 7-series FPGA TAPs.
-*
+
 Fixed errata:
 
 * Fix `fence.i` only ordering against the address phase of a preceding store (a multi-manager AHB fabric may reorder address phases, so order against the data phase instead).
