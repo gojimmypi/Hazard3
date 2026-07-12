@@ -9,7 +9,6 @@
 #define UART_RX         (*(volatile uint32_t *)(UART_BASE + 0x10u))
 
 #define UART_CSR_ENABLE       (1u << 0)
-#define UART_CSR_LOOPBACK     (1u << 8)
 
 #define UART_FSTAT_TX_FULL    (1u << 8)
 #define UART_FSTAT_RX_EMPTY   (1u << 25)
@@ -34,10 +33,7 @@
 
 #define GPIO_FOREGROUND_MASK       0x7fu
 #define GPIO_TIMER_LED             0x80u
-
-volatile uint32_t uart_result;
-volatile uint32_t uart_status;
-volatile uint32_t uart_timeout;
+#define GPIO_PATTERN_PERIOD_MS     100u
 
 volatile uint32_t system_ticks;
 volatile uint32_t timer_interrupt_count;
@@ -46,6 +42,9 @@ volatile uint32_t last_mcause;
 volatile uint32_t last_mepc;
 volatile uint32_t last_mtval;
 volatile uint32_t unexpected_trap_count;
+volatile uint32_t uart_rx_count;
+volatile uint32_t uart_tx_count;
+volatile uint32_t uart_last_status;
 
 static volatile uint32_t gpio_shadow;
 static uint32_t timer_led_countdown;
@@ -56,21 +55,117 @@ static void uart_putc(uint8_t value)
     }
 
     UART_TX = value;
+    ++uart_tx_count;
 }
 
-static int uart_getc_timeout(uint8_t* value)
+static void uart_puts(const char* text)
 {
-    uint32_t timeout = 5000000u;
+    while (*text != '\0') {
+        uart_putc((uint8_t)*text);
+        ++text;
+    }
+}
 
-    while ((UART_FSTAT & UART_FSTAT_RX_EMPTY) != 0u) {
-        if (--timeout == 0u) {
-            uart_timeout = 1u;
-            return 0;
-        }
+static void uart_put_hex32(uint32_t value)
+{
+    static const char hex_digits[] = "0123456789ABCDEF";
+
+    uart_puts("0x");
+
+    for (int shift = 28; shift >= 0; shift -= 4) {
+        uart_putc((uint8_t)hex_digits[(value >> (uint32_t)shift) & 0x0fu]);
+    }
+}
+
+static int uart_getc_nonblocking(uint8_t* value)
+{
+    uart_last_status = UART_FSTAT;
+
+    if ((uart_last_status & UART_FSTAT_RX_EMPTY) != 0u) {
+        return 0;
     }
 
     *value = (uint8_t)UART_RX;
+    ++uart_rx_count;
     return 1;
+}
+
+static void console_print_prompt(void)
+{
+    uart_puts("\r\n> ");
+}
+
+static void console_print_help(void)
+{
+    uart_puts("\r\nCommands:\r\n");
+    uart_puts("  h or ?  help\r\n");
+    uart_puts("  s       status\r\n");
+    uart_puts("  v       version\r\n");
+    uart_puts("Other characters are echoed.\r\n");
+    uart_puts("> ");
+}
+
+static void console_print_version(void)
+{
+    uart_puts("\r\nHazard3 ULX3S timer + external UART console\r\n");
+    uart_puts("> ");
+}
+
+static void console_print_status(void)
+{
+    uart_puts("\r\nsystem_ticks=");
+    uart_put_hex32(system_ticks);
+    uart_puts(" timer_irq_count=");
+    uart_put_hex32(timer_interrupt_count);
+    uart_puts(" unexpected_traps=");
+    uart_put_hex32(unexpected_trap_count);
+    uart_puts("\r\nlast_mcause=");
+    uart_put_hex32(last_mcause);
+    uart_puts(" last_mepc=");
+    uart_put_hex32(last_mepc);
+    uart_puts(" last_mtval=");
+    uart_put_hex32(last_mtval);
+    uart_puts("\r\nuart_rx_count=");
+    uart_put_hex32(uart_rx_count);
+    uart_puts(" uart_tx_count=");
+    uart_put_hex32(uart_tx_count);
+    uart_puts(" uart_fstat=");
+    uart_put_hex32(UART_FSTAT);
+    uart_puts("\r\n> ");
+}
+
+static void console_poll(void)
+{
+    uint8_t received;
+
+    while (uart_getc_nonblocking(&received)) {
+        switch (received) {
+        case '\r':
+        case '\n':
+            console_print_prompt();
+            break;
+
+        case 'h':
+        case 'H':
+        case '?':
+            console_print_help();
+            break;
+
+        case 's':
+        case 'S':
+            console_print_status();
+            break;
+
+        case 'v':
+        case 'V':
+            console_print_version();
+            break;
+
+        default:
+            uart_putc(received);
+            break;
+        }
+    }
 }
 
 static uint32_t interrupt_save(void)
@@ -196,16 +291,8 @@ void machine_trap_handler(uint32_t mcause, uint32_t mepc, uint32_t mtval)
     }
 }
 
-static void delay(void)
+static void uart_init(void)
 {
-    for (volatile uint32_t i = 0; i < 3000000u; ++i) {
-    }
-}
-
-int main(void)
-{
-    uint8_t received = 0u;
-
     /*
      * At a 50 MHz system clock with 8x UART oversampling:
      *
@@ -215,35 +302,45 @@ int main(void)
      * four-bit fractional field in bits 3:0. Use 54 + 4/16.
      */
     UART_DIV = (54u << 4) | 4u;
+    UART_CSR = UART_CSR_ENABLE;
+}
 
-    UART_CSR = UART_CSR_ENABLE | UART_CSR_LOOPBACK;
+static void console_init(void)
+{
+    uart_puts("\r\nHazard3 ULX3S boot\r\n");
+    uart_puts("UART: gp0 RX / gp1 TX, 115200 8N1\r\n");
+    uart_puts("Timer: 10 ms machine interrupt\r\n");
+    uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
+    uart_puts("Type h or ? for help.\r\n");
+    uart_puts("> ");
+}
 
-    uart_putc(0x48u); /* ASCII 'H' */
-
-    if (uart_getc_timeout(&received)) {
-        uart_result = received;
-    }
-    else {
-        uart_result = 0xffffffffu;
-    }
-
-    uart_status = UART_FSTAT;
+int main(void)
+{
+    uint32_t pattern = 1u;
+    uint32_t next_pattern_tick;
 
     gpio_shadow = 0u;
     GPIO_OUT = gpio_shadow;
 
+    uart_init();
     timer_init();
+    console_init();
 
-    uint32_t pattern = 1u;
+    next_pattern_tick = system_ticks + GPIO_PATTERN_PERIOD_MS;
 
     for (;;) {
-        gpio_write_masked(GPIO_FOREGROUND_MASK, pattern);
-        delay();
+        console_poll();
 
-        pattern <<= 1;
+        if ((int32_t)(system_ticks - next_pattern_tick) >= 0) {
+            gpio_write_masked(GPIO_FOREGROUND_MASK, pattern);
 
-        if (pattern == GPIO_TIMER_LED) {
-            pattern = 1u;
+            pattern <<= 1;
+            if (pattern == GPIO_TIMER_LED) {
+                pattern = 1u;
+            }
+
+            next_pattern_tick += GPIO_PATTERN_PERIOD_MS;
         }
     }
 }
