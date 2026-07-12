@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdint.h>
 
 #define UART_BASE       0x40004000u
@@ -45,6 +46,16 @@
 #define SDRAM_RANDOM_TEST_PASSES   SDRAM_BANK_COUNT
 #define SDRAM_SPARSE_POINT_COUNT   30u
 
+#define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
+#define SDRAM_VIDEO_RESERVED_BYTES (4u * 1024u * 1024u)
+#define SDRAM_HEAP_BASE            (SDRAM_BASE + SDRAM_DIAGNOSTIC_BYTES)
+#define SDRAM_HEAP_LIMIT           \
+    (SDRAM_BASE + SDRAM_SIZE_BYTES - SDRAM_VIDEO_RESERVED_BYTES)
+#define SDRAM_HEAP_SIZE_BYTES      (SDRAM_HEAP_LIMIT - SDRAM_HEAP_BASE)
+#define SDRAM_HEAP_ALIGNMENT       16u
+#define SDRAM_HEAP_LARGE_TEST_BYTES (4u * 1024u * 1024u)
+#define SDRAM_HEAP_SMALL_BLOCK_COUNT 8u
+
 #if (SDRAM_RANDOM_TEST_BYTES == 0u) || \
     ((SDRAM_RANDOM_TEST_BYTES & (SDRAM_RANDOM_TEST_BYTES - 1u)) != 0u)
 #error "SDRAM_RANDOM_TEST_BYTES must be a nonzero power of two"
@@ -52,6 +63,19 @@
 
 #if SDRAM_RANDOM_TEST_BYTES > SDRAM_BANK_BYTES
 #error "SDRAM_RANDOM_TEST_BYTES must fit within one SDRAM bank"
+#endif
+
+#if SDRAM_FULL_TEST_BYTES > SDRAM_DIAGNOSTIC_BYTES
+#error "The sequential SDRAM test must stay below the heap"
+#endif
+
+#if SDRAM_HEAP_BASE >= SDRAM_HEAP_LIMIT
+#error "The SDRAM heap range must be nonempty"
+#endif
+
+#if (SDRAM_HEAP_ALIGNMENT == 0u) || \
+    ((SDRAM_HEAP_ALIGNMENT & (SDRAM_HEAP_ALIGNMENT - 1u)) != 0u)
+#error "SDRAM_HEAP_ALIGNMENT must be a nonzero power of two"
 #endif
 
 #define SDRAM_PATTERN_ZERO         0u
@@ -88,6 +112,19 @@ volatile uint32_t sdram_qualification_runs;
 volatile uint32_t sdram_qualification_failures;
 volatile uint32_t sdram_last_qualification_passed;
 volatile uint32_t sdram_last_qualification_pass_mask;
+
+volatile uint32_t sdram_heap_current;
+volatile uint32_t sdram_heap_high_water;
+volatile uint32_t sdram_heap_allocation_count;
+volatile uint32_t sdram_heap_failed_allocations;
+volatile uint32_t sdram_heap_reset_count;
+volatile uint32_t sdram_heap_test_runs;
+volatile uint32_t sdram_heap_test_failures;
+volatile uint32_t sdram_heap_last_test_passed;
+volatile uint32_t sdram_heap_last_elapsed_ms;
+volatile uint32_t sdram_heap_last_failure_addr;
+volatile uint32_t sdram_heap_last_failure_expected;
+volatile uint32_t sdram_heap_last_failure_actual;
 
 static volatile uint32_t gpio_shadow;
 static uint32_t timer_led_countdown;
@@ -142,10 +179,12 @@ static void console_print_help(void)
 {
     uart_puts("\r\nCommands:\r\n");
     uart_puts("  h or ?  help\r\n");
-    uart_puts("  m       destructive 1 MiB sequential SDRAM test\r\n");
+    uart_puts("  m       destructive reserved 1 MiB SDRAM test (heap-safe)\r\n");
     uart_puts("  a       sparse 64 MiB address/bank alias test\r\n");
     uart_puts("  r       pseudorandom 1 MiB test in each SDRAM bank\r\n");
     uart_puts("  q       complete SDRAM qualification suite\r\n");
+    uart_puts("  k       SDRAM heap allocation/stress test\r\n");
+    uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
     uart_puts("Other characters are echoed.\r\n");
@@ -154,13 +193,110 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ULX3S SDRAM qualification firmware\r\n");
+    uart_puts("\r\nHazard3 ULX3S SDRAM heap firmware\r\n");
     uart_puts("> ");
 }
 
 static void memory_barrier(void)
 {
     __asm__ volatile ("fence rw, rw" ::: "memory");
+}
+
+static void sdram_heap_init(void)
+{
+    sdram_heap_current = SDRAM_HEAP_BASE;
+    sdram_heap_high_water = 0u;
+    sdram_heap_allocation_count = 0u;
+    sdram_heap_failed_allocations = 0u;
+    sdram_heap_reset_count = 0u;
+}
+
+static uint32_t sdram_heap_used(void)
+{
+    return sdram_heap_current - SDRAM_HEAP_BASE;
+}
+
+static uint32_t sdram_heap_remaining(void)
+{
+    return SDRAM_HEAP_LIMIT - sdram_heap_current;
+}
+
+static int sdram_heap_is_active(void)
+{
+    return sdram_heap_current != SDRAM_HEAP_BASE;
+}
+
+void* _sbrk(ptrdiff_t increment)
+{
+    uint32_t current = sdram_heap_current;
+    uint32_t amount;
+
+    if (increment < 0) {
+        ++sdram_heap_failed_allocations;
+        return (void*)(intptr_t)-1;
+    }
+
+    amount = (uint32_t)increment;
+    if (current < SDRAM_HEAP_BASE || current > SDRAM_HEAP_LIMIT ||
+        amount > SDRAM_HEAP_LIMIT - current) {
+        ++sdram_heap_failed_allocations;
+        return (void*)(intptr_t)-1;
+    }
+
+    if (amount != 0u) {
+        sdram_heap_current = current + amount;
+        ++sdram_heap_allocation_count;
+
+        if (sdram_heap_used() > sdram_heap_high_water) {
+            sdram_heap_high_water = sdram_heap_used();
+        }
+    }
+
+    return (void*)(uintptr_t)current;
+}
+
+static void* sdram_heap_alloc(uint32_t byte_count)
+{
+    uint32_t aligned_count;
+    void* allocation;
+
+    if (byte_count == 0u ||
+        byte_count > UINT32_MAX - (SDRAM_HEAP_ALIGNMENT - 1u)) {
+        ++sdram_heap_failed_allocations;
+        return (void*)0;
+    }
+
+    aligned_count = (byte_count + SDRAM_HEAP_ALIGNMENT - 1u) &
+        ~(SDRAM_HEAP_ALIGNMENT - 1u);
+    allocation = _sbrk((ptrdiff_t)aligned_count);
+
+    if (allocation == (void*)(intptr_t)-1) {
+        return (void*)0;
+    }
+
+    return allocation;
+}
+
+static void sdram_heap_reset(void)
+{
+    sdram_heap_current = SDRAM_HEAP_BASE;
+    sdram_heap_high_water = 0u;
+    sdram_heap_allocation_count = 0u;
+    sdram_heap_failed_allocations = 0u;
+    ++sdram_heap_reset_count;
+}
+
+static int sdram_destructive_test_allowed(const char* test_name)
+{
+    if (!sdram_heap_is_active()) {
+        return 1;
+    }
+
+    uart_puts("\r\nREFUSED: ");
+    uart_puts(test_name);
+    uart_puts(" overlaps the active SDRAM heap.\r\n");
+    uart_puts("Run z first to reset the heap; every heap pointer will become invalid.\r\n");
+    return 0;
 }
 
 static void sdram_record_failure(
@@ -603,6 +739,227 @@ static int sdram_run_qualification(void)
     return passed;
 }
 
+static uint32_t sdram_heap_pattern_word(uint32_t byte_address, uint32_t seed)
+{
+    return byte_address ^ seed ^ 0xd00dfeedu;
+}
+
+static uint8_t sdram_heap_pattern_byte(uint32_t byte_address, uint32_t seed)
+{
+    uint32_t mixed = byte_address ^ seed ^ 0x5aa5c33cu;
+
+    mixed ^= mixed >> 16;
+    mixed ^= mixed >> 8;
+    return (uint8_t)mixed;
+}
+
+static void sdram_heap_fill(void* allocation, uint32_t byte_count, uint32_t seed)
+{
+    volatile uint32_t* words = (volatile uint32_t*)allocation;
+    volatile uint8_t* bytes = (volatile uint8_t*)allocation;
+    uint32_t word_count = byte_count / sizeof(uint32_t);
+    uint32_t byte_index = word_count * sizeof(uint32_t);
+
+    for (uint32_t i = 0u; i < word_count; ++i) {
+        uint32_t address = (uint32_t)(uintptr_t)&words[i];
+
+        words[i] = sdram_heap_pattern_word(address, seed);
+    }
+
+    for (; byte_index < byte_count; ++byte_index) {
+        uint32_t address = (uint32_t)(uintptr_t)&bytes[byte_index];
+
+        bytes[byte_index] = sdram_heap_pattern_byte(address, seed);
+    }
+}
+
+static int sdram_heap_check(
+    const void* allocation,
+    uint32_t byte_count,
+    uint32_t seed)
+{
+    const volatile uint32_t* words = (const volatile uint32_t*)allocation;
+    const volatile uint8_t* bytes = (const volatile uint8_t*)allocation;
+    uint32_t word_count = byte_count / sizeof(uint32_t);
+    uint32_t byte_index = word_count * sizeof(uint32_t);
+
+    for (uint32_t i = 0u; i < word_count; ++i) {
+        uint32_t address = (uint32_t)(uintptr_t)&words[i];
+        uint32_t expected = sdram_heap_pattern_word(address, seed);
+        uint32_t actual = words[i];
+
+        if (actual != expected) {
+            sdram_heap_last_failure_addr = address;
+            sdram_heap_last_failure_expected = expected;
+            sdram_heap_last_failure_actual = actual;
+            return 0;
+        }
+    }
+
+    for (; byte_index < byte_count; ++byte_index) {
+        uint32_t address = (uint32_t)(uintptr_t)&bytes[byte_index];
+        uint32_t expected = sdram_heap_pattern_byte(address, seed);
+        uint32_t actual = bytes[byte_index];
+
+        if (actual != expected) {
+            sdram_heap_last_failure_addr = address;
+            sdram_heap_last_failure_expected = expected;
+            sdram_heap_last_failure_actual = actual;
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int sdram_run_heap_test(void)
+{
+    static const uint32_t small_block_sizes[SDRAM_HEAP_SMALL_BLOCK_COUNT] = {
+        1u, 15u, 16u, 17u, 63u, 256u, 4093u, 65536u
+    };
+    void* small_blocks[SDRAM_HEAP_SMALL_BLOCK_COUNT];
+    uint32_t start_ticks;
+    int allocation_passed = 1;
+    int alignment_passed = 1;
+    int small_patterns_passed = 1;
+    int large_passed = 1;
+    int preservation_passed = 1;
+    int bounds_passed;
+    int passed;
+
+    if (sdram_heap_is_active()) {
+        uart_puts("\r\nREFUSED: the SDRAM heap is already active.\r\n");
+        uart_puts("Run z first to reset it; every heap pointer will become invalid.\r\n");
+        return 0;
+    }
+
+    ++sdram_heap_test_runs;
+    sdram_heap_last_test_passed = 0u;
+    sdram_heap_last_elapsed_ms = 0u;
+    sdram_heap_last_failure_addr = 0u;
+    sdram_heap_last_failure_expected = 0u;
+    sdram_heap_last_failure_actual = 0u;
+    start_ticks = system_ticks;
+
+    uart_puts("\r\nSDRAM heap test: base=");
+    uart_put_hex32(SDRAM_HEAP_BASE);
+    uart_puts(" limit=");
+    uart_put_hex32(SDRAM_HEAP_LIMIT);
+    uart_puts(" bytes=");
+    uart_put_hex32(SDRAM_HEAP_SIZE_BYTES);
+    uart_puts("\r\n");
+
+    for (uint32_t i = 0u; i < SDRAM_HEAP_SMALL_BLOCK_COUNT; ++i) {
+        small_blocks[i] = sdram_heap_alloc(small_block_sizes[i]);
+        if (small_blocks[i] == (void*)0) {
+            allocation_passed = 0;
+            alignment_passed = 0;
+            continue;
+        }
+
+        if (((uint32_t)(uintptr_t)small_blocks[i] &
+            (SDRAM_HEAP_ALIGNMENT - 1u)) != 0u) {
+            alignment_passed = 0;
+        }
+
+        sdram_heap_fill(
+            small_blocks[i],
+            small_block_sizes[i],
+            0x13579bdfu ^ (0x9e3779b9u * (i + 1u)));
+    }
+
+    memory_barrier();
+    for (uint32_t i = 0u; i < SDRAM_HEAP_SMALL_BLOCK_COUNT; ++i) {
+        if (small_blocks[i] != (void*)0 &&
+            !sdram_heap_check(
+                small_blocks[i],
+                small_block_sizes[i],
+                0x13579bdfu ^ (0x9e3779b9u * (i + 1u)))) {
+            small_patterns_passed = 0;
+        }
+    }
+
+    uart_puts("  small allocations: ");
+    uart_puts(allocation_passed ? "PASS\r\n" : "FAIL\r\n");
+    uart_puts("  16-byte alignment: ");
+    uart_puts(alignment_passed ? "PASS\r\n" : "FAIL\r\n");
+    uart_puts("  small block patterns: ");
+    uart_puts(small_patterns_passed ? "PASS\r\n" : "FAIL\r\n");
+
+    if (allocation_passed) {
+        void* large_block = sdram_heap_alloc(SDRAM_HEAP_LARGE_TEST_BYTES);
+
+        if (large_block == (void*)0) {
+            large_passed = 0;
+        } else {
+            sdram_heap_fill(
+                large_block,
+                SDRAM_HEAP_LARGE_TEST_BYTES,
+                0xc001d00du);
+            memory_barrier();
+            large_passed = sdram_heap_check(
+                large_block,
+                SDRAM_HEAP_LARGE_TEST_BYTES,
+                0xc001d00du);
+        }
+    } else {
+        large_passed = 0;
+    }
+
+    uart_puts("  4 MiB allocation/pattern: ");
+    uart_puts(large_passed ? "PASS\r\n" : "FAIL\r\n");
+
+    memory_barrier();
+    for (uint32_t i = 0u; i < SDRAM_HEAP_SMALL_BLOCK_COUNT; ++i) {
+        if (small_blocks[i] != (void*)0 &&
+            !sdram_heap_check(
+                small_blocks[i],
+                small_block_sizes[i],
+                0x13579bdfu ^ (0x9e3779b9u * (i + 1u)))) {
+            preservation_passed = 0;
+        }
+    }
+
+    uart_puts("  prior-block preservation: ");
+    uart_puts(preservation_passed ? "PASS\r\n" : "FAIL\r\n");
+
+    bounds_passed = sdram_heap_alloc(SDRAM_HEAP_SIZE_BYTES) == (void*)0;
+    uart_puts("  bounds rejection: ");
+    uart_puts(bounds_passed ? "PASS\r\n" : "FAIL\r\n");
+
+    passed = allocation_passed && alignment_passed &&
+        small_patterns_passed && large_passed &&
+        preservation_passed && bounds_passed;
+    sdram_heap_last_elapsed_ms = system_ticks - start_ticks;
+    sdram_heap_last_test_passed = passed != 0;
+
+    if (!passed) {
+        ++sdram_heap_test_failures;
+    }
+
+    uart_puts("  result: ");
+    uart_puts(passed ? "PASS" : "FAIL");
+    uart_puts(" elapsed_ms=");
+    uart_put_hex32(sdram_heap_last_elapsed_ms);
+    uart_puts(" used=");
+    uart_put_hex32(sdram_heap_used());
+    uart_puts(" remaining=");
+    uart_put_hex32(sdram_heap_remaining());
+    uart_puts("\r\n");
+
+    if (!passed && sdram_heap_last_failure_addr != 0u) {
+        uart_puts("  first failure: addr=");
+        uart_put_hex32(sdram_heap_last_failure_addr);
+        uart_puts(" expected=");
+        uart_put_hex32(sdram_heap_last_failure_expected);
+        uart_puts(" actual=");
+        uart_put_hex32(sdram_heap_last_failure_actual);
+        uart_puts("\r\n");
+    }
+
+    return passed;
+}
+
 static void console_print_status(void)
 {
     uart_puts("\r\nsystem_ticks=");
@@ -656,6 +1013,37 @@ static void console_print_status(void)
         uart_puts(sdram_last_qualification_passed != 0u ? "PASS" : "FAIL");
     }
 
+    uart_puts("\r\nheap_base=");
+    uart_put_hex32(SDRAM_HEAP_BASE);
+    uart_puts(" heap_limit=");
+    uart_put_hex32(SDRAM_HEAP_LIMIT);
+    uart_puts(" heap_current=");
+    uart_put_hex32(sdram_heap_current);
+    uart_puts("\r\nheap_used=");
+    uart_put_hex32(sdram_heap_used());
+    uart_puts(" heap_remaining=");
+    uart_put_hex32(sdram_heap_remaining());
+    uart_puts(" high_water=");
+    uart_put_hex32(sdram_heap_high_water);
+    uart_puts("\r\nheap_allocations=");
+    uart_put_hex32(sdram_heap_allocation_count);
+    uart_puts(" failed_allocations=");
+    uart_put_hex32(sdram_heap_failed_allocations);
+    uart_puts(" resets=");
+    uart_put_hex32(sdram_heap_reset_count);
+    uart_puts("\r\nheap_test_runs=");
+    uart_put_hex32(sdram_heap_test_runs);
+    uart_puts(" heap_test_failures=");
+    uart_put_hex32(sdram_heap_test_failures);
+    uart_puts(" heap_last_elapsed_ms=");
+    uart_put_hex32(sdram_heap_last_elapsed_ms);
+    uart_puts(" heap_last_result=");
+    if (sdram_heap_test_runs == 0u) {
+        uart_puts("NOT RUN");
+    } else {
+        uart_puts(sdram_heap_last_test_passed != 0u ? "PASS" : "FAIL");
+    }
+
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
         uart_put_hex32(sdram_last_first_failure_addr);
@@ -695,20 +1083,38 @@ static void console_poll(void)
 
         case 'a':
         case 'A':
-            (void)sdram_run_sparse_test();
+            if (sdram_destructive_test_allowed("the sparse SDRAM test")) {
+                (void)sdram_run_sparse_test();
+            }
             uart_puts("> ");
             break;
 
         case 'r':
         case 'R':
-            (void)sdram_run_random_test();
+            if (sdram_destructive_test_allowed("the pseudorandom SDRAM test")) {
+                (void)sdram_run_random_test();
+            }
             uart_puts("> ");
             break;
 
         case 'q':
         case 'Q':
-            (void)sdram_run_qualification();
+            if (sdram_destructive_test_allowed("the SDRAM qualification suite")) {
+                (void)sdram_run_qualification();
+            }
             uart_puts("> ");
+            break;
+
+        case 'k':
+        case 'K':
+            (void)sdram_run_heap_test();
+            uart_puts("> ");
+            break;
+
+        case 'z':
+        case 'Z':
+            sdram_heap_reset();
+            uart_puts("\r\nSDRAM heap reset. All previous heap pointers are invalid.\r\n> ");
             break;
 
         case 's':
@@ -872,6 +1278,7 @@ static void console_init(void)
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
     uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
+    uart_puts("Heap: 0x20100000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
 }
 
 int main(void)
@@ -882,6 +1289,7 @@ int main(void)
     gpio_shadow = 0u;
     GPIO_OUT = gpio_shadow;
 
+    sdram_heap_init();
     uart_init();
     timer_init();
     console_init();
