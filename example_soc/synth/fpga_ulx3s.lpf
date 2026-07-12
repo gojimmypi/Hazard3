@@ -4,12 +4,14 @@ LOCATE COMP "clk_osc" SITE "G2";
 IOBUF PORT "clk_osc" PULLMODE=NONE IO_TYPE=LVCMOS33;
 FREQUENCY PORT "clk_osc" 25 MHZ;
 
-# UART TX/RX (from FPGA's point of view, i.e. TX is an output)
+# External UART on the same ULX3S GPIO pair used by the TT projects.
+# uart_rx is an FPGA input connected to the USB-UART adapter TX output.
+# uart_tx is an FPGA output connected to the USB-UART adapter RX input.
 
-LOCATE COMP "uart_tx" SITE "L4"; # FPGA transmits to ftdi
-LOCATE COMP "uart_rx" SITE "M1"; # FPGA receives from ftdi
-IOBUF  PORT "uart_tx" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF  PORT "uart_rx" PULLMODE=UP IO_TYPE=LVCMOS33;
+LOCATE COMP "uart_rx" SITE "B11"; # gp0, J1_5+
+LOCATE COMP "uart_tx" SITE "A10"; # gp1, J1_7+
+IOBUF PORT "uart_rx" PULLMODE=UP IO_TYPE=LVCMOS33;
+IOBUF PORT "uart_tx" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
 
 # Eight onboard ULX3S LEDs
 
