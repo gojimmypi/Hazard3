@@ -3,6 +3,7 @@ file pll_25_50.v
 file pll_25_40.v
 file ../libfpga/common/reset_sync.v
 file ../libfpga/common/fpga_reset.v
+file ../libfpga/common/ddr_out.v
 
 list ../soc/soc.f
 

@@ -12,6 +12,7 @@ module example_soc #(
 	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
+	parameter SDRAM_ENABLE = 0,     // Enable the ULX3S external SDRAM target
 
 	`include "hazard3_config.vh"
 ) (
@@ -30,7 +31,18 @@ module example_soc #(
 	output wire              uart_tx,
 	input  wire              uart_rx,
 
-	output wire [7:0]        gpio_out
+	output wire [7:0]        gpio_out,
+
+	// Optional ULX3S 16-bit SDR SDRAM interface
+	output wire [12:0]       sdram_a,
+	output wire [1:0]        sdram_ba,
+	inout  wire [15:0]       sdram_d,
+	output wire [1:0]        sdram_dqm,
+	output wire              sdram_cke,
+	output wire              sdram_csn,
+	output wire              sdram_rasn,
+	output wire              sdram_casn,
+	output wire              sdram_wen
 );
 
 // ----------------------------------------------------------------------------
@@ -379,6 +391,7 @@ hazard3_cpu_1port #(
 // Bus fabric
 
 // - 128 kB SRAM at... 0x0000_0000
+// - SDRAM at.......... 0x2000_0000 (up to 64 MB)
 // - System timer at.. 0x4000_0000
 // - UART at.......... 0x4000_4000
 // - GPIO at.......... 0x4000_8000
@@ -397,6 +410,19 @@ wire [3:0]         sram0_hprot;
 wire               sram0_hmastlock;
 wire [W_DATA-1:0]  sram0_hwdata;
 wire [W_DATA-1:0]  sram0_hrdata;
+
+wire               sdram_hready_resp;
+wire               sdram_hready;
+wire               sdram_hresp;
+wire [W_ADDR-1:0]  sdram_haddr;
+wire               sdram_hwrite;
+wire [1:0]         sdram_htrans;
+wire [2:0]         sdram_hsize;
+wire [2:0]         sdram_hburst;
+wire [3:0]         sdram_hprot;
+wire               sdram_hmastlock;
+wire [W_DATA-1:0]  sdram_hwdata;
+wire [W_DATA-1:0]  sdram_hrdata;
 
 wire               bridge_hready_resp;
 wire               bridge_hready;
@@ -421,9 +447,9 @@ wire               gpio_pready;
 wire               gpio_pslverr;
 
 ahbl_splitter #(
-	.N_PORTS     (2),
-	.ADDR_MAP    (64'h40000000_00000000),
-	.ADDR_MASK   (64'he0000000_e0000000)
+	.N_PORTS     (3),
+	.ADDR_MAP    (96'h40000000_20000000_00000000),
+	.ADDR_MASK   (96'he0000000_fc000000_e0000000)
 ) splitter_u (
 	.clk             (clk),
 	.rst_n           (rst_n),
@@ -441,18 +467,18 @@ ahbl_splitter #(
 	.src_hwdata      (proc_hwdata   ),
 	.src_hrdata      (proc_hrdata   ),
 
-	.dst_hready_resp ({bridge_hready_resp , sram0_hready_resp}),
-	.dst_hready      ({bridge_hready      , sram0_hready     }),
-	.dst_hresp       ({bridge_hresp       , sram0_hresp      }),
-	.dst_haddr       ({bridge_haddr       , sram0_haddr      }),
-	.dst_hwrite      ({bridge_hwrite      , sram0_hwrite     }),
-	.dst_htrans      ({bridge_htrans      , sram0_htrans     }),
-	.dst_hsize       ({bridge_hsize       , sram0_hsize      }),
-	.dst_hburst      ({bridge_hburst      , sram0_hburst     }),
-	.dst_hprot       ({bridge_hprot       , sram0_hprot      }),
-	.dst_hmastlock   ({bridge_hmastlock   , sram0_hmastlock  }),
-	.dst_hwdata      ({bridge_hwdata      , sram0_hwdata     }),
-	.dst_hrdata      ({bridge_hrdata      , sram0_hrdata     })
+	.dst_hready_resp ({bridge_hready_resp , sdram_hready_resp , sram0_hready_resp}),
+	.dst_hready      ({bridge_hready      , sdram_hready      , sram0_hready     }),
+	.dst_hresp       ({bridge_hresp       , sdram_hresp       , sram0_hresp      }),
+	.dst_haddr       ({bridge_haddr       , sdram_haddr       , sram0_haddr      }),
+	.dst_hwrite      ({bridge_hwrite      , sdram_hwrite      , sram0_hwrite     }),
+	.dst_htrans      ({bridge_htrans      , sdram_htrans      , sram0_htrans     }),
+	.dst_hsize       ({bridge_hsize       , sdram_hsize       , sram0_hsize      }),
+	.dst_hburst      ({bridge_hburst      , sdram_hburst      , sram0_hburst     }),
+	.dst_hprot       ({bridge_hprot       , sdram_hprot       , sram0_hprot      }),
+	.dst_hmastlock   ({bridge_hmastlock   , sdram_hmastlock   , sram0_hmastlock  }),
+	.dst_hwdata      ({bridge_hwdata      , sdram_hwdata      , sram0_hwdata     }),
+	.dst_hrdata      ({bridge_hrdata      , sdram_hrdata      , sram0_hrdata     })
 );
 
 // APB layer
@@ -566,6 +592,56 @@ ahb_sync_sram #(
 	.ahbls_hwdata      (sram0_hwdata),
 	.ahbls_hrdata      (sram0_hrdata)
 );
+
+generate
+if (SDRAM_ENABLE) begin: sdram_enabled
+	ahb_sdram #(
+		.CLK_MHZ (CLK_MHZ)
+	) sdram_u (
+		.clk               (clk),
+		.rst_n             (rst_n),
+
+		.ahbls_hready_resp (sdram_hready_resp),
+		.ahbls_hready      (sdram_hready),
+		.ahbls_hresp       (sdram_hresp),
+		.ahbls_haddr       (sdram_haddr),
+		.ahbls_hwrite      (sdram_hwrite),
+		.ahbls_htrans      (sdram_htrans),
+		.ahbls_hsize       (sdram_hsize),
+		.ahbls_hburst      (sdram_hburst),
+		.ahbls_hprot       (sdram_hprot),
+		.ahbls_hmastlock   (sdram_hmastlock),
+		.ahbls_hwdata      (sdram_hwdata),
+		.ahbls_hrdata      (sdram_hrdata),
+
+		.sdram_a           (sdram_a),
+		.sdram_ba          (sdram_ba),
+		.sdram_d           (sdram_d),
+		.sdram_dqm         (sdram_dqm),
+		.sdram_cke         (sdram_cke),
+		.sdram_csn         (sdram_csn),
+		.sdram_rasn        (sdram_rasn),
+		.sdram_casn        (sdram_casn),
+		.sdram_wen         (sdram_wen)
+	);
+end else begin: sdram_disabled
+	assign sdram_hready_resp = 1'b1;
+	assign sdram_hresp = 1'b0;
+	assign sdram_hrdata = {W_DATA{1'b0}};
+
+	assign sdram_a = 13'd0;
+	assign sdram_ba = 2'b00;
+	assign sdram_d = 16'hzzzz;
+	assign sdram_dqm = 2'b11;
+	assign sdram_cke = 1'b0;
+	assign sdram_csn = 1'b1;
+	assign sdram_rasn = 1'b1;
+	assign sdram_casn = 1'b1;
+	assign sdram_wen = 1'b1;
+
+	wire unused_sdram_hready = sdram_hready;
+end
+endgenerate
 
 uart_mini uart_u (
 	.clk          (clk),

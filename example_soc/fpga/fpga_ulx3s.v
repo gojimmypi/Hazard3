@@ -10,7 +10,18 @@ module fpga_ulx3s (
 	output wire [7:0] led,
 
 	output wire       uart_tx,
-	input  wire       uart_rx
+	input  wire       uart_rx,
+
+	output wire [12:0] sdram_a,
+	output wire [1:0]  sdram_ba,
+	inout  wire [15:0] sdram_d,
+	output wire [1:0]  sdram_dqm,
+	output wire        sdram_clk,
+	output wire        sdram_cke,
+	output wire        sdram_csn,
+	output wire        sdram_rasn,
+	output wire        sdram_casn,
+	output wire        sdram_wen
 );
 
 wire clk_sys;
@@ -31,10 +42,23 @@ fpga_reset #(
 	.rst_n       (rst_n_sys)
 );
 
+// Forward an inverted copy of the 50 MHz system clock. Commands and data are
+// launched on clk_sys rising edges and reach the SDRAM half a cycle before
+// its rising clock edge.
+ddr_out sdram_clock_u (
+	.clk     (clk_sys),
+	.rst_n   (rst_n_sys),
+	.d_rise  (1'b0),
+	.d_fall  (1'b1),
+	.e       (1'b1),
+	.q       (sdram_clk)
+);
+
 example_soc #(
 	.DTM_TYPE           ("ECP5"),
 	.SRAM_DEPTH         (1 << 15),
 	.CLK_MHZ            (50),
+	.SDRAM_ENABLE       (1),
 
 	.EXTENSION_M         (1),
 	.EXTENSION_A         (1),
@@ -69,7 +93,17 @@ example_soc #(
 	.uart_tx (uart_tx),
 	.uart_rx (uart_rx),
 
-    .gpio_out (led)
+    .gpio_out (led),
+
+	.sdram_a    (sdram_a),
+	.sdram_ba   (sdram_ba),
+	.sdram_d    (sdram_d),
+	.sdram_dqm  (sdram_dqm),
+	.sdram_cke  (sdram_cke),
+	.sdram_csn  (sdram_csn),
+	.sdram_rasn (sdram_rasn),
+	.sdram_casn (sdram_casn),
+	.sdram_wen  (sdram_wen)
 );
 
 endmodule
