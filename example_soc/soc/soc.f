@@ -1,6 +1,7 @@
 # SoC integration file
 
 file example_soc.v
+file apb_gpio.v
 
 # CPU + debug components
 

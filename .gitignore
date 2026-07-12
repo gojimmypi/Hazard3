@@ -1,2 +1,10 @@
 .DS_Store
 *.todo
+**/.vs
+**/.visualgdb/
+**/*.vgdbsettings.*.user
+**/*.vcxproj.user
+/example_soc/**/*.elf
+/example_soc/**/*.map
+
+/example_soc/synth/hazard3-fw1

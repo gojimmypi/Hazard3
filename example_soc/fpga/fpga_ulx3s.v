@@ -7,7 +7,7 @@
 
 module fpga_ulx3s (
 	input  wire       clk_osc,
-	output wire [7:0] dbg,
+	output wire [7:0] led,
 
 	output wire       uart_tx,
 	input  wire       uart_rx
@@ -67,9 +67,9 @@ example_soc #(
 	.tdo     (/* unused */),
 
 	.uart_tx (uart_tx),
-	.uart_rx (uart_rx)
-);
+	.uart_rx (uart_rx),
 
-assign dbg = 8'h00;
+    .gpio_out (led)
+);
 
 endmodule

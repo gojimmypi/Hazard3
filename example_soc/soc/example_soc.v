@@ -28,7 +28,9 @@ module example_soc #(
 
 	// IO
 	output wire              uart_tx,
-	input  wire              uart_rx
+	input  wire              uart_rx,
+
+	output wire [7:0]        gpio_out
 );
 
 // ----------------------------------------------------------------------------
@@ -379,6 +381,7 @@ hazard3_cpu_1port #(
 // - 128 kB SRAM at... 0x0000_0000
 // - System timer at.. 0x4000_0000
 // - UART at.......... 0x4000_4000
+// - GPIO at.......... 0x4000_8000
 
 // AHBL layer
 
@@ -407,6 +410,15 @@ wire [3:0]         bridge_hprot;
 wire               bridge_hmastlock;
 wire [W_DATA-1:0]  bridge_hwdata;
 wire [W_DATA-1:0]  bridge_hrdata;
+
+wire               gpio_psel;
+wire               gpio_penable;
+wire               gpio_pwrite;
+wire [15:0]        gpio_paddr;
+wire [31:0]        gpio_pwdata;
+wire [31:0]        gpio_prdata;
+wire               gpio_pready;
+wire               gpio_pslverr;
 
 ahbl_splitter #(
 	.N_PORTS     (2),
@@ -500,9 +512,14 @@ ahbl_to_apb apb_bridge_u (
 );
 
 apb_splitter #(
-	.N_SLAVES   (2),
-	.ADDR_MAP   (32'h4000_0000),
-	.ADDR_MASK  (32'hc000_c000)
+	.N_SLAVES   (3),
+    //               APB offset       name     CPU Address
+    //           ------------------ --------- -------------
+    // Slave 2 =   0x8000             GPIO     0x40008000
+    // Slave 1 =        0x4000        UART     0x40004000
+    // Slave 0 =             0x0000   timer    0x40000000
+	.ADDR_MAP   (48'h8000_4000_0000),
+	.ADDR_MASK  (48'hc000_c000_c000)
 ) inst_apb_splitter (
 	.apbs_paddr   (bridge_paddr),
 	.apbs_psel    (bridge_psel),
@@ -513,15 +530,15 @@ apb_splitter #(
 	.apbs_prdata  (bridge_prdata),
 	.apbs_pslverr (bridge_pslverr),
 
-	.apbm_paddr   ({uart_paddr   , timer_paddr  }),
-	.apbm_psel    ({uart_psel    , timer_psel   }),
-	.apbm_penable ({uart_penable , timer_penable}),
-	.apbm_pwrite  ({uart_pwrite  , timer_pwrite }),
-	.apbm_pwdata  ({uart_pwdata  , timer_pwdata }),
-	.apbm_pready  ({uart_pready  , timer_pready }),
-	.apbm_prdata  ({uart_prdata  , timer_prdata }),
-	.apbm_pslverr ({uart_pslverr , timer_pslverr})
-);
+	.apbm_paddr   ({gpio_paddr   , uart_paddr   , timer_paddr  }),
+	.apbm_psel    ({gpio_psel    , uart_psel    , timer_psel   }),
+	.apbm_penable ({gpio_penable , uart_penable , timer_penable}),
+	.apbm_pwrite  ({gpio_pwrite  , uart_pwrite  , timer_pwrite }),
+	.apbm_pwdata  ({gpio_pwdata  , uart_pwdata  , timer_pwdata }),
+	.apbm_pready  ({gpio_pready  , uart_pready  , timer_pready }),
+	.apbm_prdata  ({gpio_prdata  , uart_prdata  , timer_prdata }),
+	.apbm_pslverr ({gpio_pslverr , uart_pslverr , timer_pslverr})
+	);
 
 // ----------------------------------------------------------------------------
 // Memory and peripherals
@@ -542,7 +559,7 @@ ahb_sync_sram #(
 	.ahbls_haddr       (sram0_haddr),
 	.ahbls_hwrite      (sram0_hwrite),
 	.ahbls_htrans      (sram0_htrans),
-	.ahbls_hsize       (sram0_hsize),	
+	.ahbls_hsize       (sram0_hsize),
 	.ahbls_hburst      (sram0_hburst),
 	.ahbls_hprot       (sram0_hprot),
 	.ahbls_hmastlock   (sram0_hmastlock),
@@ -569,6 +586,22 @@ uart_mini uart_u (
 	.rts          (/* unused */),
 	.irq          (uart_irq),
 	.dreq         (/* unused */)
+);
+
+apb_gpio gpio_u (
+	.clk           (clk),
+	.rst_n         (rst_n),
+
+	.apbs_psel     (gpio_psel),
+	.apbs_penable  (gpio_penable),
+	.apbs_pwrite   (gpio_pwrite),
+	.apbs_paddr    (gpio_paddr),
+	.apbs_pwdata   (gpio_pwdata),
+	.apbs_prdata   (gpio_prdata),
+	.apbs_pready   (gpio_pready),
+	.apbs_pslverr  (gpio_pslverr),
+
+	.gpio_out      (gpio_out)
 );
 
 // Microsecond timebase for timer
