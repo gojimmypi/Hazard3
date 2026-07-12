@@ -1,6 +1,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "doom/doom_image_format.h"
+#include "doom/doom_image_loader.h"
 #include "doom/doom_port_smoke.h"
 #include "doom/hazard3_platform.h"
 #include "doom/sdram_exec_test.h"
@@ -40,7 +42,7 @@
 #define GPIO_TIMER_LED             0x80u
 #define GPIO_PATTERN_PERIOD_MS     100u
 
-#define SDRAM_BASE                 0x20000000u
+#define SDRAM_BASE                 HAZARD3_SDRAM_BASE
 #define SDRAM_SIZE_BYTES           (64u * 1024u * 1024u)
 #define SDRAM_BANK_BYTES           (16u * 1024u * 1024u)
 #define SDRAM_BANK_COUNT           4u
@@ -53,11 +55,10 @@
 #define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
 #define SDRAM_DOOM_IMAGE_BYTES     (3u * 1024u * 1024u)
 #define SDRAM_VIDEO_RESERVED_BYTES (4u * 1024u * 1024u)
-#define SDRAM_DOOM_IMAGE_BASE      (SDRAM_BASE + SDRAM_DIAGNOSTIC_BYTES)
-#define SDRAM_DOOM_IMAGE_LIMIT     (SDRAM_DOOM_IMAGE_BASE + SDRAM_DOOM_IMAGE_BYTES)
-#define SDRAM_HEAP_BASE            SDRAM_DOOM_IMAGE_LIMIT
-#define SDRAM_HEAP_LIMIT           \
-    (SDRAM_BASE + SDRAM_SIZE_BYTES - SDRAM_VIDEO_RESERVED_BYTES)
+#define SDRAM_DOOM_IMAGE_BASE      HAZARD3_DOOM_IMAGE_BASE
+#define SDRAM_DOOM_IMAGE_LIMIT     HAZARD3_DOOM_IMAGE_LIMIT
+#define SDRAM_HEAP_BASE            HAZARD3_DOOM_HEAP_BASE
+#define SDRAM_HEAP_LIMIT           HAZARD3_DOOM_HEAP_LIMIT
 #define SDRAM_HEAP_SIZE_BYTES      (SDRAM_HEAP_LIMIT - SDRAM_HEAP_BASE)
 #define SDRAM_HEAP_ALIGNMENT       16u
 #define SDRAM_HEAP_LARGE_TEST_BYTES (4u * 1024u * 1024u)
@@ -197,6 +198,8 @@ static void console_print_help(void)
     uart_puts("  k       SDRAM heap allocation/stress test\r\n");
     uart_puts("  d       Doom platform memory/timer smoke test\r\n");
     uart_puts("  x       execute copied RV32 code from SDRAM\r\n");
+    uart_puts("  l       receive a packaged Doom image over UART\r\n");
+    uart_puts("  j       launch the validated Doom image\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -206,7 +209,7 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ULX3S Doom port staging firmware\r\n");
+    uart_puts("\r\nHazard3 ULX3S Doom UART loader firmware\r\n");
     uart_puts("> ");
 }
 
@@ -339,6 +342,11 @@ uint32_t hazard3_doom_image_limit(void)
     return SDRAM_DOOM_IMAGE_LIMIT;
 }
 
+void* hazard3_sbrk(ptrdiff_t increment)
+{
+    return _sbrk(increment);
+}
+
 void* hazard3_heap_alloc(uint32_t byte_count)
 {
     return sdram_heap_alloc(byte_count);
@@ -366,6 +374,11 @@ static void sdram_heap_reset(void)
     sdram_heap_allocation_count = 0u;
     sdram_heap_failed_allocations = 0u;
     ++sdram_heap_reset_count;
+}
+
+void hazard3_heap_reset(void)
+{
+    sdram_heap_reset();
 }
 
 static int sdram_destructive_test_allowed(const char* test_name)
@@ -1162,6 +1175,8 @@ static void console_print_status(void)
     uart_puts(" expected=");
     uart_put_hex32(sdram_exec_test_last_expected());
 
+    doom_image_loader_print_status();
+
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
         uart_put_hex32(sdram_last_first_failure_addr);
@@ -1202,6 +1217,7 @@ static void console_poll(void)
         case 'a':
         case 'A':
             if (sdram_destructive_test_allowed("the sparse SDRAM test")) {
+                doom_image_loader_invalidate();
                 (void)sdram_run_sparse_test();
             }
             uart_puts("> ");
@@ -1210,6 +1226,7 @@ static void console_poll(void)
         case 'r':
         case 'R':
             if (sdram_destructive_test_allowed("the pseudorandom SDRAM test")) {
+                doom_image_loader_invalidate();
                 (void)sdram_run_random_test();
             }
             uart_puts("> ");
@@ -1218,6 +1235,7 @@ static void console_poll(void)
         case 'q':
         case 'Q':
             if (sdram_destructive_test_allowed("the SDRAM qualification suite")) {
+                doom_image_loader_invalidate();
                 (void)sdram_run_qualification();
             }
             uart_puts("> ");
@@ -1237,7 +1255,20 @@ static void console_poll(void)
 
         case 'x':
         case 'X':
+            doom_image_loader_invalidate();
             (void)sdram_exec_test_run();
+            uart_puts("> ");
+            break;
+
+        case 'l':
+        case 'L':
+            (void)doom_image_loader_receive();
+            uart_puts("> ");
+            break;
+
+        case 'j':
+        case 'J':
+            (void)doom_image_loader_launch();
             uart_puts("> ");
             break;
 
@@ -1411,7 +1442,7 @@ static void console_init(void)
     uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
     uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
     uart_puts("Heap: 0x20400000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
-    uart_puts("Doom: use d for platform smoke test, x for SDRAM execution test\r\n");
+    uart_puts("Doom: d=platform smoke, x=SDRAM exec, l=load, j=launch\r\n");
 }
 
 int main(void)

@@ -79,4 +79,5 @@ echo "Largest objects:"
 "${SIZE}" "${objects[@]}" | awk 'NR > 1 { print }' | sort -k1,1nr | head -n 20
 
 echo
-echo "This is a compile/size probe, not a runnable firmware link."
+echo "This is a compile/size probe, not the loadable Doom image."
+echo "Use ./doom/build-doom-image.sh to link and package the SDRAM image."
