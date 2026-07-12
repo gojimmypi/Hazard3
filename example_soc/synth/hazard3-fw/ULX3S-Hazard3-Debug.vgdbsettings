@@ -112,7 +112,7 @@
         <string>delete breakpoints</string>
         <string>load</string>
         <string>set $pc = _start</string>
-        <string>tbreak /mnt/c/workspace/hazard3/example_soc/synth/hazard3-fw/main.c:205</string>
+        <string>tbreak main</string>
         <string>continue</string>
       </GDBStartupCommands>
       <GDBFinalizationCommands />
