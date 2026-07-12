@@ -11,5 +11,6 @@
     -nostartfiles \
     -Wl,-T,link.ld \
     -Wl,-Map=hazard3-test.map \
-    start.S main.c \
+    -Idoom \
+    start.S main.c doom/doom_port_smoke.c \
     -o hazard3-test.elf

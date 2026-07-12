@@ -1,6 +1,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "doom/doom_port_smoke.h"
+#include "doom/hazard3_platform.h"
+
 #define UART_BASE       0x40004000u
 
 #define UART_CSR        (*(volatile uint32_t *)(UART_BASE + 0x00u))
@@ -184,6 +187,7 @@ static void console_print_help(void)
     uart_puts("  r       pseudorandom 1 MiB test in each SDRAM bank\r\n");
     uart_puts("  q       complete SDRAM qualification suite\r\n");
     uart_puts("  k       SDRAM heap allocation/stress test\r\n");
+    uart_puts("  d       Doom platform memory/timer smoke test\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -193,7 +197,7 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ULX3S SDRAM heap firmware\r\n");
+    uart_puts("\r\nHazard3 ULX3S Doom port staging firmware\r\n");
     uart_puts("> ");
 }
 
@@ -275,6 +279,60 @@ static void* sdram_heap_alloc(uint32_t byte_count)
     }
 
     return allocation;
+}
+
+void hazard3_console_putc(uint8_t value)
+{
+    uart_putc(value);
+}
+
+void hazard3_console_puts(const char* text)
+{
+    uart_puts(text);
+}
+
+void hazard3_console_put_hex32(uint32_t value)
+{
+    uart_put_hex32(value);
+}
+
+int hazard3_console_getc_nonblocking(uint8_t* value)
+{
+    return uart_getc_nonblocking(value);
+}
+
+uint32_t hazard3_ticks_ms(void)
+{
+    return system_ticks;
+}
+
+void hazard3_sleep_ms(uint32_t milliseconds)
+{
+    uint32_t start_ticks = system_ticks;
+
+    while ((uint32_t)(system_ticks - start_ticks) < milliseconds) {
+        __asm__ volatile ("nop");
+    }
+}
+
+void* hazard3_heap_alloc(uint32_t byte_count)
+{
+    return sdram_heap_alloc(byte_count);
+}
+
+int hazard3_heap_is_active(void)
+{
+    return sdram_heap_is_active();
+}
+
+uint32_t hazard3_heap_used(void)
+{
+    return sdram_heap_used();
+}
+
+uint32_t hazard3_heap_remaining(void)
+{
+    return sdram_heap_remaining();
 }
 
 static void sdram_heap_reset(void)
@@ -1044,6 +1102,21 @@ static void console_print_status(void)
         uart_puts(sdram_heap_last_test_passed != 0u ? "PASS" : "FAIL");
     }
 
+    uart_puts("\r\ndoom_smoke_runs=");
+    uart_put_hex32(doom_port_smoke_runs());
+    uart_puts(" failures=");
+    uart_put_hex32(doom_port_smoke_failures());
+    uart_puts(" elapsed_ms=");
+    uart_put_hex32(doom_port_smoke_last_elapsed_ms());
+    uart_puts(" heap_used=");
+    uart_put_hex32(doom_port_smoke_last_heap_used());
+    uart_puts(" result=");
+    if (doom_port_smoke_runs() == 0u) {
+        uart_puts("NOT RUN");
+    } else {
+        uart_puts(doom_port_smoke_last_passed() != 0 ? "PASS" : "FAIL");
+    }
+
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
         uart_put_hex32(sdram_last_first_failure_addr);
@@ -1108,6 +1181,12 @@ static void console_poll(void)
         case 'k':
         case 'K':
             (void)sdram_run_heap_test();
+            uart_puts("> ");
+            break;
+
+        case 'd':
+        case 'D':
+            (void)doom_port_smoke_run();
             uart_puts("> ");
             break;
 
@@ -1279,6 +1358,7 @@ static void console_init(void)
     uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
     uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
     uart_puts("Heap: 0x20100000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
+    uart_puts("Doom: platform staging; use d for memory/timer smoke test\r\n");
 }
 
 int main(void)
