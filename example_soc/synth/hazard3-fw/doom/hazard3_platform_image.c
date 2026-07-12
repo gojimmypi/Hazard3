@@ -80,6 +80,30 @@ uint32_t hazard3_doom_image_limit(void)
         monitor_services->image_limit : 0u;
 }
 
+uint32_t hazard3_wad_base(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->wad_base : 0u;
+}
+
+uint32_t hazard3_wad_limit(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->wad_limit : 0u;
+}
+
+uint32_t hazard3_wad_bytes(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->wad_bytes : 0u;
+}
+
+const char* hazard3_wad_name(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->wad_name : (const char*)0;
+}
+
 void* hazard3_sbrk(ptrdiff_t increment)
 {
     if (monitor_services == (const hazard3_monitor_services_t*)0 ||

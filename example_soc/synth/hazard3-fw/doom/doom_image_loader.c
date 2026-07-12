@@ -3,6 +3,7 @@
 
 #include "doom_image_format.h"
 #include "doom_image_loader.h"
+#include "doom_wad_loader.h"
 #include "hazard3_monitor_services.h"
 #include "hazard3_platform.h"
 
@@ -226,14 +227,27 @@ int doom_image_loader_receive(void)
 int doom_image_loader_launch(void)
 {
     typedef int32_t (*doom_entry_fn_t)(const hazard3_monitor_services_t* services);
-    static const hazard3_monitor_services_t services = {
-        HAZARD3_MONITOR_ABI_VERSION, sizeof(hazard3_monitor_services_t),
-        hazard3_console_putc, hazard3_console_puts, hazard3_console_put_hex32,
-        hazard3_console_getc_nonblocking, hazard3_ticks_ms, hazard3_sleep_ms,
-        _sbrk, hazard3_memory_barrier,
-        HAZARD3_DOOM_IMAGE_BASE, HAZARD3_DOOM_IMAGE_LIMIT,
-        HAZARD3_DOOM_HEAP_BASE, HAZARD3_DOOM_HEAP_LIMIT,
-        HAZARD3_VIDEO_BASE, HAZARD3_VIDEO_LIMIT
+    hazard3_monitor_services_t services = {
+        .abi_version = HAZARD3_MONITOR_ABI_VERSION,
+        .struct_bytes = sizeof(hazard3_monitor_services_t),
+        .console_putc = hazard3_console_putc,
+        .console_puts = hazard3_console_puts,
+        .console_put_hex32 = hazard3_console_put_hex32,
+        .console_getc_nonblocking = hazard3_console_getc_nonblocking,
+        .ticks_ms = hazard3_ticks_ms,
+        .sleep_ms = hazard3_sleep_ms,
+        .sbrk = _sbrk,
+        .memory_barrier = hazard3_memory_barrier,
+        .image_base = HAZARD3_DOOM_IMAGE_BASE,
+        .image_limit = HAZARD3_DOOM_IMAGE_LIMIT,
+        .heap_base = HAZARD3_DOOM_HEAP_BASE,
+        .heap_limit = HAZARD3_DOOM_HEAP_LIMIT,
+        .video_base = HAZARD3_VIDEO_BASE,
+        .video_limit = HAZARD3_VIDEO_LIMIT,
+        .wad_base = HAZARD3_DOOM_WAD_BASE,
+        .wad_limit = HAZARD3_DOOM_WAD_LIMIT,
+        .wad_bytes = doom_wad_loader_bytes(),
+        .wad_name = doom_wad_loader_name()
     };
     doom_entry_fn_t entry;
     uint32_t start_ticks;
@@ -241,7 +255,14 @@ int doom_image_loader_launch(void)
     ++launch_run_count;
     if (image_loaded == 0u) {
         ++launch_failure_count;
-        hazard3_console_puts("\r\nNo validated Doom image is loaded. Use the uploader first.\r\n");
+        hazard3_console_puts(
+            "\r\nNo validated Doom image is loaded. Use the image uploader first.\r\n");
+        return 0;
+    }
+    if (!doom_wad_loader_is_loaded()) {
+        ++launch_failure_count;
+        hazard3_console_puts(
+            "\r\nNo validated IWAD is loaded. Use the WAD uploader first.\r\n");
         return 0;
     }
     hazard3_heap_reset();
@@ -251,6 +272,8 @@ int doom_image_loader_launch(void)
     entry = (doom_entry_fn_t)(uintptr_t)loaded_header.entry_address;
     hazard3_console_puts("\r\nLaunching Doom image from SDRAM entry=");
     hazard3_console_put_hex32(loaded_header.entry_address);
+    hazard3_console_puts(" IWAD=");
+    hazard3_console_puts(services.wad_name);
     hazard3_console_puts("\r\n");
     start_ticks = hazard3_ticks_ms();
     result = entry(&services);
@@ -261,7 +284,8 @@ int doom_image_loader_launch(void)
     hazard3_console_put_hex32(last_entry_return);
     hazard3_console_puts(" elapsed_ms=");
     hazard3_console_put_hex32(last_launch_elapsed_ms);
-    hazard3_console_puts("\r\nImage state invalidated after return; upload again before relaunch.\r\n");
+    hazard3_console_puts(
+        "\r\nImage state invalidated after return; IWAD remains loaded.\r\n");
     if (result != 0) {
         ++launch_failure_count;
         return 0;

@@ -12,7 +12,9 @@
 #define HAZARD3_DOOM_IMAGE_BASE           0x20100000u
 #define HAZARD3_DOOM_IMAGE_LIMIT          0x20400000u
 #define HAZARD3_DOOM_HEAP_BASE            0x20400000u
-#define HAZARD3_DOOM_HEAP_LIMIT           0x23c00000u
+#define HAZARD3_DOOM_HEAP_LIMIT           0x22c00000u
+#define HAZARD3_DOOM_WAD_BASE             0x22c00000u
+#define HAZARD3_DOOM_WAD_LIMIT            0x23c00000u
 #define HAZARD3_VIDEO_BASE                0x23c00000u
 #define HAZARD3_VIDEO_LIMIT               0x24000000u
 

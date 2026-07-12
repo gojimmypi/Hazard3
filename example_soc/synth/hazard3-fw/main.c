@@ -4,6 +4,7 @@
 #include "doom/doom_image_format.h"
 #include "doom/doom_image_loader.h"
 #include "doom/doom_port_smoke.h"
+#include "doom/doom_wad_loader.h"
 #include "doom/hazard3_platform.h"
 #include "doom/sdram_exec_test.h"
 
@@ -199,7 +200,8 @@ static void console_print_help(void)
     uart_puts("  d       Doom platform memory/timer smoke test\r\n");
     uart_puts("  x       execute copied RV32 code from SDRAM\r\n");
     uart_puts("  l       receive a packaged Doom image over UART\r\n");
-    uart_puts("  j       launch the validated Doom image\r\n");
+    uart_puts("  w       receive an IWAD into reserved SDRAM\r\n");
+    uart_puts("  j       launch the validated Doom image and IWAD\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -1176,6 +1178,7 @@ static void console_print_status(void)
     uart_put_hex32(sdram_exec_test_last_expected());
 
     doom_image_loader_print_status();
+    doom_wad_loader_print_status();
 
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
@@ -1218,6 +1221,7 @@ static void console_poll(void)
         case 'A':
             if (sdram_destructive_test_allowed("the sparse SDRAM test")) {
                 doom_image_loader_invalidate();
+                doom_wad_loader_invalidate();
                 (void)sdram_run_sparse_test();
             }
             uart_puts("> ");
@@ -1227,6 +1231,7 @@ static void console_poll(void)
         case 'R':
             if (sdram_destructive_test_allowed("the pseudorandom SDRAM test")) {
                 doom_image_loader_invalidate();
+                doom_wad_loader_invalidate();
                 (void)sdram_run_random_test();
             }
             uart_puts("> ");
@@ -1236,6 +1241,7 @@ static void console_poll(void)
         case 'Q':
             if (sdram_destructive_test_allowed("the SDRAM qualification suite")) {
                 doom_image_loader_invalidate();
+                doom_wad_loader_invalidate();
                 (void)sdram_run_qualification();
             }
             uart_puts("> ");
@@ -1263,6 +1269,12 @@ static void console_poll(void)
         case 'l':
         case 'L':
             (void)doom_image_loader_receive();
+            uart_puts("> ");
+            break;
+
+        case 'w':
+        case 'W':
+            (void)doom_wad_loader_receive();
             uart_puts("> ");
             break;
 
@@ -1441,8 +1453,9 @@ static void console_init(void)
     uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
     uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
     uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
-    uart_puts("Heap: 0x20400000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
-    uart_puts("Doom: d=platform smoke, x=SDRAM exec, l=load, j=launch\r\n");
+    uart_puts("Heap: 0x20400000-0x22BFFFFF\r\n");
+    uart_puts("IWAD: 0x22C00000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
+    uart_puts("Doom: l=load image, w=load IWAD, j=launch\r\n");
 }
 
 int main(void)
