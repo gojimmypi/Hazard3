@@ -36,8 +36,23 @@
 #define GPIO_PATTERN_PERIOD_MS     100u
 
 #define SDRAM_BASE                 0x20000000u
+#define SDRAM_SIZE_BYTES           (64u * 1024u * 1024u)
+#define SDRAM_BANK_BYTES           (16u * 1024u * 1024u)
+#define SDRAM_BANK_COUNT           4u
 #define SDRAM_QUICK_TEST_BYTES     (64u * 1024u)
 #define SDRAM_FULL_TEST_BYTES      (1024u * 1024u)
+#define SDRAM_RANDOM_TEST_BYTES    (1024u * 1024u)
+#define SDRAM_RANDOM_TEST_PASSES   SDRAM_BANK_COUNT
+#define SDRAM_SPARSE_POINT_COUNT   30u
+
+#if (SDRAM_RANDOM_TEST_BYTES == 0u) || \
+    ((SDRAM_RANDOM_TEST_BYTES & (SDRAM_RANDOM_TEST_BYTES - 1u)) != 0u)
+#error "SDRAM_RANDOM_TEST_BYTES must be a nonzero power of two"
+#endif
+
+#if SDRAM_RANDOM_TEST_BYTES > SDRAM_BANK_BYTES
+#error "SDRAM_RANDOM_TEST_BYTES must fit within one SDRAM bank"
+#endif
 
 #define SDRAM_PATTERN_ZERO         0u
 #define SDRAM_PATTERN_ONES         1u
@@ -67,6 +82,12 @@ volatile uint32_t sdram_last_first_failure_addr;
 volatile uint32_t sdram_last_first_failure_expected;
 volatile uint32_t sdram_last_first_failure_actual;
 volatile uint32_t sdram_last_passed;
+volatile uint32_t sdram_random_passes_completed;
+volatile uint32_t sdram_last_random_seed;
+volatile uint32_t sdram_qualification_runs;
+volatile uint32_t sdram_qualification_failures;
+volatile uint32_t sdram_last_qualification_passed;
+volatile uint32_t sdram_last_qualification_pass_mask;
 
 static volatile uint32_t gpio_shadow;
 static uint32_t timer_led_countdown;
@@ -121,7 +142,10 @@ static void console_print_help(void)
 {
     uart_puts("\r\nCommands:\r\n");
     uart_puts("  h or ?  help\r\n");
-    uart_puts("  m       destructive 1 MiB SDRAM test\r\n");
+    uart_puts("  m       destructive 1 MiB sequential SDRAM test\r\n");
+    uart_puts("  a       sparse 64 MiB address/bank alias test\r\n");
+    uart_puts("  r       pseudorandom 1 MiB test in each SDRAM bank\r\n");
+    uart_puts("  q       complete SDRAM qualification suite\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
     uart_puts("Other characters are echoed.\r\n");
@@ -130,7 +154,7 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ULX3S timer + external UART + SDRAM test\r\n");
+    uart_puts("\r\nHazard3 ULX3S SDRAM qualification firmware\r\n");
     uart_puts("> ");
 }
 
@@ -189,17 +213,21 @@ static int sdram_width_test(void)
     memory_barrier();
     passed &= sdram_check_word(word, 0x1122bbaau);
 
-    halfwords[1] = 0xccddu;
+    bytes[2] = 0xccu;
     memory_barrier();
-    passed &= sdram_check_word(word, 0xccddbbaau);
+    passed &= sdram_check_word(word, 0x11ccbbaau);
 
-    bytes[3] = 0xeeu;
+    bytes[3] = 0xddu;
     memory_barrier();
-    passed &= sdram_check_word(word, 0xeeddbbaau);
+    passed &= sdram_check_word(word, 0xddccbbaau);
+
+    halfwords[1] = 0xeeffu;
+    memory_barrier();
+    passed &= sdram_check_word(word, 0xeeffbbaau);
 
     halfwords[0] = 0x5566u;
     memory_barrier();
-    passed &= sdram_check_word(word, 0xeedd5566u);
+    passed &= sdram_check_word(word, 0xeeff5566u);
 
     return passed;
 }
@@ -259,11 +287,8 @@ static int sdram_pattern_test(uint32_t byte_count, uint32_t pattern)
     return sdram_last_failures == failures_before;
 }
 
-static int sdram_run_test(uint32_t byte_count, const char* description)
+static uint32_t sdram_test_begin(uint32_t byte_count)
 {
-    uint32_t start_ticks;
-    int passed;
-
     ++sdram_test_runs;
     sdram_last_test_bytes = byte_count;
     sdram_last_elapsed_ms = 0u;
@@ -273,30 +298,11 @@ static int sdram_run_test(uint32_t byte_count, const char* description)
     sdram_last_first_failure_actual = 0u;
     sdram_last_passed = 0u;
 
-    uart_puts("\r\n");
-    uart_puts(description);
-    uart_puts(": base=");
-    uart_put_hex32(SDRAM_BASE);
-    uart_puts(" bytes=");
-    uart_put_hex32(byte_count);
-    uart_puts("\r\n  access widths: ");
+    return system_ticks;
+}
 
-    start_ticks = system_ticks;
-    passed = sdram_width_test();
-    uart_puts(passed ? "PASS\r\n" : "FAIL\r\n");
-
-    for (uint32_t pattern = 0u; pattern < SDRAM_PATTERN_COUNT; ++pattern) {
-        int pattern_passed;
-
-        uart_puts("  pattern ");
-        uart_puts(sdram_pattern_name(pattern));
-        uart_puts(": ");
-
-        pattern_passed = sdram_pattern_test(byte_count, pattern);
-        uart_puts(pattern_passed ? "PASS\r\n" : "FAIL\r\n");
-        passed &= pattern_passed;
-    }
-
+static int sdram_test_finish(uint32_t start_ticks, int passed)
+{
     sdram_last_elapsed_ms = system_ticks - start_ticks;
     sdram_last_passed = passed && sdram_last_failures == 0u;
 
@@ -320,6 +326,281 @@ static int sdram_run_test(uint32_t byte_count, const char* description)
     uart_puts("\r\n");
 
     return sdram_last_passed != 0u;
+}
+
+static uint32_t sdram_sparse_offset(uint32_t point)
+{
+    if (point == 0u) {
+        return 0u;
+    }
+
+    if (point <= 24u) {
+        return 1u << (point + 1u);
+    }
+
+    switch (point) {
+    case 25u:
+        return 0x00fffffcu;
+
+    case 26u:
+        return 0x01fffffcu;
+
+    case 27u:
+        return 0x02fffffcu;
+
+    case 28u:
+        return 0x03000000u;
+
+    default:
+        return SDRAM_SIZE_BYTES - sizeof(uint32_t);
+    }
+}
+
+static uint32_t sdram_sparse_value(uint32_t point, int inverted)
+{
+    uint32_t address = SDRAM_BASE + sdram_sparse_offset(point);
+    uint32_t value = address ^ (0x9e3779b9u * (point + 1u)) ^ 0x6d2b79f5u;
+
+    return inverted ? ~value : value;
+}
+
+static int sdram_sparse_phase(int inverted)
+{
+    uint32_t failures_before = sdram_last_failures;
+
+    /*
+     * The point set contains the base address, every word-address bit from
+     * byte-address bit 2 through bit 25, the last word of every 16 MiB bank,
+     * and the base of bank 3. Writing every point before reading any point
+     * detects stuck address lines and aliasing between rows, columns, or banks.
+     */
+    for (uint32_t point = 0u; point < SDRAM_SPARSE_POINT_COUNT; ++point) {
+        volatile uint32_t* address = (volatile uint32_t*)(uintptr_t)(
+            SDRAM_BASE + sdram_sparse_offset(point));
+
+        *address = sdram_sparse_value(point, inverted);
+    }
+
+    memory_barrier();
+
+    for (uint32_t point = 0u; point < SDRAM_SPARSE_POINT_COUNT; ++point) {
+        volatile uint32_t* address = (volatile uint32_t*)(uintptr_t)(
+            SDRAM_BASE + sdram_sparse_offset(point));
+
+        (void)sdram_check_word(
+            address,
+            sdram_sparse_value(point, inverted));
+    }
+
+    return sdram_last_failures == failures_before;
+}
+
+static int sdram_run_sparse_test(void)
+{
+    uint32_t start_ticks;
+    int passed;
+    int phase_passed;
+
+    uart_puts("\r\nSDRAM sparse 64 MiB address/bank alias test: base=");
+    uart_put_hex32(SDRAM_BASE);
+    uart_puts(" bytes=");
+    uart_put_hex32(SDRAM_SIZE_BYTES);
+    uart_puts(" points=");
+    uart_put_hex32(SDRAM_SPARSE_POINT_COUNT);
+    uart_puts("\r\n  unique values: ");
+
+    start_ticks = sdram_test_begin(SDRAM_SIZE_BYTES);
+    passed = sdram_sparse_phase(0);
+    uart_puts(passed ? "PASS\r\n" : "FAIL\r\n");
+
+    uart_puts("  inverse values: ");
+    phase_passed = sdram_sparse_phase(1);
+    uart_puts(phase_passed ? "PASS\r\n" : "FAIL\r\n");
+    passed &= phase_passed;
+
+    return sdram_test_finish(start_ticks, passed);
+}
+
+static uint32_t sdram_prng_next(uint32_t state)
+{
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
+static uint32_t sdram_random_value(uint32_t state, uint32_t byte_address)
+{
+    return state ^ byte_address ^ 0xa5a55a5au;
+}
+
+static int sdram_random_pass(
+    uint32_t base_offset,
+    uint32_t byte_count,
+    uint32_t seed)
+{
+    volatile uint32_t* const words = (volatile uint32_t*)(uintptr_t)(
+        SDRAM_BASE + base_offset);
+    uint32_t word_count = byte_count / sizeof(uint32_t);
+    uint32_t word_mask = word_count - 1u;
+    uint32_t stride = (seed | 1u) & word_mask;
+    uint32_t start_index = (seed >> 16) & word_mask;
+    uint32_t state = seed;
+    uint32_t failures_before = sdram_last_failures;
+
+    if (stride == 0u) {
+        stride = 1u;
+    }
+
+    /*
+     * word_count is a power of two and stride is odd, so this modular walk
+     * visits every word exactly once. It stresses nonsequential row and
+     * column changes without needing a permutation table in internal SRAM.
+     */
+    for (uint32_t i = 0u; i < word_count; ++i) {
+        uint32_t word_index = (start_index + i * stride) & word_mask;
+
+        uint32_t byte_address = SDRAM_BASE + base_offset +
+            word_index * sizeof(uint32_t);
+
+        state = sdram_prng_next(state);
+        words[word_index] = sdram_random_value(state, byte_address);
+    }
+
+    memory_barrier();
+    state = seed;
+
+    for (uint32_t i = 0u; i < word_count; ++i) {
+        uint32_t word_index = (start_index + i * stride) & word_mask;
+
+        uint32_t byte_address = SDRAM_BASE + base_offset +
+            word_index * sizeof(uint32_t);
+
+        state = sdram_prng_next(state);
+        (void)sdram_check_word(
+            &words[word_index],
+            sdram_random_value(state, byte_address));
+    }
+
+    return sdram_last_failures == failures_before;
+}
+
+static int sdram_run_random_test(void)
+{
+    uint32_t start_ticks;
+    int passed = 1;
+
+    uart_puts("\r\nSDRAM pseudorandom test: base=");
+    uart_put_hex32(SDRAM_BASE);
+    uart_puts(" bytes_per_bank=");
+    uart_put_hex32(SDRAM_RANDOM_TEST_BYTES);
+    uart_puts(" banks=");
+    uart_put_hex32(SDRAM_RANDOM_TEST_PASSES);
+    uart_puts("\r\n");
+
+    start_ticks = sdram_test_begin(
+        SDRAM_RANDOM_TEST_BYTES * SDRAM_RANDOM_TEST_PASSES);
+
+    for (uint32_t pass = 0u; pass < SDRAM_RANDOM_TEST_PASSES; ++pass) {
+        uint32_t base_offset = pass * SDRAM_BANK_BYTES;
+        uint32_t seed = 0x13579bdfu ^ (0x9e3779b9u * (pass + 1u));
+        int pass_passed;
+
+        if (seed == 0u) {
+            seed = 1u;
+        }
+
+        sdram_last_random_seed = seed;
+        uart_puts("  pass ");
+        uart_put_hex32(pass + 1u);
+        uart_puts(" base=");
+        uart_put_hex32(SDRAM_BASE + base_offset);
+        uart_puts(" seed=");
+        uart_put_hex32(seed);
+        uart_puts(": ");
+
+        pass_passed = sdram_random_pass(
+            base_offset,
+            SDRAM_RANDOM_TEST_BYTES,
+            seed);
+        uart_puts(pass_passed ? "PASS\r\n" : "FAIL\r\n");
+        passed &= pass_passed;
+        ++sdram_random_passes_completed;
+    }
+
+    return sdram_test_finish(start_ticks, passed);
+}
+
+static int sdram_run_test(uint32_t byte_count, const char* description)
+{
+    uint32_t start_ticks;
+    int passed;
+
+    uart_puts("\r\n");
+    uart_puts(description);
+    uart_puts(": base=");
+    uart_put_hex32(SDRAM_BASE);
+    uart_puts(" bytes=");
+    uart_put_hex32(byte_count);
+    uart_puts("\r\n  access widths: ");
+
+    start_ticks = sdram_test_begin(byte_count);
+    passed = sdram_width_test();
+    uart_puts(passed ? "PASS\r\n" : "FAIL\r\n");
+
+    for (uint32_t pattern = 0u; pattern < SDRAM_PATTERN_COUNT; ++pattern) {
+        int pattern_passed;
+
+        uart_puts("  pattern ");
+        uart_puts(sdram_pattern_name(pattern));
+        uart_puts(": ");
+
+        pattern_passed = sdram_pattern_test(byte_count, pattern);
+        uart_puts(pattern_passed ? "PASS\r\n" : "FAIL\r\n");
+        passed &= pattern_passed;
+    }
+
+    return sdram_test_finish(start_ticks, passed);
+}
+
+static int sdram_run_qualification(void)
+{
+    int sequential_passed;
+    int sparse_passed;
+    int random_passed;
+    int passed;
+
+    ++sdram_qualification_runs;
+    sdram_last_qualification_pass_mask = 0u;
+    uart_puts("\r\n=== SDRAM qualification suite ===\r\n");
+
+    sequential_passed = sdram_run_test(
+        SDRAM_FULL_TEST_BYTES,
+        "SDRAM destructive 1 MiB sequential test");
+    sparse_passed = sdram_run_sparse_test();
+    random_passed = sdram_run_random_test();
+
+    if (sequential_passed) {
+        sdram_last_qualification_pass_mask |= 1u << 0;
+    }
+    if (sparse_passed) {
+        sdram_last_qualification_pass_mask |= 1u << 1;
+    }
+    if (random_passed) {
+        sdram_last_qualification_pass_mask |= 1u << 2;
+    }
+
+    passed = sequential_passed && sparse_passed && random_passed;
+    sdram_last_qualification_passed = passed != 0;
+    if (!passed) {
+        ++sdram_qualification_failures;
+    }
+
+    uart_puts("=== SDRAM qualification: ");
+    uart_puts(passed ? "PASS" : "FAIL");
+    uart_puts(" ===\r\n");
+
+    return passed;
 }
 
 static void console_print_status(void)
@@ -346,6 +627,8 @@ static void console_print_status(void)
     uart_put_hex32(sdram_test_runs);
     uart_puts(" failed_runs=");
     uart_put_hex32(sdram_failed_runs);
+    uart_puts(" total_failures=");
+    uart_put_hex32(sdram_total_failures);
     uart_puts(" words_checked=");
     uart_put_hex32(sdram_words_tested);
     uart_puts("\r\nsdram_last_bytes=");
@@ -356,6 +639,22 @@ static void console_print_status(void)
     uart_put_hex32(sdram_last_elapsed_ms);
     uart_puts(" result=");
     uart_puts(sdram_last_passed != 0u ? "PASS" : "FAIL");
+    uart_puts("\r\nrandom_passes=");
+    uart_put_hex32(sdram_random_passes_completed);
+    uart_puts(" last_random_seed=");
+    uart_put_hex32(sdram_last_random_seed);
+    uart_puts(" qualification_runs=");
+    uart_put_hex32(sdram_qualification_runs);
+    uart_puts("\r\nqualification_failures=");
+    uart_put_hex32(sdram_qualification_failures);
+    uart_puts(" pass_mask=");
+    uart_put_hex32(sdram_last_qualification_pass_mask);
+    uart_puts(" last_qualification=");
+    if (sdram_qualification_runs == 0u) {
+        uart_puts("NOT RUN");
+    } else {
+        uart_puts(sdram_last_qualification_passed != 0u ? "PASS" : "FAIL");
+    }
 
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
@@ -390,7 +689,25 @@ static void console_poll(void)
         case 'M':
             (void)sdram_run_test(
                 SDRAM_FULL_TEST_BYTES,
-                "SDRAM destructive 1 MiB test");
+                "SDRAM destructive 1 MiB sequential test");
+            uart_puts("> ");
+            break;
+
+        case 'a':
+        case 'A':
+            (void)sdram_run_sparse_test();
+            uart_puts("> ");
+            break;
+
+        case 'r':
+        case 'R':
+            (void)sdram_run_random_test();
+            uart_puts("> ");
+            break;
+
+        case 'q':
+        case 'Q':
+            (void)sdram_run_qualification();
             uart_puts("> ");
             break;
 
@@ -554,7 +871,7 @@ static void console_init(void)
     uart_puts("UART: gp0 RX / gp1 TX, 115200 8N1\r\n");
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
-    uart_puts("SDRAM: AHB target at 0x20000000\r\n");
+    uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
 }
 
 int main(void)
