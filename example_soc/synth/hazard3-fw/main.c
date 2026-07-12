@@ -3,6 +3,7 @@
 
 #include "doom/doom_port_smoke.h"
 #include "doom/hazard3_platform.h"
+#include "doom/sdram_exec_test.h"
 
 #define UART_BASE       0x40004000u
 
@@ -50,8 +51,11 @@
 #define SDRAM_SPARSE_POINT_COUNT   30u
 
 #define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
+#define SDRAM_DOOM_IMAGE_BYTES     (3u * 1024u * 1024u)
 #define SDRAM_VIDEO_RESERVED_BYTES (4u * 1024u * 1024u)
-#define SDRAM_HEAP_BASE            (SDRAM_BASE + SDRAM_DIAGNOSTIC_BYTES)
+#define SDRAM_DOOM_IMAGE_BASE      (SDRAM_BASE + SDRAM_DIAGNOSTIC_BYTES)
+#define SDRAM_DOOM_IMAGE_LIMIT     (SDRAM_DOOM_IMAGE_BASE + SDRAM_DOOM_IMAGE_BYTES)
+#define SDRAM_HEAP_BASE            SDRAM_DOOM_IMAGE_LIMIT
 #define SDRAM_HEAP_LIMIT           \
     (SDRAM_BASE + SDRAM_SIZE_BYTES - SDRAM_VIDEO_RESERVED_BYTES)
 #define SDRAM_HEAP_SIZE_BYTES      (SDRAM_HEAP_LIMIT - SDRAM_HEAP_BASE)
@@ -70,6 +74,10 @@
 
 #if SDRAM_FULL_TEST_BYTES > SDRAM_DIAGNOSTIC_BYTES
 #error "The sequential SDRAM test must stay below the heap"
+#endif
+
+#if SDRAM_DOOM_IMAGE_LIMIT > SDRAM_HEAP_LIMIT
+#error "The Doom image reservation must end before the video reservation"
 #endif
 
 #if SDRAM_HEAP_BASE >= SDRAM_HEAP_LIMIT
@@ -188,6 +196,7 @@ static void console_print_help(void)
     uart_puts("  q       complete SDRAM qualification suite\r\n");
     uart_puts("  k       SDRAM heap allocation/stress test\r\n");
     uart_puts("  d       Doom platform memory/timer smoke test\r\n");
+    uart_puts("  x       execute copied RV32 code from SDRAM\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -313,6 +322,21 @@ void hazard3_sleep_ms(uint32_t milliseconds)
     while ((uint32_t)(system_ticks - start_ticks) < milliseconds) {
         __asm__ volatile ("nop");
     }
+}
+
+void hazard3_memory_barrier(void)
+{
+    memory_barrier();
+}
+
+uint32_t hazard3_doom_image_base(void)
+{
+    return SDRAM_DOOM_IMAGE_BASE;
+}
+
+uint32_t hazard3_doom_image_limit(void)
+{
+    return SDRAM_DOOM_IMAGE_LIMIT;
 }
 
 void* hazard3_heap_alloc(uint32_t byte_count)
@@ -1117,6 +1141,27 @@ static void console_print_status(void)
         uart_puts(doom_port_smoke_last_passed() != 0 ? "PASS" : "FAIL");
     }
 
+    uart_puts("\r\nsdram_exec_runs=");
+    uart_put_hex32(sdram_exec_test_runs());
+    uart_puts(" failures=");
+    uart_put_hex32(sdram_exec_test_failures());
+    uart_puts(" elapsed_ms=");
+    uart_put_hex32(sdram_exec_test_last_elapsed_ms());
+    uart_puts(" timer_hits=");
+    uart_put_hex32(sdram_exec_test_last_timer_hits());
+    uart_puts(" payload_bytes=");
+    uart_put_hex32(sdram_exec_test_payload_bytes());
+    uart_puts(" result=");
+    if (sdram_exec_test_runs() == 0u) {
+        uart_puts("NOT RUN");
+    } else {
+        uart_puts(sdram_exec_test_last_passed() != 0 ? "PASS" : "FAIL");
+    }
+    uart_puts("\r\nsdram_exec_actual=");
+    uart_put_hex32(sdram_exec_test_last_result());
+    uart_puts(" expected=");
+    uart_put_hex32(sdram_exec_test_last_expected());
+
     if (sdram_last_failures != 0u) {
         uart_puts("\r\nsdram_first_failure_addr=");
         uart_put_hex32(sdram_last_first_failure_addr);
@@ -1187,6 +1232,12 @@ static void console_poll(void)
         case 'd':
         case 'D':
             (void)doom_port_smoke_run();
+            uart_puts("> ");
+            break;
+
+        case 'x':
+        case 'X':
+            (void)sdram_exec_test_run();
             uart_puts("> ");
             break;
 
@@ -1314,6 +1365,7 @@ void machine_trap_handler(uint32_t mcause, uint32_t mepc, uint32_t mtval)
     if (mcause == MCAUSE_MACHINE_TIMER_IRQ) {
         ++timer_interrupt_count;
         system_ticks += TIMER_PERIOD_US / 1000u;
+        sdram_exec_test_note_timer_pc(mepc);
 
         timer_next_compare += TIMER_PERIOD_US;
         timer_set_compare(timer_next_compare);
@@ -1357,8 +1409,9 @@ static void console_init(void)
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
     uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
-    uart_puts("Heap: 0x20100000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
-    uart_puts("Doom: platform staging; use d for memory/timer smoke test\r\n");
+    uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
+    uart_puts("Heap: 0x20400000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
+    uart_puts("Doom: use d for platform smoke test, x for SDRAM execution test\r\n");
 }
 
 int main(void)
