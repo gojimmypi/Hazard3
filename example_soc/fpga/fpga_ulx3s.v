@@ -12,6 +12,8 @@ module fpga_ulx3s (
 	output wire       uart_tx,
 	input  wire       uart_rx,
 
+	output wire [3:0]  gpdi_dp,
+
 	output wire [12:0] sdram_a,
 	output wire [1:0]  sdram_ba,
 	inout  wire [15:0] sdram_d,
@@ -40,6 +42,45 @@ fpga_reset #(
 	.clk         (clk_sys),
 	.force_rst_n (pll_sys_locked),
 	.rst_n       (rst_n_sys)
+);
+
+// Keep the proven Hazard3/SDRAM clock tree unchanged. HDMI uses a second PLL,
+// so initial video bring-up cannot disturb CPU, JTAG, UART or SDRAM timing.
+wire clk_video_pix;
+wire clk_tmds_x5;
+wire pll_video_locked;
+wire rst_n_video_pix;
+wire rst_n_tmds_x5;
+
+pll_25_50_250 pll_video (
+	.clkin        (clk_osc),
+	.clk_pix      (clk_video_pix),
+	.clk_tmds_x5  (clk_tmds_x5),
+	.locked       (pll_video_locked)
+);
+
+fpga_reset #(
+	.SHIFT (3)
+) rstgen_video_pix (
+	.clk         (clk_video_pix),
+	.force_rst_n (pll_video_locked),
+	.rst_n       (rst_n_video_pix)
+);
+
+fpga_reset #(
+	.SHIFT (3)
+) rstgen_tmds (
+	.clk         (clk_tmds_x5),
+	.force_rst_n (pll_video_locked),
+	.rst_n       (rst_n_tmds_x5)
+);
+
+ulx3s_hdmi_test_pattern hdmi_test_pattern_u (
+	.clk_pix       (clk_video_pix),
+	.rst_n_pix     (rst_n_video_pix),
+	.clk_tmds_x5   (clk_tmds_x5),
+	.rst_n_tmds_x5 (rst_n_tmds_x5),
+	.gpdi_dp       (gpdi_dp)
 );
 
 // Forward an inverted copy of the 50 MHz system clock. Commands and data are
