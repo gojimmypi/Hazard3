@@ -101,19 +101,10 @@
   <Debug xsi:type="com.visualgdb.debug.remote">
     <AdditionalStartupCommands>
       <GDBPreStartupCommands>
-        <string>set remotetimeout 10</string>
-        <string>set confirm off</string>
-        <string>set remote hardware-breakpoint-limit 3</string>
-        <string>set remote hardware-watchpoint-limit 0</string>
-        <string>set can-use-hw-watchpoints 0</string>
+        <string>source $(SourceDir)/../../hazard3-debug.gdb</string>
       </GDBPreStartupCommands>
       <GDBStartupCommands>
-        <string>monitor halt</string>
-        <string>delete breakpoints</string>
-        <string>load</string>
-        <string>set $pc = _start</string>
-        <string>tbreak main</string>
-        <string>continue</string>
+        <string>hazard3-start</string>
       </GDBStartupCommands>
       <GDBFinalizationCommands />
     </AdditionalStartupCommands>
