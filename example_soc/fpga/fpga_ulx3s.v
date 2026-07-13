@@ -75,12 +75,39 @@ fpga_reset #(
 	.rst_n       (rst_n_tmds_x5)
 );
 
+`if 0
 ulx3s_hdmi_test_pattern hdmi_test_pattern_u (
 	.clk_pix       (clk_video_pix),
 	.rst_n_pix     (rst_n_video_pix),
 	.clk_tmds_x5   (clk_tmds_x5),
 	.rst_n_tmds_x5 (rst_n_tmds_x5),
 	.gpdi_dp       (gpdi_dp)
+);
+`endif
+
+wire        video_sdram_req_valid;
+wire        video_sdram_req_ready;
+wire [24:0] video_sdram_req_addr;
+wire        video_sdram_rsp_valid;
+wire [15:0] video_sdram_rsp_rdata;
+wire        video_sdram_init_done;
+
+ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
+	.clk_sys          (clk_sys),
+	.rst_n_sys        (rst_n_sys),
+	.clk_pix          (clk_video_pix),
+	.rst_n_pix        (rst_n_video_pix),
+	.clk_tmds_x5      (clk_tmds_x5),
+	.rst_n_tmds_x5    (rst_n_tmds_x5),
+
+	.sdram_req_valid  (video_sdram_req_valid),
+	.sdram_req_ready  (video_sdram_req_ready),
+	.sdram_req_addr   (video_sdram_req_addr),
+	.sdram_rsp_valid  (video_sdram_rsp_valid),
+	.sdram_rsp_rdata  (video_sdram_rsp_rdata),
+	.sdram_init_done  (video_sdram_init_done),
+
+	.gpdi_dp          (gpdi_dp)
 );
 
 // Forward an inverted copy of the 50 MHz system clock. Commands and data are
@@ -144,7 +171,14 @@ example_soc #(
 	.sdram_csn  (sdram_csn),
 	.sdram_rasn (sdram_rasn),
 	.sdram_casn (sdram_casn),
-	.sdram_wen  (sdram_wen)
+	.sdram_wen  (sdram_wen),
+
+	.video_sdram_req_valid (video_sdram_req_valid),
+	.video_sdram_req_ready (video_sdram_req_ready),
+	.video_sdram_req_addr  (video_sdram_req_addr),
+	.video_sdram_rsp_valid (video_sdram_rsp_valid),
+	.video_sdram_rsp_rdata (video_sdram_rsp_rdata),
+	.video_sdram_init_done (video_sdram_init_done)
 );
 
 endmodule

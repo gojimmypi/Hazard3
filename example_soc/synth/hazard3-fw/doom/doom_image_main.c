@@ -6,7 +6,7 @@
 #include "hazard3_monitor_services.h"
 #include "hazard3_platform.h"
 
-#define DOOM_HEADLESS_EXTRA_TICKS 8u
+#define DOOM_VIDEO_EXTRA_TICKS 8u
 
 static char argument_program[] = "doom";
 static char argument_iwad[] = "-iwad";
@@ -40,6 +40,9 @@ static int services_are_valid(const hazard3_monitor_services_t* services)
         services->image_limit == HAZARD3_DOOM_IMAGE_LIMIT &&
         services->heap_base == HAZARD3_DOOM_HEAP_BASE &&
         services->heap_limit == HAZARD3_DOOM_HEAP_LIMIT &&
+        services->video_base == HAZARD3_VIDEO_BASE &&
+        services->video_limit == HAZARD3_VIDEO_LIMIT &&
+        services->video_limit - services->video_base >= 320u * 200u &&
         services->wad_base == HAZARD3_DOOM_WAD_BASE &&
         services->wad_limit == HAZARD3_DOOM_WAD_LIMIT &&
         services->wad_bytes >= 12u &&
@@ -94,12 +97,12 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
         (int)(sizeof(doom_arguments) / sizeof(doom_arguments[0])),
         doom_arguments);
 
-    hazard3_console_puts("  Doom initialization returned; running headless ticks\r\n");
-    for (uint32_t i = 0u; i < DOOM_HEADLESS_EXTRA_TICKS; ++i) {
+    hazard3_console_puts("  Doom initialization returned; running HDMI ticks\r\n");
+    for (uint32_t i = 0u; i < DOOM_VIDEO_EXTRA_TICKS; ++i) {
         doomgeneric_Tick();
     }
     frame_count = hazard3_doom_draw_frame_count();
-    hazard3_console_puts("  headless frames completed=");
+    hazard3_console_puts("  HDMI frames completed=");
     hazard3_console_put_hex32(frame_count);
     hazard3_console_puts("\r\n  heap_used=");
     hazard3_console_put_hex32(hazard3_heap_used());
@@ -107,9 +110,9 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     hazard3_console_put_hex32(hazard3_heap_remaining());
     hazard3_console_puts("\r\n");
     if (frame_count == 0u) {
-        hazard3_console_puts("Doom WAD/game-loop milestone: FAIL\r\n");
+        hazard3_console_puts("Doom HDMI framebuffer milestone: FAIL\r\n");
         return 3;
     }
-    hazard3_console_puts("Doom WAD/game-loop milestone: PASS\r\n");
+    hazard3_console_puts("Doom HDMI framebuffer milestone: PASS\r\n");
     return 0;
 }

@@ -56,6 +56,11 @@
 #define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
 #define SDRAM_DOOM_IMAGE_BYTES     (3u * 1024u * 1024u)
 #define SDRAM_VIDEO_RESERVED_BYTES (4u * 1024u * 1024u)
+#define VIDEO_FRAMEBUFFER_BASE     HAZARD3_VIDEO_BASE
+#define VIDEO_FRAMEBUFFER_WIDTH    320u
+#define VIDEO_FRAMEBUFFER_HEIGHT   200u
+#define VIDEO_FRAMEBUFFER_BYTES    \
+    (VIDEO_FRAMEBUFFER_WIDTH * VIDEO_FRAMEBUFFER_HEIGHT)
 #define SDRAM_DOOM_IMAGE_BASE      HAZARD3_DOOM_IMAGE_BASE
 #define SDRAM_DOOM_IMAGE_LIMIT     HAZARD3_DOOM_IMAGE_LIMIT
 #define SDRAM_HEAP_BASE            HAZARD3_DOOM_HEAP_BASE
@@ -84,6 +89,10 @@
 
 #if SDRAM_HEAP_BASE >= SDRAM_HEAP_LIMIT
 #error "The SDRAM heap range must be nonempty"
+#endif
+
+#if VIDEO_FRAMEBUFFER_BYTES > SDRAM_VIDEO_RESERVED_BYTES
+#error "The indexed framebuffer must fit in the video reservation"
 #endif
 
 #if (SDRAM_HEAP_ALIGNMENT == 0u) || \
@@ -138,6 +147,9 @@ volatile uint32_t sdram_heap_last_elapsed_ms;
 volatile uint32_t sdram_heap_last_failure_addr;
 volatile uint32_t sdram_heap_last_failure_expected;
 volatile uint32_t sdram_heap_last_failure_actual;
+
+volatile uint32_t video_pattern_runs;
+volatile uint32_t video_pattern_last_elapsed_ms;
 
 static volatile uint32_t gpio_shadow;
 static uint32_t timer_led_countdown;
@@ -202,6 +214,7 @@ static void console_print_help(void)
     uart_puts("  l       receive a packaged Doom image over UART\r\n");
     uart_puts("  w       receive an IWAD into reserved SDRAM\r\n");
     uart_puts("  j       launch the validated Doom image and IWAD\r\n");
+    uart_puts("  f       rewrite the 320x200 RGB332 HDMI test framebuffer\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -218,6 +231,71 @@ static void console_print_version(void)
 static void memory_barrier(void)
 {
     __asm__ volatile ("fence rw, rw" ::: "memory");
+}
+
+static uint8_t video_dim_rgb332(uint8_t pixel)
+{
+    uint8_t red = (uint8_t)((pixel >> 5) & 7u);
+    uint8_t green = (uint8_t)((pixel >> 2) & 7u);
+    uint8_t blue = (uint8_t)(pixel & 3u);
+
+    red >>= 1;
+    green >>= 1;
+    blue >>= 1;
+
+    return (uint8_t)((red << 5) | (green << 2) | blue);
+}
+
+static uint8_t video_test_pattern_pixel(uint32_t x, uint32_t y)
+{
+    static const uint8_t bar_colors[8] = {
+        0xffu, 0xfcu, 0x1fu, 0x1cu, 0xe3u, 0xe0u, 0x03u, 0x00u
+    };
+    uint8_t pixel = bar_colors[x / 40u];
+
+    if ((x % 20u) == 0u || (y % 20u) == 0u) {
+        pixel = video_dim_rgb332(pixel);
+    }
+
+    if (x == 0u || x == VIDEO_FRAMEBUFFER_WIDTH - 1u ||
+        y == 0u || y == VIDEO_FRAMEBUFFER_HEIGHT - 1u) {
+        pixel = 0xffu;
+    }
+
+    return pixel;
+}
+
+static void video_write_test_pattern(void)
+{
+    volatile uint32_t* destination =
+        (volatile uint32_t*)(uintptr_t)VIDEO_FRAMEBUFFER_BASE;
+    uint32_t start_ticks = system_ticks;
+
+    uart_puts("\r\nHDMI framebuffer test pattern: base=");
+    uart_put_hex32(VIDEO_FRAMEBUFFER_BASE);
+    uart_puts(" bytes=");
+    uart_put_hex32(VIDEO_FRAMEBUFFER_BYTES);
+    uart_puts(" format=RGB332\r\n");
+
+    for (uint32_t y = 0u; y < VIDEO_FRAMEBUFFER_HEIGHT; ++y) {
+        uint32_t row_word = y * (VIDEO_FRAMEBUFFER_WIDTH / 4u);
+
+        for (uint32_t x = 0u; x < VIDEO_FRAMEBUFFER_WIDTH; x += 4u) {
+            uint32_t packed = (uint32_t)video_test_pattern_pixel(x, y)
+                | ((uint32_t)video_test_pattern_pixel(x + 1u, y) << 8)
+                | ((uint32_t)video_test_pattern_pixel(x + 2u, y) << 16)
+                | ((uint32_t)video_test_pattern_pixel(x + 3u, y) << 24);
+            destination[row_word + x / 4u] = packed;
+        }
+    }
+
+    memory_barrier();
+    ++video_pattern_runs;
+    video_pattern_last_elapsed_ms = system_ticks - start_ticks;
+
+    uart_puts("  write: PASS elapsed_ms=");
+    uart_put_hex32(video_pattern_last_elapsed_ms);
+    uart_puts("\r\n");
 }
 
 static void sdram_heap_init(void)
@@ -1177,6 +1255,15 @@ static void console_print_status(void)
     uart_puts(" expected=");
     uart_put_hex32(sdram_exec_test_last_expected());
 
+    uart_puts("\r\nvideo_framebuffer_base=");
+    uart_put_hex32(VIDEO_FRAMEBUFFER_BASE);
+    uart_puts(" bytes=");
+    uart_put_hex32(VIDEO_FRAMEBUFFER_BYTES);
+    uart_puts(" pattern_runs=");
+    uart_put_hex32(video_pattern_runs);
+    uart_puts(" elapsed_ms=");
+    uart_put_hex32(video_pattern_last_elapsed_ms);
+
     doom_image_loader_print_status();
     doom_wad_loader_print_status();
 
@@ -1281,6 +1368,12 @@ static void console_poll(void)
         case 'j':
         case 'J':
             (void)doom_image_loader_launch();
+            uart_puts("> ");
+            break;
+
+        case 'f':
+        case 'F':
+            video_write_test_pattern();
             uart_puts("> ");
             break;
 
@@ -1455,6 +1548,7 @@ static void console_init(void)
     uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
     uart_puts("Heap: 0x20400000-0x22BFFFFF\r\n");
     uart_puts("IWAD: 0x22C00000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
+    uart_puts("HDMI: 1024x600, 320x200 RGB332 framebuffer scaled 3x\r\n");
     uart_puts("Doom: l=load image, w=load IWAD, j=launch\r\n");
 }
 
@@ -1472,6 +1566,7 @@ int main(void)
     console_init();
 
     (void)sdram_run_test(SDRAM_QUICK_TEST_BYTES, "SDRAM boot quick test");
+    video_write_test_pattern();
     uart_puts("Type h or ? for help.\r\n> ");
 
     next_pattern_tick = system_ticks + GPIO_PATTERN_PERIOD_MS;

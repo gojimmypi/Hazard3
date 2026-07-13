@@ -80,6 +80,18 @@ uint32_t hazard3_doom_image_limit(void)
         monitor_services->image_limit : 0u;
 }
 
+uint32_t hazard3_video_base(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->video_base : 0u;
+}
+
+uint32_t hazard3_video_limit(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->video_limit : 0u;
+}
+
 uint32_t hazard3_wad_base(void)
 {
     return monitor_services != (const hazard3_monitor_services_t*)0 ?

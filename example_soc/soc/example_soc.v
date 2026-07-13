@@ -42,7 +42,15 @@ module example_soc #(
 	output wire              sdram_csn,
 	output wire              sdram_rasn,
 	output wire              sdram_casn,
-	output wire              sdram_wen
+	output wire              sdram_wen,
+
+	// Optional read-only native SDRAM port for video scanout
+	input  wire              video_sdram_req_valid,
+	output wire              video_sdram_req_ready,
+	input  wire [24:0]       video_sdram_req_addr,
+	output wire              video_sdram_rsp_valid,
+	output wire [15:0]       video_sdram_rsp_rdata,
+	output wire              video_sdram_init_done
 );
 
 // ----------------------------------------------------------------------------
@@ -614,6 +622,13 @@ if (SDRAM_ENABLE) begin: sdram_enabled
 		.ahbls_hwdata      (sdram_hwdata),
 		.ahbls_hrdata      (sdram_hrdata),
 
+		.video_req_valid   (video_sdram_req_valid),
+		.video_req_ready   (video_sdram_req_ready),
+		.video_req_addr    (video_sdram_req_addr),
+		.video_rsp_valid   (video_sdram_rsp_valid),
+		.video_rsp_rdata   (video_sdram_rsp_rdata),
+		.video_init_done   (video_sdram_init_done),
+
 		.sdram_a           (sdram_a),
 		.sdram_ba          (sdram_ba),
 		.sdram_d           (sdram_d),
@@ -639,7 +654,14 @@ end else begin: sdram_disabled
 	assign sdram_casn = 1'b1;
 	assign sdram_wen = 1'b1;
 
+	assign video_sdram_req_ready = 1'b0;
+	assign video_sdram_rsp_valid = 1'b0;
+	assign video_sdram_rsp_rdata = 16'd0;
+	assign video_sdram_init_done = 1'b0;
+
 	wire unused_sdram_hready = sdram_hready;
+	wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
+		video_sdram_req_addr};
 end
 endgenerate
 

@@ -31,6 +31,15 @@ module ahb_sdram #(
     input  wire [W_DATA-1:0] ahbls_hwdata,
     output wire [W_DATA-1:0] ahbls_hrdata,
 
+    // Read-only native SDRAM port for video scanout. Video requests are
+    // 16-bit halfword addresses within the 64 MiB SDRAM window.
+    input  wire              video_req_valid,
+    output wire              video_req_ready,
+    input  wire [24:0]       video_req_addr,
+    output wire              video_rsp_valid,
+    output wire [15:0]       video_rsp_rdata,
+    output wire              video_init_done,
+
     output wire [12:0]       sdram_a,
     output wire [1:0]        sdram_ba,
     inout  wire [15:0]       sdram_d,
@@ -64,14 +73,32 @@ reg [31:0] read_data;
 reg [1:0] saved_addr_low;
 reg [2:0] saved_hsize;
 
-wire controller_req_valid = state == ST_WRITE_REQUEST ||
+wire ahb_controller_req_valid = state == ST_WRITE_REQUEST ||
     state == ST_READ_REQUEST;
-wire controller_req_write = state == ST_WRITE_REQUEST;
+wire ahb_controller_req_write = state == ST_WRITE_REQUEST;
+wire select_video_request = video_req_valid;
+wire controller_req_valid = select_video_request || ahb_controller_req_valid;
+wire controller_req_write = select_video_request ? 1'b0 : ahb_controller_req_write;
+wire [24:0] controller_req_addr = select_video_request ?
+    video_req_addr : operation_addr;
+wire [15:0] controller_req_wdata = select_video_request ?
+    16'd0 : operation_wdata;
+wire [1:0] controller_req_wmask = select_video_request ?
+    2'b00 : operation_wmask;
 wire controller_req_ready;
 wire controller_rsp_valid;
 wire [15:0] controller_rsp_rdata;
 wire controller_init_done;
+reg response_owner_video;
+wire controller_request_accept = controller_req_valid && controller_req_ready;
+wire ahb_controller_req_ready = controller_req_ready && !select_video_request;
+wire ahb_controller_rsp_valid = controller_rsp_valid && !response_owner_video;
 wire transfer_accept = state == ST_IDLE && ahbls_hready && ahbls_htrans[1];
+
+assign video_req_ready = controller_req_ready && select_video_request;
+assign video_rsp_valid = controller_rsp_valid && response_owner_video;
+assign video_rsp_rdata = controller_rsp_rdata;
+assign video_init_done = controller_init_done;
 
 assign ahbls_hready_resp = state == ST_IDLE;
 assign ahbls_hresp = 1'b0;
@@ -86,9 +113,9 @@ ulx3s_sdram_controller #(
     .req_valid   (controller_req_valid),
     .req_ready   (controller_req_ready),
     .req_write   (controller_req_write),
-    .req_addr    (operation_addr),
-    .req_wdata   (operation_wdata),
-    .req_wmask   (operation_wmask),
+    .req_addr    (controller_req_addr),
+    .req_wdata   (controller_req_wdata),
+    .req_wmask   (controller_req_wmask),
     .rsp_valid   (controller_rsp_valid),
     .rsp_rdata   (controller_rsp_rdata),
     .init_done   (controller_init_done),
@@ -103,6 +130,13 @@ ulx3s_sdram_controller #(
     .sdram_casn  (sdram_casn),
     .sdram_wen   (sdram_wen)
 );
+
+always @ (posedge clk or negedge rst_n) begin
+    if (!rst_n)
+        response_owner_video <= 1'b0;
+    else if (controller_request_accept)
+        response_owner_video <= select_video_request;
+end
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -173,13 +207,13 @@ always @ (posedge clk or negedge rst_n) begin
         end
 
         ST_WRITE_REQUEST: begin
-            if (controller_req_ready) begin
+            if (ahb_controller_req_ready) begin
                 state <= ST_WRITE_WAIT;
             end
         end
 
         ST_WRITE_WAIT: begin
-            if (controller_rsp_valid) begin
+            if (ahb_controller_rsp_valid) begin
                 if (second_pending) begin
                     operation_addr <= second_addr;
                     operation_wdata <= second_wdata;
@@ -193,13 +227,13 @@ always @ (posedge clk or negedge rst_n) begin
         end
 
         ST_READ_REQUEST: begin
-            if (controller_req_ready) begin
+            if (ahb_controller_req_ready) begin
                 state <= ST_READ_WAIT;
             end
         end
 
         ST_READ_WAIT: begin
-            if (controller_rsp_valid) begin
+            if (ahb_controller_rsp_valid) begin
                 if (!read_second_half) begin
                     read_low_half <= controller_rsp_rdata;
                     operation_addr <= operation_addr + 1'b1;

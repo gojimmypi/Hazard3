@@ -36,7 +36,8 @@ Run the size probe after cloning upstream:
 - `0x20100000-0x203fffff`: linked Doom image
 - `0x20400000-0x22bfffff`: Doom heap and zone memory
 - `0x22c00000-0x23bfffff`: validated read-only IWAD, up to 16 MiB
-- `0x23c00000-0x23ffffff`: future video reservation
+- `0x23c00000-0x23c0f9ff`: 320x200 RGB332 framebuffer
+- `0x23c0fa00-0x23ffffff`: future double-buffer/video-control reservation
 
 The image and IWAD use separate UART protocols. Each transfer sends a fixed
 64-byte little-endian header, waits for a monitor data-ready marker, then sends
@@ -146,10 +147,11 @@ H3W OK
 ```
 
 Expected Doom progress includes WAD discovery, Doom's normal startup messages,
-the first completed headless frame, several additional game ticks, and:
+the first completed HDMI framebuffer, several additional game ticks, and:
 
 ```text
-Doom WAD/game-loop milestone: PASS
+Doom renderer: first HDMI framebuffer completed
+Doom HDMI framebuffer milestone: PASS
 ```
 
 The executable image is invalidated after it returns because writable `.data`
@@ -158,6 +160,8 @@ new image upload followed by command `j`. Commands `a`, `r`, and `q` invalidate
 both image and IWAD because they overwrite those SDRAM regions. Command `x`
 invalidates only the executable image.
 
-Video, controls, and sound remain stubbed for this milestone. The next update
-connects Doom's 320x200 indexed output to the reserved video region and then to
-the ULX3S GPDI pipeline.
+The HDMI hardware reads the framebuffer as RGB332 and scales 320x200 to
+960x600 inside the native 1024x600 output. `DG_DrawFrame()` converts Doom's
+active 256-color palette to RGB332 while copying each completed frame. This is
+a single-buffer implementation, so tearing is possible. Controls and sound
+remain stubbed; double buffering and frame-synchronous swaps are next.
