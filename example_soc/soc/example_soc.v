@@ -50,7 +50,17 @@ module example_soc #(
 	input  wire [24:0]       video_sdram_req_addr,
 	output wire              video_sdram_rsp_valid,
 	output wire [15:0]       video_sdram_rsp_rdata,
-	output wire              video_sdram_init_done
+	output wire              video_sdram_init_done,
+
+	// External APB slave implemented by the multi-clock HDMI block.
+	output wire              video_apb_psel,
+	output wire              video_apb_penable,
+	output wire              video_apb_pwrite,
+	output wire [15:0]       video_apb_paddr,
+	output wire [31:0]       video_apb_pwdata,
+	input  wire [31:0]       video_apb_prdata,
+	input  wire              video_apb_pready,
+	input  wire              video_apb_pslverr
 );
 
 // ----------------------------------------------------------------------------
@@ -403,6 +413,7 @@ hazard3_cpu_1port #(
 // - System timer at.. 0x4000_0000
 // - UART at.......... 0x4000_4000
 // - GPIO at.......... 0x4000_8000
+// - HDMI/video at.... 0x4000_c000
 
 // AHBL layer
 
@@ -432,6 +443,20 @@ wire               sdram_hmastlock;
 wire [W_DATA-1:0]  sdram_hwdata;
 wire [W_DATA-1:0]  sdram_hrdata;
 
+// Downstream side of the unified SDRAM cache.
+wire               sdram_mem_hready_resp;
+wire               sdram_mem_hready;
+wire               sdram_mem_hresp;
+wire [W_ADDR-1:0]  sdram_mem_haddr;
+wire               sdram_mem_hwrite;
+wire [1:0]         sdram_mem_htrans;
+wire [2:0]         sdram_mem_hsize;
+wire [2:0]         sdram_mem_hburst;
+wire [3:0]         sdram_mem_hprot;
+wire               sdram_mem_hmastlock;
+wire [W_DATA-1:0]  sdram_mem_hwdata;
+wire [W_DATA-1:0]  sdram_mem_hrdata;
+
 wire               bridge_hready_resp;
 wire               bridge_hready;
 wire               bridge_hresp;
@@ -457,7 +482,7 @@ wire               gpio_pslverr;
 ahbl_splitter #(
 	.N_PORTS     (3),
 	.ADDR_MAP    (96'h40000000_20000000_00000000),
-	.ADDR_MASK   (96'he0000000_fc000000_e0000000)
+	.ADDR_MASK   (96'he0000000_f8000000_e0000000)
 ) splitter_u (
 	.clk             (clk),
 	.rst_n           (rst_n),
@@ -546,14 +571,15 @@ ahbl_to_apb apb_bridge_u (
 );
 
 apb_splitter #(
-	.N_SLAVES   (3),
-    //               APB offset       name     CPU Address
-    //           ------------------ --------- -------------
-    // Slave 2 =   0x8000             GPIO     0x40008000
-    // Slave 1 =        0x4000        UART     0x40004000
-    // Slave 0 =             0x0000   timer    0x40000000
-	.ADDR_MAP   (48'h8000_4000_0000),
-	.ADDR_MASK  (48'hc000_c000_c000)
+	.N_SLAVES   (4),
+    //                    APB offset       name     CPU Address
+    //                ------------------ --------- -------------
+    // Slave 3 = 0xC000                HDMI/video 0x4000C000
+    // Slave 2 =        0x8000         GPIO       0x40008000
+    // Slave 1 =             0x4000    UART       0x40004000
+    // Slave 0 =                  0x0000 timer     0x40000000
+	.ADDR_MAP   (64'hc000_8000_4000_0000),
+	.ADDR_MASK  (64'hc000_c000_c000_c000)
 ) inst_apb_splitter (
 	.apbs_paddr   (bridge_paddr),
 	.apbs_psel    (bridge_psel),
@@ -564,14 +590,14 @@ apb_splitter #(
 	.apbs_prdata  (bridge_prdata),
 	.apbs_pslverr (bridge_pslverr),
 
-	.apbm_paddr   ({gpio_paddr   , uart_paddr   , timer_paddr  }),
-	.apbm_psel    ({gpio_psel    , uart_psel    , timer_psel   }),
-	.apbm_penable ({gpio_penable , uart_penable , timer_penable}),
-	.apbm_pwrite  ({gpio_pwrite  , uart_pwrite  , timer_pwrite }),
-	.apbm_pwdata  ({gpio_pwdata  , uart_pwdata  , timer_pwdata }),
-	.apbm_pready  ({gpio_pready  , uart_pready  , timer_pready }),
-	.apbm_prdata  ({gpio_prdata  , uart_prdata  , timer_prdata }),
-	.apbm_pslverr ({gpio_pslverr , uart_pslverr , timer_pslverr})
+	.apbm_paddr   ({video_apb_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
+	.apbm_psel    ({video_apb_psel    , gpio_psel    , uart_psel    , timer_psel   }),
+	.apbm_penable ({video_apb_penable , gpio_penable , uart_penable , timer_penable}),
+	.apbm_pwrite  ({video_apb_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
+	.apbm_pwdata  ({video_apb_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
+	.apbm_pready  ({video_apb_pready  , gpio_pready  , uart_pready  , timer_pready }),
+	.apbm_prdata  ({video_apb_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
+	.apbm_pslverr ({video_apb_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
 	);
 
 // ----------------------------------------------------------------------------
@@ -603,65 +629,126 @@ ahb_sync_sram #(
 
 generate
 if (SDRAM_ENABLE) begin: sdram_enabled
-	ahb_sdram #(
-		.CLK_MHZ (CLK_MHZ)
-	) sdram_u (
-		.clk               (clk),
-		.rst_n             (rst_n),
+    // Cache normal Doom image, heap and IWAD accesses. Keep the physical
+    // first MiB, the uncached 0x24000000 diagnostic alias, and the four-MiB
+    // video aperture uncached. The alias reaches the same 64 MiB SDRAM because
+    // the physical controller uses address bits 25:1 and ignores address bit 26.
+    wire sdram_diagnostic_aperture =
+        (sdram_haddr & 32'hfff00000) == 32'h20000000;
+    wire sdram_diagnostic_alias =
+        (sdram_haddr & 32'hfc000000) == 32'h24000000;
+    wire sdram_video_aperture =
+        (sdram_haddr & 32'hffc00000) == 32'h23c00000;
+    wire sdram_access_cacheable =
+        !sdram_diagnostic_aperture &&
+        !sdram_diagnostic_alias &&
+        !sdram_video_aperture;
+    wire [3:0] sdram_cache_hprot = {
+        sdram_access_cacheable,
+        sdram_access_cacheable,
+        sdram_hprot[1:0]
+    };
 
-		.ahbls_hready_resp (sdram_hready_resp),
-		.ahbls_hready      (sdram_hready),
-		.ahbls_hresp       (sdram_hresp),
-		.ahbls_haddr       (sdram_haddr),
-		.ahbls_hwrite      (sdram_hwrite),
-		.ahbls_htrans      (sdram_htrans),
-		.ahbls_hsize       (sdram_hsize),
-		.ahbls_hburst      (sdram_hburst),
-		.ahbls_hprot       (sdram_hprot),
-		.ahbls_hmastlock   (sdram_hmastlock),
-		.ahbls_hwdata      (sdram_hwdata),
-		.ahbls_hrdata      (sdram_hrdata),
+    // 64 KiB, two-way unified cache with 32-byte lines. A single unified cache
+    // keeps freshly uploaded executable bytes coherent with instruction fetch
+    // without requiring a separate cache-maintenance mechanism.
+    ahb_cache_writeback #(
+        .N_WAYS (2),
+        .W_ADDR (W_ADDR),
+        .W_DATA (W_DATA),
+        .W_LINE        (256),
+        .DEPTH         (1024),
+        .TMEM_PRELOAD ("../soc/cache_tags_zero.hex")
+    ) sdram_cache_u (
+        .clk             (clk),
+        .rst_n           (rst_n),
 
-		.video_req_valid   (video_sdram_req_valid),
-		.video_req_ready   (video_sdram_req_ready),
-		.video_req_addr    (video_sdram_req_addr),
-		.video_rsp_valid   (video_sdram_rsp_valid),
-		.video_rsp_rdata   (video_sdram_rsp_rdata),
-		.video_init_done   (video_sdram_init_done),
+        .src_hready_resp (sdram_hready_resp),
+        .src_hready      (sdram_hready),
+        .src_hresp       (sdram_hresp),
+        .src_haddr       (sdram_haddr),
+        .src_hwrite      (sdram_hwrite),
+        .src_htrans      (sdram_htrans),
+        .src_hsize       (sdram_hsize),
+        .src_hburst      (sdram_hburst),
+        .src_hprot       (sdram_cache_hprot),
+        .src_hmastlock   (sdram_hmastlock),
+        .src_hwdata      (sdram_hwdata),
+        .src_hrdata      (sdram_hrdata),
 
-		.sdram_a           (sdram_a),
-		.sdram_ba          (sdram_ba),
-		.sdram_d           (sdram_d),
-		.sdram_dqm         (sdram_dqm),
-		.sdram_cke         (sdram_cke),
-		.sdram_csn         (sdram_csn),
-		.sdram_rasn        (sdram_rasn),
-		.sdram_casn        (sdram_casn),
-		.sdram_wen         (sdram_wen)
-	);
+        .dst_hready_resp (sdram_mem_hready_resp),
+        .dst_hready      (sdram_mem_hready),
+        .dst_hresp       (sdram_mem_hresp),
+        .dst_haddr       (sdram_mem_haddr),
+        .dst_hwrite      (sdram_mem_hwrite),
+        .dst_htrans      (sdram_mem_htrans),
+        .dst_hsize       (sdram_mem_hsize),
+        .dst_hburst      (sdram_mem_hburst),
+        .dst_hprot       (sdram_mem_hprot),
+        .dst_hmastlock   (sdram_mem_hmastlock),
+        .dst_hwdata      (sdram_mem_hwdata),
+        .dst_hrdata      (sdram_mem_hrdata)
+    );
+
+    ahb_sdram #(
+        .CLK_MHZ (CLK_MHZ)
+    ) sdram_u (
+        .clk               (clk),
+        .rst_n             (rst_n),
+
+        .ahbls_hready_resp (sdram_mem_hready_resp),
+        .ahbls_hready      (sdram_mem_hready),
+        .ahbls_hresp       (sdram_mem_hresp),
+        .ahbls_haddr       (sdram_mem_haddr),
+        .ahbls_hwrite      (sdram_mem_hwrite),
+        .ahbls_htrans      (sdram_mem_htrans),
+        .ahbls_hsize       (sdram_mem_hsize),
+        .ahbls_hburst      (sdram_mem_hburst),
+        .ahbls_hprot       (sdram_mem_hprot),
+        .ahbls_hmastlock   (sdram_mem_hmastlock),
+        .ahbls_hwdata      (sdram_mem_hwdata),
+        .ahbls_hrdata      (sdram_mem_hrdata),
+
+        .video_req_valid   (video_sdram_req_valid),
+        .video_req_ready   (video_sdram_req_ready),
+        .video_req_addr    (video_sdram_req_addr),
+        .video_rsp_valid   (video_sdram_rsp_valid),
+        .video_rsp_rdata   (video_sdram_rsp_rdata),
+        .video_init_done   (video_sdram_init_done),
+
+        .sdram_a           (sdram_a),
+        .sdram_ba          (sdram_ba),
+        .sdram_d           (sdram_d),
+        .sdram_dqm         (sdram_dqm),
+        .sdram_cke         (sdram_cke),
+        .sdram_csn         (sdram_csn),
+        .sdram_rasn        (sdram_rasn),
+        .sdram_casn        (sdram_casn),
+        .sdram_wen         (sdram_wen)
+    );
 end else begin: sdram_disabled
-	assign sdram_hready_resp = 1'b1;
-	assign sdram_hresp = 1'b0;
-	assign sdram_hrdata = {W_DATA{1'b0}};
+    assign sdram_hready_resp = 1'b1;
+    assign sdram_hresp = 1'b0;
+    assign sdram_hrdata = {W_DATA{1'b0}};
 
-	assign sdram_a = 13'd0;
-	assign sdram_ba = 2'b00;
-	assign sdram_d = 16'hzzzz;
-	assign sdram_dqm = 2'b11;
-	assign sdram_cke = 1'b0;
-	assign sdram_csn = 1'b1;
-	assign sdram_rasn = 1'b1;
-	assign sdram_casn = 1'b1;
-	assign sdram_wen = 1'b1;
+    assign sdram_a = 13'd0;
+    assign sdram_ba = 2'b00;
+    assign sdram_d = 16'hzzzz;
+    assign sdram_dqm = 2'b11;
+    assign sdram_cke = 1'b0;
+    assign sdram_csn = 1'b1;
+    assign sdram_rasn = 1'b1;
+    assign sdram_casn = 1'b1;
+    assign sdram_wen = 1'b1;
 
-	assign video_sdram_req_ready = 1'b0;
-	assign video_sdram_rsp_valid = 1'b0;
-	assign video_sdram_rsp_rdata = 16'd0;
-	assign video_sdram_init_done = 1'b0;
+    assign video_sdram_req_ready = 1'b0;
+    assign video_sdram_rsp_valid = 1'b0;
+    assign video_sdram_rsp_rdata = 16'd0;
+    assign video_sdram_init_done = 1'b0;
 
-	wire unused_sdram_hready = sdram_hready;
-	wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
-		video_sdram_req_addr};
+    wire unused_sdram_hready = sdram_hready;
+    wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
+        video_sdram_req_addr};
 end
 endgenerate
 

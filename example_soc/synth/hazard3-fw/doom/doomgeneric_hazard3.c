@@ -4,21 +4,25 @@
 #include "doomgeneric_hazard3.h"
 #include "doomkeys.h"
 #include "hazard3_platform.h"
+#include "hazard3_video.h"
 #include "i_video.h"
 
 #ifndef CMAP256
 #error "The Hazard3 HDMI path requires Doomgeneric CMAP256 output"
 #endif
 
-#define HAZARD3_VIDEO_WIDTH  320u
-#define HAZARD3_VIDEO_HEIGHT 200u
-#define HAZARD3_VIDEO_BYTES  (HAZARD3_VIDEO_WIDTH * HAZARD3_VIDEO_HEIGHT)
+#define HAZARD3_VIDEO_WORDS (HAZARD3_VIDEO_FRAMEBUFFER_BYTES / 4u)
+#define HAZARD3_VIDEO_PRESENT_TIMEOUT_MS 1000u
 
 static uint32_t draw_frame_count;
-static volatile uint32_t* video_framebuffer;
-static uint8_t rgb332_palette[256];
-static int rgb332_palette_valid;
+static uint32_t back_buffer_index;
+static uint32_t palette_bank_valid_mask;
 static int video_available;
+static int video_failure_reported;
+static uint32_t copy_cycles_total;
+static uint32_t present_cycles_total;
+static uint32_t last_copy_cycles;
+static uint32_t last_present_cycles;
 
 // UART input is converted into one-Doom-tic key pulses. A key-down event is
 // emitted in the tick that receives a character, and the matching key-up is
@@ -30,6 +34,13 @@ static unsigned char key_release_code;
 static int stop_input_scan;
 static int exit_requested;
 
+static uint32_t read_cycle_counter(void)
+{
+    uint32_t cycles;
+    __asm__ volatile ("csrr %0, cycle" : "=r" (cycles));
+    return cycles;
+}
+
 static uint8_t color_to_rgb332(const struct color* color)
 {
     return (uint8_t)((color->r & 0xe0u)
@@ -37,52 +48,152 @@ static uint8_t color_to_rgb332(const struct color* color)
         | (color->b >> 6));
 }
 
+static void upload_palette(uint32_t buffer_index)
+{
+    HAZARD3_VIDEO_PALETTE_INDEX = (buffer_index & 1u) << 8;
+    for (uint32_t i = 0u; i < 256u; ++i) {
+        HAZARD3_VIDEO_PALETTE_DATA = color_to_rgb332(&colors[i]);
+    }
+    palette_bank_valid_mask |= 1u << buffer_index;
+}
+
+static int wait_for_video_idle(void)
+{
+    uint32_t start_ticks = hazard3_ticks_ms();
+
+    while ((HAZARD3_VIDEO_STATUS &
+        HAZARD3_VIDEO_STATUS_PRESENT_PENDING) != 0u) {
+        if (hazard3_ticks_ms() - start_ticks >=
+            HAZARD3_VIDEO_PRESENT_TIMEOUT_MS) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int wait_for_dma_complete(uint32_t present_count_before)
+{
+    uint32_t start_ticks = hazard3_ticks_ms();
+
+    for (;;) {
+        uint32_t status = HAZARD3_VIDEO_STATUS;
+        if (HAZARD3_VIDEO_PRESENT_COUNT != present_count_before &&
+            (status & HAZARD3_VIDEO_STATUS_DMA_BUSY) == 0u) {
+            return 1;
+        }
+
+        if (hazard3_ticks_ms() - start_ticks >=
+            HAZARD3_VIDEO_PRESENT_TIMEOUT_MS) {
+            return 0;
+        }
+    }
+}
+
 void DG_Init(void)
 {
     uint32_t video_base = hazard3_video_base();
     uint32_t video_limit = hazard3_video_limit();
+    uint32_t status = HAZARD3_VIDEO_STATUS;
+    uint32_t front_buffer =
+        (status & HAZARD3_VIDEO_STATUS_FRONT_BUFFER) != 0u ? 1u : 0u;
 
     draw_frame_count = 0u;
-    rgb332_palette_valid = 0;
-    video_framebuffer = (volatile uint32_t*)(uintptr_t)video_base;
-    video_available = video_base != 0u && video_limit >= video_base
-        && video_limit - video_base >= HAZARD3_VIDEO_BYTES;
+    back_buffer_index = front_buffer ^ 1u;
+    palette_bank_valid_mask = 0u;
+    video_failure_reported = 0;
+    copy_cycles_total = 0u;
+    present_cycles_total = 0u;
+    last_copy_cycles = 0u;
+    last_present_cycles = 0u;
+    video_available = video_base == HAZARD3_VIDEO_FRAMEBUFFER0_BASE
+        && video_limit >= video_base
+        && video_limit - video_base >= 2u * HAZARD3_VIDEO_FRAMEBUFFER_BYTES
+        && (status & HAZARD3_VIDEO_STATUS_SDRAM_READY) != 0u;
 
-    hazard3_console_puts("Doom platform: Hazard3 HDMI RGB332 interface initialized\r\n");
+    hazard3_console_puts(
+        "Doom platform: cached indexed renderer + block-RAM HDMI initialized\r\n");
     if (!video_available) {
-        hazard3_console_puts("Doom HDMI framebuffer range: FAIL\r\n");
+        hazard3_console_puts("Doom HDMI performance interface: FAIL\r\n");
     }
 }
 
 void DG_DrawFrame(void)
 {
-    const uint8_t* source = (const uint8_t*)DG_ScreenBuffer;
+    const uint32_t* source_words = (const uint32_t*)DG_ScreenBuffer;
 
-    if (video_available && source != (const uint8_t*)0) {
-        if (!rgb332_palette_valid || palette_changed) {
-            for (uint32_t i = 0u; i < 256u; ++i) {
-                rgb332_palette[i] = color_to_rgb332(&colors[i]);
-            }
-            rgb332_palette_valid = 1;
-            palette_changed = false;
+    if (video_available && source_words != (const uint32_t*)0) {
+        volatile uint32_t* destination_words =
+            hazard3_video_framebuffer_words(back_buffer_index);
+        uint32_t present_count_before;
+        uint32_t copy_start;
+        uint32_t present_start;
+
+        // Copy into the staging buffer first. The previous frame's DMA has
+        // already finished before DG_DrawFrame returns, so this alternate
+        // staging buffer is safe even if the prior block-RAM swap is waiting
+        // for vertical blank. This overlaps rendering and the 64 KiB copy with
+        // most of the previous frame's vblank wait.
+        copy_start = read_cycle_counter();
+        for (uint32_t i = 0u; i < HAZARD3_VIDEO_WORDS; i += 8u) {
+            destination_words[i + 0u] = source_words[i + 0u];
+            destination_words[i + 1u] = source_words[i + 1u];
+            destination_words[i + 2u] = source_words[i + 2u];
+            destination_words[i + 3u] = source_words[i + 3u];
+            destination_words[i + 4u] = source_words[i + 4u];
+            destination_words[i + 5u] = source_words[i + 5u];
+            destination_words[i + 6u] = source_words[i + 6u];
+            destination_words[i + 7u] = source_words[i + 7u];
         }
-
-        for (uint32_t i = 0u; i < HAZARD3_VIDEO_BYTES; i += 4u) {
-            uint32_t packed = (uint32_t)rgb332_palette[source[i]]
-                | ((uint32_t)rgb332_palette[source[i + 1u]] << 8)
-                | ((uint32_t)rgb332_palette[source[i + 2u]] << 16)
-                | ((uint32_t)rgb332_palette[source[i + 3u]] << 24);
-            video_framebuffer[i / 4u] = packed;
-        }
-
         hazard3_memory_barrier();
+        last_copy_cycles = read_cycle_counter() - copy_start;
+        copy_cycles_total += last_copy_cycles;
+
+        present_start = read_cycle_counter();
+        if (!wait_for_video_idle()) {
+            video_available = 0;
+        }
+
+        // Palette RAM is indexed by staging-buffer number. Do not overwrite a
+        // bank until the preceding swap has completed, because that bank may
+        // still color the currently visible block-RAM frame.
+        if (video_available) {
+            if (palette_changed) {
+                palette_bank_valid_mask = 0u;
+                palette_changed = false;
+            }
+            if ((palette_bank_valid_mask & (1u << back_buffer_index)) == 0u) {
+                upload_palette(back_buffer_index);
+            }
+
+            present_count_before = HAZARD3_VIDEO_PRESENT_COUNT;
+            HAZARD3_VIDEO_CONTROL = HAZARD3_VIDEO_CONTROL_INDEXED
+                | (back_buffer_index != 0u
+                    ? HAZARD3_VIDEO_CONTROL_BUFFER1 : 0u)
+                | HAZARD3_VIDEO_CONTROL_PRESENT;
+
+            // Return as soon as SDRAM-to-block-RAM DMA is complete. The swap
+            // itself can finish in parallel with the next Doom render.
+            if (wait_for_dma_complete(present_count_before)) {
+                last_present_cycles = read_cycle_counter() - present_start;
+                present_cycles_total += last_present_cycles;
+                back_buffer_index ^= 1u;
+            } else {
+                video_available = 0;
+            }
+        }
+
+        if (!video_available && !video_failure_reported) {
+            hazard3_console_puts(
+                "Doom HDMI present timeout; continuing headless\r\n");
+            video_failure_reported = 1;
+        }
     }
 
     ++draw_frame_count;
     if (draw_frame_count == 1u) {
         hazard3_console_puts(
             video_available
-                ? "Doom renderer: first HDMI framebuffer completed\r\n"
+                ? "Doom renderer: first indexed block-RAM frame queued\r\n"
                 : "Doom renderer: first headless frame completed\r\n");
     }
 }
@@ -231,6 +342,26 @@ void DG_SetWindowTitle(const char* title)
 uint32_t hazard3_doom_draw_frame_count(void)
 {
     return draw_frame_count;
+}
+
+uint32_t hazard3_doom_last_copy_cycles(void)
+{
+    return last_copy_cycles;
+}
+
+uint32_t hazard3_doom_last_present_cycles(void)
+{
+    return last_present_cycles;
+}
+
+uint32_t hazard3_doom_copy_cycles_total(void)
+{
+    return copy_cycles_total;
+}
+
+uint32_t hazard3_doom_present_cycles_total(void)
+{
+    return present_cycles_total;
 }
 
 void hazard3_doom_input_reset(void)

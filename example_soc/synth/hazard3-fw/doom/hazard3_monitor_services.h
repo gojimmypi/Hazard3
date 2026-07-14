@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define HAZARD3_MONITOR_ABI_VERSION 2u
+#define HAZARD3_MONITOR_ABI_VERSION 3u
 
 typedef struct hazard3_monitor_services {
     uint32_t abi_version;
@@ -27,6 +27,8 @@ typedef struct hazard3_monitor_services {
     uint32_t wad_limit;
     uint32_t wad_bytes;
     const char* wad_name;
+    uint32_t screen_base;
+    uint32_t screen_bytes;
 } hazard3_monitor_services_t;
 
 #endif

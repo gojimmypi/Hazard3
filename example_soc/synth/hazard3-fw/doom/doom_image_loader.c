@@ -6,6 +6,7 @@
 #include "doom_wad_loader.h"
 #include "hazard3_monitor_services.h"
 #include "hazard3_platform.h"
+#include "hazard3_video.h"
 
 #define LOADER_BYTE_TIMEOUT_MS 5000u
 
@@ -247,7 +248,9 @@ int doom_image_loader_launch(void)
         .wad_base = HAZARD3_DOOM_WAD_BASE,
         .wad_limit = HAZARD3_DOOM_WAD_LIMIT,
         .wad_bytes = doom_wad_loader_bytes(),
-        .wad_name = doom_wad_loader_name()
+        .wad_name = doom_wad_loader_name(),
+        .screen_base = HAZARD3_DOOM_SCREENBUFFER_BASE,
+        .screen_bytes = HAZARD3_DOOM_SCREENBUFFER_BYTES
     };
     doom_entry_fn_t entry;
     uint32_t start_ticks;

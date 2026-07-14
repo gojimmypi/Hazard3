@@ -92,6 +92,15 @@ wire        video_sdram_rsp_valid;
 wire [15:0] video_sdram_rsp_rdata;
 wire        video_sdram_init_done;
 
+wire        video_apb_psel;
+wire        video_apb_penable;
+wire        video_apb_pwrite;
+wire [15:0] video_apb_paddr;
+wire [31:0] video_apb_pwdata;
+wire [31:0] video_apb_prdata;
+wire        video_apb_pready;
+wire        video_apb_pslverr;
+
 ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
 	.clk_sys          (clk_sys),
 	.rst_n_sys        (rst_n_sys),
@@ -106,6 +115,15 @@ ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
 	.sdram_rsp_valid  (video_sdram_rsp_valid),
 	.sdram_rsp_rdata  (video_sdram_rsp_rdata),
 	.sdram_init_done  (video_sdram_init_done),
+
+	.apbs_psel        (video_apb_psel),
+	.apbs_penable     (video_apb_penable),
+	.apbs_pwrite      (video_apb_pwrite),
+	.apbs_paddr       (video_apb_paddr),
+	.apbs_pwdata      (video_apb_pwdata),
+	.apbs_prdata      (video_apb_prdata),
+	.apbs_pready      (video_apb_pready),
+	.apbs_pslverr     (video_apb_pslverr),
 
 	.gpdi_dp          (gpdi_dp)
 );
@@ -129,12 +147,12 @@ example_soc #(
 	.SDRAM_ENABLE       (1),
 
 	.EXTENSION_M         (1),
-	.EXTENSION_A         (1),
-	.EXTENSION_C         (0),
-	.EXTENSION_ZBA       (0),
-	.EXTENSION_ZBB       (0),
+	.EXTENSION_A         (0),
+	.EXTENSION_C         (1),
+	.EXTENSION_ZBA       (1),
+	.EXTENSION_ZBB       (1),
 	.EXTENSION_ZBC       (0),
-	.EXTENSION_ZBS       (0),
+	.EXTENSION_ZBS       (1),
 	.EXTENSION_ZBKB      (0),
 	.EXTENSION_ZIFENCEI  (1),
 	.EXTENSION_XH3BEXTM  (0),
@@ -142,9 +160,9 @@ example_soc #(
 	.EXTENSION_XH3POWER  (0),
 	.CSR_COUNTER         (1),
 	.MUL_FAST            (1),
-	.MUL_FASTER          (0),
-	.MULH_FAST           (0),
-	.MULDIV_UNROLL       (1),
+	.MUL_FASTER          (1),
+	.MULH_FAST           (1),
+	.MULDIV_UNROLL       (4),
 	.FAST_BRANCHCMP      (1),
 	.BRANCH_PREDICTOR    (1)
 ) soc_u (
@@ -178,7 +196,16 @@ example_soc #(
 	.video_sdram_req_addr  (video_sdram_req_addr),
 	.video_sdram_rsp_valid (video_sdram_rsp_valid),
 	.video_sdram_rsp_rdata (video_sdram_rsp_rdata),
-	.video_sdram_init_done (video_sdram_init_done)
+	.video_sdram_init_done (video_sdram_init_done),
+
+	.video_apb_psel        (video_apb_psel),
+	.video_apb_penable     (video_apb_penable),
+	.video_apb_pwrite      (video_apb_pwrite),
+	.video_apb_paddr       (video_apb_paddr),
+	.video_apb_pwdata      (video_apb_pwdata),
+	.video_apb_prdata      (video_apb_prdata),
+	.video_apb_pready      (video_apb_pready),
+	.video_apb_pslverr     (video_apb_pslverr)
 );
 
 endmodule

@@ -7,4 +7,10 @@
 /example_soc/**/*.elf
 /example_soc/**/*.map
 
+# Temporary examples and backups
 /example_soc/synth/hazard3-fw1
+/*.zip
+
+# Copyrighted Doom game data supplied by the user
+*.wad
+*.WAD

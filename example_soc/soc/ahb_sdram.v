@@ -31,7 +31,7 @@ module ahb_sdram #(
     input  wire [W_DATA-1:0] ahbls_hwdata,
     output wire [W_DATA-1:0] ahbls_hrdata,
 
-    // Read-only native SDRAM port for video scanout. Video requests are
+    // Read-only native SDRAM port for video frame presentation. Requests are
     // 16-bit halfword addresses within the 64 MiB SDRAM window.
     input  wire              video_req_valid,
     output wire              video_req_ready,
@@ -76,7 +76,13 @@ reg [2:0] saved_hsize;
 wire ahb_controller_req_valid = state == ST_WRITE_REQUEST ||
     state == ST_READ_REQUEST;
 wire ahb_controller_req_write = state == ST_WRITE_REQUEST;
-wire select_video_request = video_req_valid;
+// Round-robin arbitration prevents the one-frame presentation DMA from holding
+// the controller continuously while the CPU is waiting on a cache-line fill.
+// Each client receives at least every other accepted request while both are
+// active.
+reg last_grant_video;
+wire select_video_request = video_req_valid &&
+    (!ahb_controller_req_valid || !last_grant_video);
 wire controller_req_valid = select_video_request || ahb_controller_req_valid;
 wire controller_req_write = select_video_request ? 1'b0 : ahb_controller_req_write;
 wire [24:0] controller_req_addr = select_video_request ?
@@ -132,10 +138,13 @@ ulx3s_sdram_controller #(
 );
 
 always @ (posedge clk or negedge rst_n) begin
-    if (!rst_n)
+    if (!rst_n) begin
         response_owner_video <= 1'b0;
-    else if (controller_request_accept)
+        last_grant_video <= 1'b0;
+    end else if (controller_request_accept) begin
         response_owner_video <= select_video_request;
+        last_grant_video <= select_video_request;
+    end
 end
 
 always @ (posedge clk or negedge rst_n) begin
@@ -251,8 +260,8 @@ always @ (posedge clk or negedge rst_n) begin
     end
 end
 
-// These AHB attributes are intentionally unused by this first-stage,
-// single-beat diagnostic controller.
+// The adapter accepts one AHB beat at a time. Burst attributes are therefore
+// informational; cache-line bursts arrive as consecutive accepted beats.
 wire unused = &{1'b0, ahbls_hburst, ahbls_hprot, ahbls_hmastlock,
     controller_init_done};
 

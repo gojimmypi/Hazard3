@@ -5,6 +5,9 @@
 #include "doomgeneric_hazard3.h"
 #include "hazard3_monitor_services.h"
 #include "hazard3_platform.h"
+#include "hazard3_video.h"
+#include "m_menu.h"
+#include "r_main.h"
 
 static char argument_program[] = "doom";
 static char argument_iwad[] = "-iwad";
@@ -40,7 +43,9 @@ static int services_are_valid(const hazard3_monitor_services_t* services)
         services->heap_limit == HAZARD3_DOOM_HEAP_LIMIT &&
         services->video_base == HAZARD3_VIDEO_BASE &&
         services->video_limit == HAZARD3_VIDEO_LIMIT &&
-        services->video_limit - services->video_base >= 320u * 200u &&
+        services->video_limit - services->video_base >= 2u * 320u * 200u &&
+        services->screen_base == HAZARD3_DOOM_SCREENBUFFER_BASE &&
+        services->screen_bytes >= HAZARD3_DOOM_SCREENBUFFER_BYTES &&
         services->wad_base == HAZARD3_DOOM_WAD_BASE &&
         services->wad_limit == HAZARD3_DOOM_WAD_LIMIT &&
         services->wad_bytes >= 12u &&
@@ -99,6 +104,15 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
         (int)(sizeof(doom_arguments) / sizeof(doom_arguments[0])),
         doom_arguments);
 
+    // Low-detail rendering draws one horizontal sample for each two display
+    // pixels. Keep the normal largest status-bar view while cutting the most
+    // expensive wall, sprite and span loops approximately in half.
+    screenblocks = 8;
+    detailLevel = 1;
+    R_SetViewSize(screenblocks, detailLevel);
+    hazard3_console_puts(
+        "  performance mode: on-chip screen, 64 KiB cache, low detail, view size 8\r\n");
+
     frame_count = hazard3_doom_draw_frame_count();
     if (frame_count == 0u) {
         hazard3_console_puts("Doom HDMI framebuffer milestone: FAIL\r\n");
@@ -128,10 +142,18 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     hazard3_console_put_hex32(interactive_elapsed);
     hazard3_console_puts(" total_frames=");
     hazard3_console_put_hex32(frame_count);
+    hazard3_console_puts("\r\n  last_copy_cycles=");
+    hazard3_console_put_hex32(hazard3_doom_last_copy_cycles());
+    hazard3_console_puts(" last_present_cycles=");
+    hazard3_console_put_hex32(hazard3_doom_last_present_cycles());
+    hazard3_console_puts("\r\n  copy_cycles_total=");
+    hazard3_console_put_hex32(hazard3_doom_copy_cycles_total());
+    hazard3_console_puts(" present_cycles_total=");
+    hazard3_console_put_hex32(hazard3_doom_present_cycles_total());
     hazard3_console_puts("\r\n  heap_used=");
     hazard3_console_put_hex32(hazard3_heap_used());
     hazard3_console_puts(" heap_remaining=");
     hazard3_console_put_hex32(hazard3_heap_remaining());
-    hazard3_console_puts("\r\nDoom UART-control milestone: PASS\r\n");
+    hazard3_console_puts("\r\nDoom playable-performance milestone: PASS\r\n");
     return 0;
 }

@@ -92,6 +92,18 @@ uint32_t hazard3_video_limit(void)
         monitor_services->video_limit : 0u;
 }
 
+uint32_t hazard3_screen_base(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->screen_base : 0u;
+}
+
+uint32_t hazard3_screen_bytes(void)
+{
+    return monitor_services != (const hazard3_monitor_services_t*)0 ?
+        monitor_services->screen_bytes : 0u;
+}
+
 uint32_t hazard3_wad_base(void)
 {
     return monitor_services != (const hazard3_monitor_services_t*)0 ?

@@ -1,9 +1,10 @@
 #!/bin/bash
 
 /opt/riscv/bin/riscv32-unknown-elf-gcc \
-    -march=rv32ima_zicsr_zifencei \
+    -march=rv32imc_zicsr_zifencei_zba_zbb_zbs \
     -mabi=ilp32 \
-    -Os \
+    -O2 \
+    -fomit-frame-pointer \
     -g3 \
     -ffreestanding \
     -fno-builtin \

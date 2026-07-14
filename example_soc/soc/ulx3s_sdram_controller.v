@@ -3,15 +3,15 @@
 |                     SPDX-License-Identifier: Apache-2.0                     |
 \*****************************************************************************/
 
-// Conservative single-access SDR SDRAM controller for the 16-bit SDRAM on
-// ULX3S. The controller runs from the 50 MHz system clock. The SDRAM clock is
-// generated at the board top level with a half-cycle phase offset so commands
-// launched on clk have setup time before the SDRAM rising clock edge.
+// Open-page SDR SDRAM controller for the 16-bit SDRAM on ULX3S. The
+// controller runs from the 50 MHz system clock. The SDRAM clock is generated
+// at the board top level with a half-cycle phase offset so commands launched
+// on clk have setup time before the SDRAM rising edge.
 //
-// All accesses use burst length 1 and auto-precharge. This is intentionally a
-// bring-up controller: it prioritizes simple, observable behavior over peak
-// bandwidth. It supports one outstanding 16-bit request and performs periodic
-// refresh automatically.
+// One request is outstanding at a time, but rows remain open after accesses.
+// Sequential cache-line fills, WAD reads and framebuffer writes therefore
+// avoid an ACTIVATE and PRECHARGE for every halfword. Refresh precharges every
+// bank and safely invalidates the open-row state.
 
 `default_nettype none
 
@@ -48,6 +48,7 @@ module ulx3s_sdram_controller #(
 );
 
 localparam HADDR_WIDTH = BANK_WIDTH + ROW_WIDTH + COL_WIDTH;
+localparam BANK_COUNT = 1 << BANK_WIDTH;
 localparam integer STARTUP_CYCLES = CLK_MHZ * STARTUP_US;
 localparam integer REFRESH_CYCLES = CLK_MHZ * REFRESH_INTERVAL_US;
 
@@ -70,24 +71,28 @@ localparam [5:0]
     ST_INIT_TMRD_1        = 6'd15,
     ST_INIT_TMRD_2        = 6'd16,
     ST_IDLE               = 6'd17,
-    ST_ACTIVATE           = 6'd18,
-    ST_TRCD               = 6'd19,
-    ST_READ_COMMAND       = 6'd20,
-    ST_READ_WAIT_1        = 6'd21,
-    ST_READ_WAIT_2        = 6'd22,
-    ST_READ_RECOVERY      = 6'd23,
-    ST_WRITE_COMMAND      = 6'd24,
-    ST_WRITE_RECOVERY_1   = 6'd25,
-    ST_WRITE_RECOVERY_2   = 6'd26,
-    ST_WRITE_RECOVERY_3   = 6'd27,
-    ST_REFRESH_PRECHARGE  = 6'd28,
-    ST_REFRESH_TRP_1      = 6'd29,
-    ST_REFRESH_TRP_2      = 6'd30,
-    ST_REFRESH_COMMAND    = 6'd31,
-    ST_REFRESH_TRFC_1     = 6'd32,
-    ST_REFRESH_TRFC_2     = 6'd33,
-    ST_REFRESH_TRFC_3     = 6'd34,
-    ST_REFRESH_TRFC_4     = 6'd35;
+    ST_BANK_PRECHARGE     = 6'd18,
+    ST_BANK_TRP_1         = 6'd19,
+    ST_BANK_TRP_2         = 6'd20,
+    ST_ACTIVATE           = 6'd21,
+    ST_TRCD_1             = 6'd22,
+    ST_TRCD_2             = 6'd23,
+    ST_READ_COMMAND       = 6'd24,
+    ST_READ_WAIT_1        = 6'd25,
+    ST_READ_WAIT_2        = 6'd26,
+    ST_READ_RECOVERY      = 6'd27,
+    ST_WRITE_COMMAND      = 6'd28,
+    ST_WRITE_RECOVERY_1   = 6'd29,
+    ST_WRITE_RECOVERY_2   = 6'd30,
+    ST_WRITE_RECOVERY_3   = 6'd31,
+    ST_REFRESH_PRECHARGE  = 6'd32,
+    ST_REFRESH_TRP_1      = 6'd33,
+    ST_REFRESH_TRP_2      = 6'd34,
+    ST_REFRESH_COMMAND    = 6'd35,
+    ST_REFRESH_TRFC_1     = 6'd36,
+    ST_REFRESH_TRFC_2     = 6'd37,
+    ST_REFRESH_TRFC_3     = 6'd38,
+    ST_REFRESH_TRFC_4     = 6'd39;
 
 reg [5:0] state;
 reg [31:0] startup_counter;
@@ -96,9 +101,18 @@ reg [HADDR_WIDTH-1:0] request_addr;
 reg request_write;
 reg [15:0] request_wdata;
 reg [1:0] request_wmask;
+reg [BANK_COUNT-1:0] bank_open;
+reg [ROW_WIDTH-1:0] open_row [0:BANK_COUNT-1];
 reg dq_output_enable;
 reg [15:0] dq_output;
 
+wire [BANK_WIDTH-1:0] input_bank =
+    req_addr[HADDR_WIDTH-1 -: BANK_WIDTH];
+wire [ROW_WIDTH-1:0] input_row = req_addr[COL_WIDTH +: ROW_WIDTH];
+wire [BANK_WIDTH-1:0] request_bank =
+    request_addr[HADDR_WIDTH-1 -: BANK_WIDTH];
+wire [ROW_WIDTH-1:0] request_row =
+    request_addr[COL_WIDTH +: ROW_WIDTH];
 wire refresh_due = refresh_counter >= REFRESH_CYCLES - 1;
 wire request_accept = req_valid && req_ready;
 
@@ -106,6 +120,7 @@ assign req_ready = init_done && state == ST_IDLE && !refresh_due;
 assign sdram_cke = 1'b1;
 assign sdram_d = dq_output_enable ? dq_output : 16'hzzzz;
 
+integer bank_index;
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         state <= ST_INIT_WAIT;
@@ -118,6 +133,9 @@ always @ (posedge clk or negedge rst_n) begin
         rsp_valid <= 1'b0;
         rsp_rdata <= 16'd0;
         init_done <= 1'b0;
+        bank_open <= {BANK_COUNT{1'b0}};
+        for (bank_index = 0; bank_index < BANK_COUNT; bank_index = bank_index + 1)
+            open_row[bank_index] <= {ROW_WIDTH{1'b0}};
     end else begin
         rsp_valid <= 1'b0;
 
@@ -133,14 +151,16 @@ always @ (posedge clk or negedge rst_n) begin
 
         case (state)
         ST_INIT_WAIT: begin
-            if (startup_counter >= STARTUP_CYCLES - 1) begin
+            if (startup_counter >= STARTUP_CYCLES - 1)
                 state <= ST_INIT_PRECHARGE;
-            end else begin
+            else
                 startup_counter <= startup_counter + 1'b1;
-            end
         end
 
-        ST_INIT_PRECHARGE: state <= ST_INIT_TRP_1;
+        ST_INIT_PRECHARGE: begin
+            bank_open <= {BANK_COUNT{1'b0}};
+            state <= ST_INIT_TRP_1;
+        end
         ST_INIT_TRP_1: state <= ST_INIT_TRP_2;
         ST_INIT_TRP_2: state <= ST_INIT_REFRESH_1;
         ST_INIT_REFRESH_1: state <= ST_INIT_TRFC1_1;
@@ -168,44 +188,54 @@ always @ (posedge clk or negedge rst_n) begin
                 request_write <= req_write;
                 request_wdata <= req_wdata;
                 request_wmask <= req_wmask;
-                state <= ST_ACTIVATE;
+
+                if (bank_open[input_bank]) begin
+                    if (open_row[input_bank] == input_row)
+                        state <= req_write ? ST_WRITE_COMMAND : ST_READ_COMMAND;
+                    else
+                        state <= ST_BANK_PRECHARGE;
+                end else begin
+                    state <= ST_ACTIVATE;
+                end
             end
         end
 
-        ST_ACTIVATE: state <= ST_TRCD;
-
-        ST_TRCD: begin
-            if (request_write) begin
-                state <= ST_WRITE_COMMAND;
-            end else begin
-                state <= ST_READ_COMMAND;
-            end
+        ST_BANK_PRECHARGE: begin
+            bank_open[request_bank] <= 1'b0;
+            state <= ST_BANK_TRP_1;
         end
+        ST_BANK_TRP_1: state <= ST_BANK_TRP_2;
+        ST_BANK_TRP_2: state <= ST_ACTIVATE;
+
+        ST_ACTIVATE: begin
+            bank_open[request_bank] <= 1'b1;
+            open_row[request_bank] <= request_row;
+            state <= ST_TRCD_1;
+        end
+        ST_TRCD_1: state <= ST_TRCD_2;
+        ST_TRCD_2: state <= request_write ? ST_WRITE_COMMAND : ST_READ_COMMAND;
 
         ST_READ_COMMAND: state <= ST_READ_WAIT_1;
         ST_READ_WAIT_1: state <= ST_READ_WAIT_2;
-
-        // CAS latency is two SDRAM clock cycles. The SDRAM rising clock edge
-        // occurs on the falling edge of clk, so sampling here on the following
-        // rising edge of clk places the sample in the middle of the data eye.
         ST_READ_WAIT_2: begin
             rsp_rdata <= sdram_d;
             rsp_valid <= 1'b1;
             state <= ST_READ_RECOVERY;
         end
-
         ST_READ_RECOVERY: state <= ST_IDLE;
 
         ST_WRITE_COMMAND: state <= ST_WRITE_RECOVERY_1;
         ST_WRITE_RECOVERY_1: state <= ST_WRITE_RECOVERY_2;
         ST_WRITE_RECOVERY_2: state <= ST_WRITE_RECOVERY_3;
-
         ST_WRITE_RECOVERY_3: begin
             rsp_valid <= 1'b1;
             state <= ST_IDLE;
         end
 
-        ST_REFRESH_PRECHARGE: state <= ST_REFRESH_TRP_1;
+        ST_REFRESH_PRECHARGE: begin
+            bank_open <= {BANK_COUNT{1'b0}};
+            state <= ST_REFRESH_TRP_1;
+        end
         ST_REFRESH_TRP_1: state <= ST_REFRESH_TRP_2;
         ST_REFRESH_TRP_2: state <= ST_REFRESH_COMMAND;
         ST_REFRESH_COMMAND: state <= ST_REFRESH_TRFC_1;
@@ -240,10 +270,17 @@ always @ (*) begin
         sdram_a[10] = 1'b1;
     end
 
+    ST_BANK_PRECHARGE: begin
+        // PRECHARGE selected bank: A10 low.
+        sdram_rasn = 1'b0;
+        sdram_wen = 1'b0;
+        sdram_ba = request_bank;
+        sdram_a[10] = 1'b0;
+    end
+
     ST_INIT_REFRESH_1,
     ST_INIT_REFRESH_2,
     ST_REFRESH_COMMAND: begin
-        // AUTO REFRESH.
         sdram_rasn = 1'b0;
         sdram_casn = 1'b0;
     end
@@ -259,14 +296,15 @@ always @ (*) begin
 
     ST_ACTIVATE: begin
         sdram_rasn = 1'b0;
-        sdram_ba = request_addr[HADDR_WIDTH-1 -: BANK_WIDTH];
-        sdram_a = request_addr[COL_WIDTH +: ROW_WIDTH];
+        sdram_ba = request_bank;
+        sdram_a = request_row;
     end
 
     ST_READ_COMMAND: begin
         sdram_casn = 1'b0;
-        sdram_ba = request_addr[HADDR_WIDTH-1 -: BANK_WIDTH];
-        sdram_a = {{(ROW_WIDTH-COL_WIDTH-1){1'b0}}, 1'b1,
+        sdram_ba = request_bank;
+        // A10 remains low: keep the row open.
+        sdram_a = {{(ROW_WIDTH-COL_WIDTH-1){1'b0}}, 1'b0,
             request_addr[COL_WIDTH-1:0]};
         sdram_dqm = 2'b00;
     end
@@ -274,8 +312,9 @@ always @ (*) begin
     ST_WRITE_COMMAND: begin
         sdram_casn = 1'b0;
         sdram_wen = 1'b0;
-        sdram_ba = request_addr[HADDR_WIDTH-1 -: BANK_WIDTH];
-        sdram_a = {{(ROW_WIDTH-COL_WIDTH-1){1'b0}}, 1'b1,
+        sdram_ba = request_bank;
+        // A10 remains low: keep the row open.
+        sdram_a = {{(ROW_WIDTH-COL_WIDTH-1){1'b0}}, 1'b0,
             request_addr[COL_WIDTH-1:0]};
         sdram_dqm = ~request_wmask;
         dq_output_enable = 1'b1;

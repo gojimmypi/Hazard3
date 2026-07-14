@@ -18,6 +18,8 @@ uint32_t hazard3_doom_image_base(void);
 uint32_t hazard3_doom_image_limit(void);
 uint32_t hazard3_video_base(void);
 uint32_t hazard3_video_limit(void);
+uint32_t hazard3_screen_base(void);
+uint32_t hazard3_screen_bytes(void);
 uint32_t hazard3_wad_base(void);
 uint32_t hazard3_wad_limit(void);
 uint32_t hazard3_wad_bytes(void);

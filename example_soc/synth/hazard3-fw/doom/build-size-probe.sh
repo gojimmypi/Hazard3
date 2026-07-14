@@ -9,69 +9,89 @@ CC="${TOOLCHAIN_PREFIX}gcc"
 SIZE="${TOOLCHAIN_PREFIX}size"
 BUILD_DIR="${SCRIPT_DIR}/build-size-probe"
 
-if [[ ! -f "${DOOMGENERIC_DIR}/doomgeneric.c" ]]; then
-    printf '%s\n' \
-        "Missing ozkl/doomgeneric source at:" \
-        "  ${DOOMGENERIC_DIR}" \
-        "" \
-        "Clone it with:" \
-        "  mkdir -p ${FIRMWARE_DIR}/third_party" \
-        "  git clone https://github.com/ozkl/doomgeneric.git ${FIRMWARE_DIR}/third_party/doomgeneric" \
-        >&2
-    exit 1
-fi
+require_tool()
+{
+    local tool="$1"
+
+    if [[ "${tool}" == */* ]]; then
+        [[ -x "${tool}" ]] || {
+            echo "Missing required executable: ${tool}" >&2
+            exit 1
+        }
+    else
+        command -v "${tool}" >/dev/null 2>&1 || {
+            echo "Missing required tool: ${tool}" >&2
+            exit 1
+        }
+    fi
+}
+
+require_file()
+{
+    local path="$1"
+
+    [[ -f "${path}" ]] || {
+        echo "Missing required file: ${path}" >&2
+        exit 1
+    }
+}
+
+require_tool "${CC}"
+require_tool "${SIZE}"
+require_file "${SCRIPT_DIR}/doom_sources.sh"
+require_file "${SCRIPT_DIR}/doom_build_flags.sh"
+require_file "${DOOMGENERIC_DIR}/doomgeneric.c"
+require_file "${DOOMGENERIC_DIR}/doomgeneric.h"
 
 # shellcheck source=doom_sources.sh
 source "${SCRIPT_DIR}/doom_sources.sh"
+# shellcheck source=doom_build_flags.sh
+source "${SCRIPT_DIR}/doom_build_flags.sh"
+
+PORT_SOURCES=(
+    doomgeneric_hazard3.c
+    hazard3_newlib.c
+    hazard3_platform_image.c
+    doom_image_main.c
+)
+
+for source in "${DOOMGENERIC_SOURCES[@]}"; do
+    require_file "${DOOMGENERIC_DIR}/${source}"
+done
+for source in "${PORT_SOURCES[@]}"; do
+    require_file "${SCRIPT_DIR}/${source}"
+done
 
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-COMMON_FLAGS=(
-    -march=rv32ima_zicsr_zifencei
-    -mabi=ilp32
-    -Os
-    -g0
-    -ffreestanding
-    -fno-builtin
-    -ffunction-sections
-    -fdata-sections
-    -fno-common
-    -Wall
-    -Wextra
-    -D_DEFAULT_SOURCE
-    -DNORMALUNIX
-    -DLINUX
-    -DSNDSERV
-    -DDOOMGENERIC_RESX=320
-    -DDOOMGENERIC_RESY=200
-    -DCMAP256
-    -I"${DOOMGENERIC_DIR}"
-    -I"${SCRIPT_DIR}"
-)
+GCC_VERSION="$("${CC}" -dumpfullversion -dumpversion)"
+printf 'RISC-V GCC: %s\n' "${GCC_VERSION}"
+printf 'Code generation: %s, %s\n' \
+    "${DOOM_ARCH_FLAGS[0]}" "-Os (same flags as loadable image)"
 
 objects=()
 
 for source in "${DOOMGENERIC_SOURCES[@]}"; do
     object="${BUILD_DIR}/${source%.c}.o"
-    echo "[CC] ${source}"
-    "${CC}" "${COMMON_FLAGS[@]}" \
-        -c "${DOOMGENERIC_DIR}/${source}" \
-        -o "${object}"
+    echo "[CC upstream] ${source}"
+    "${CC}" "${DOOM_COMMON_COMPILE_FLAGS[@]}" \
+        "${DOOM_UPSTREAM_WARNING_FLAGS[@]}" \
+        -c "${DOOMGENERIC_DIR}/${source}" -o "${object}"
     objects+=("${object}")
 done
 
-for source in doomgeneric_hazard3.c hazard3_newlib.c; do
+for source in "${PORT_SOURCES[@]}"; do
     object="${BUILD_DIR}/${source%.c}.o"
-    echo "[CC] ${source}"
-    "${CC}" "${COMMON_FLAGS[@]}" \
-        -c "${SCRIPT_DIR}/${source}" \
-        -o "${object}"
+    echo "[CC port] ${source}"
+    "${CC}" "${DOOM_COMMON_COMPILE_FLAGS[@]}" \
+        "${DOOM_PORT_WARNING_FLAGS[@]}" \
+        -c "${SCRIPT_DIR}/${source}" -o "${object}"
     objects+=("${object}")
 done
 
 echo
-echo "RV32 Doom object-size total before final link and garbage collection:"
+echo "RV32 Doom object-size total before final link:"
 "${SIZE}" -t "${objects[@]}" | tail -n 1
 
 echo

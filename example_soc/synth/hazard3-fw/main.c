@@ -6,6 +6,7 @@
 #include "doom/doom_port_smoke.h"
 #include "doom/doom_wad_loader.h"
 #include "doom/hazard3_platform.h"
+#include "doom/hazard3_video.h"
 #include "doom/sdram_exec_test.h"
 
 #define UART_BASE       0x40004000u
@@ -32,6 +33,7 @@
 #define TIMER_CTRL_ENABLE          (1u << 0)
 #define TIMER_PERIOD_US            10000u
 #define TIMER_LED_PERIOD_TICKS     50u
+#define TIMER_PATTERN_PERIOD_TICKS 10u
 
 #define MSTATUS_MIE                (1u << 3)
 #define MIE_MTIE                   (1u << 7)
@@ -41,9 +43,9 @@
 
 #define GPIO_FOREGROUND_MASK       0x7fu
 #define GPIO_TIMER_LED             0x80u
-#define GPIO_PATTERN_PERIOD_MS     100u
 
-#define SDRAM_BASE                 HAZARD3_SDRAM_BASE
+#define SDRAM_DIAGNOSTIC_ALIAS_BASE 0x24000000u
+#define SDRAM_BASE                 SDRAM_DIAGNOSTIC_ALIAS_BASE
 #define SDRAM_SIZE_BYTES           (64u * 1024u * 1024u)
 #define SDRAM_BANK_BYTES           (16u * 1024u * 1024u)
 #define SDRAM_BANK_COUNT           4u
@@ -56,11 +58,10 @@
 #define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
 #define SDRAM_DOOM_IMAGE_BYTES     (3u * 1024u * 1024u)
 #define SDRAM_VIDEO_RESERVED_BYTES (4u * 1024u * 1024u)
-#define VIDEO_FRAMEBUFFER_BASE     HAZARD3_VIDEO_BASE
-#define VIDEO_FRAMEBUFFER_WIDTH    320u
-#define VIDEO_FRAMEBUFFER_HEIGHT   200u
-#define VIDEO_FRAMEBUFFER_BYTES    \
-    (VIDEO_FRAMEBUFFER_WIDTH * VIDEO_FRAMEBUFFER_HEIGHT)
+#define VIDEO_FRAMEBUFFER_BASE     HAZARD3_VIDEO_FRAMEBUFFER0_BASE
+#define VIDEO_FRAMEBUFFER_WIDTH    HAZARD3_VIDEO_FRAMEBUFFER_WIDTH
+#define VIDEO_FRAMEBUFFER_HEIGHT   HAZARD3_VIDEO_FRAMEBUFFER_HEIGHT
+#define VIDEO_FRAMEBUFFER_BYTES    HAZARD3_VIDEO_FRAMEBUFFER_BYTES
 #define SDRAM_DOOM_IMAGE_BASE      HAZARD3_DOOM_IMAGE_BASE
 #define SDRAM_DOOM_IMAGE_LIMIT     HAZARD3_DOOM_IMAGE_LIMIT
 #define SDRAM_HEAP_BASE            HAZARD3_DOOM_HEAP_BASE
@@ -153,6 +154,8 @@ volatile uint32_t video_pattern_last_elapsed_ms;
 
 static volatile uint32_t gpio_shadow;
 static uint32_t timer_led_countdown;
+static uint32_t timer_pattern_countdown;
+static uint32_t timer_pattern;
 
 static void uart_putc(uint8_t value)
 {
@@ -214,7 +217,7 @@ static void console_print_help(void)
     uart_puts("  l       receive a packaged Doom image over UART\r\n");
     uart_puts("  w       receive an IWAD into reserved SDRAM\r\n");
     uart_puts("  j       launch the validated Doom image and IWAD\r\n");
-    uart_puts("  f       rewrite the 320x200 RGB332 HDMI test framebuffer\r\n");
+    uart_puts("  f       rewrite/present the 320x200 RGB332 HDMI test frame\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");
     uart_puts("  v       version\r\n");
@@ -265,11 +268,29 @@ static uint8_t video_test_pattern_pixel(uint32_t x, uint32_t y)
     return pixel;
 }
 
+static int video_present_rgb332_buffer0(uint32_t timeout_ms)
+{
+    uint32_t start_ticks = system_ticks;
+    uint32_t present_count = HAZARD3_VIDEO_PRESENT_COUNT;
+
+    HAZARD3_VIDEO_CONTROL = HAZARD3_VIDEO_CONTROL_PRESENT;
+    while ((int32_t)(system_ticks - start_ticks) < (int32_t)timeout_ms) {
+        uint32_t status = HAZARD3_VIDEO_STATUS;
+        if (HAZARD3_VIDEO_PRESENT_COUNT != present_count &&
+            (status & HAZARD3_VIDEO_STATUS_PRESENT_PENDING) == 0u &&
+            (status & HAZARD3_VIDEO_STATUS_FRAME_VALID) != 0u) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void video_write_test_pattern(void)
 {
     volatile uint32_t* destination =
-        (volatile uint32_t*)(uintptr_t)VIDEO_FRAMEBUFFER_BASE;
+        hazard3_video_framebuffer_words(0u);
     uint32_t start_ticks = system_ticks;
+    int presented;
 
     uart_puts("\r\nHDMI framebuffer test pattern: base=");
     uart_put_hex32(VIDEO_FRAMEBUFFER_BASE);
@@ -290,11 +311,16 @@ static void video_write_test_pattern(void)
     }
 
     memory_barrier();
+    presented = video_present_rgb332_buffer0(1000u);
     ++video_pattern_runs;
     video_pattern_last_elapsed_ms = system_ticks - start_ticks;
 
-    uart_puts("  write: PASS elapsed_ms=");
+    uart_puts("  block-RAM present: ");
+    uart_puts(presented ? "PASS" : "FAIL");
+    uart_puts(" elapsed_ms=");
     uart_put_hex32(video_pattern_last_elapsed_ms);
+    uart_puts(" dma_cycles=");
+    uart_put_hex32(HAZARD3_VIDEO_DMA_CYCLES);
     uart_puts("\r\n");
 }
 
@@ -1263,6 +1289,14 @@ static void console_print_status(void)
     uart_put_hex32(video_pattern_runs);
     uart_puts(" elapsed_ms=");
     uart_put_hex32(video_pattern_last_elapsed_ms);
+    uart_puts("\r\nvideo_status=");
+    uart_put_hex32(HAZARD3_VIDEO_STATUS);
+    uart_puts(" frame_count=");
+    uart_put_hex32(HAZARD3_VIDEO_FRAME_COUNT);
+    uart_puts(" dma_cycles=");
+    uart_put_hex32(HAZARD3_VIDEO_DMA_CYCLES);
+    uart_puts(" presents=");
+    uart_put_hex32(HAZARD3_VIDEO_PRESENT_COUNT);
 
     doom_image_loader_print_status();
     doom_wad_loader_print_status();
@@ -1400,45 +1434,6 @@ static void console_poll(void)
     }
 }
 
-static uint32_t interrupt_save(void)
-{
-    uint32_t mstatus;
-    uint32_t mask = MSTATUS_MIE;
-
-    __asm__ volatile (
-        "csrrc %0, mstatus, %1"
-        : "=r" (mstatus)
-        : "r" (mask)
-        : "memory"
-    );
-
-    return mstatus;
-}
-
-static void interrupt_restore(uint32_t mstatus)
-{
-    if ((mstatus & MSTATUS_MIE) != 0u) {
-        uint32_t mask = MSTATUS_MIE;
-
-        __asm__ volatile (
-            "csrs mstatus, %0"
-            :
-            : "r" (mask)
-            : "memory"
-        );
-    }
-}
-
-static void gpio_write_masked(uint32_t mask, uint32_t value)
-{
-    uint32_t saved_mstatus = interrupt_save();
-
-    gpio_shadow = (gpio_shadow & ~mask) | (value & mask);
-    GPIO_OUT = gpio_shadow;
-
-    interrupt_restore(saved_mstatus);
-}
-
 static uint64_t timer_read(void)
 {
     uint32_t high_before;
@@ -1472,6 +1467,8 @@ static void timer_init(void)
     TIMER_CTRL = TIMER_CTRL_ENABLE;
 
     timer_led_countdown = TIMER_LED_PERIOD_TICKS;
+    timer_pattern_countdown = TIMER_PATTERN_PERIOD_TICKS;
+    timer_pattern = 1u;
     timer_next_compare = timer_read() + TIMER_PERIOD_US;
     timer_set_compare(timer_next_compare);
 
@@ -1508,9 +1505,20 @@ void machine_trap_handler(uint32_t mcause, uint32_t mepc, uint32_t mtval)
 
         if (--timer_led_countdown == 0u) {
             timer_led_countdown = TIMER_LED_PERIOD_TICKS;
-            gpio_write_masked(GPIO_TIMER_LED, gpio_shadow ^ GPIO_TIMER_LED);
+            gpio_shadow ^= GPIO_TIMER_LED;
         }
 
+        if (--timer_pattern_countdown == 0u) {
+            timer_pattern_countdown = TIMER_PATTERN_PERIOD_TICKS;
+            gpio_shadow = (gpio_shadow & ~GPIO_FOREGROUND_MASK)
+                | timer_pattern;
+            timer_pattern <<= 1;
+            if (timer_pattern == GPIO_TIMER_LED) {
+                timer_pattern = 1u;
+            }
+        }
+
+        GPIO_OUT = gpio_shadow;
         return;
     }
 
@@ -1543,20 +1551,18 @@ static void console_init(void)
     uart_puts("\r\nHazard3 ULX3S boot\r\n");
     uart_puts("UART: gp0 RX / gp1 TX, 115200 8N1\r\n");
     uart_puts("Timer: 10 ms machine interrupt\r\n");
-    uart_puts("LED7: timer ISR, LED0-6: foreground\r\n");
-    uart_puts("SDRAM: AHB target at 0x20000000, 64 MiB qualification map\r\n");
+    uart_puts("Internal screen: 0x00010000-0x0001F9FF (320x200 indexed)\r\n");
+    uart_puts("LED0-7: timer ISR (continues while Doom runs)\r\n");
+    uart_puts("SDRAM: physical 0x20000000, uncached diagnostics alias 0x24000000\r\n");
     uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
     uart_puts("Heap: 0x20400000-0x22BFFFFF\r\n");
     uart_puts("IWAD: 0x22C00000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
-    uart_puts("HDMI: 1024x600, 320x200 RGB332 framebuffer scaled 3x\r\n");
+    uart_puts("HDMI: 1024x600, block-RAM double buffer, indexed/RGB332\r\n");
     uart_puts("Doom: l=load image, w=load IWAD, j=launch\r\n");
 }
 
 int main(void)
 {
-    uint32_t pattern = 1u;
-    uint32_t next_pattern_tick;
-
     gpio_shadow = 0u;
     GPIO_OUT = gpio_shadow;
 
@@ -1569,20 +1575,7 @@ int main(void)
     video_write_test_pattern();
     uart_puts("Type h or ? for help.\r\n> ");
 
-    next_pattern_tick = system_ticks + GPIO_PATTERN_PERIOD_MS;
-
     for (;;) {
         console_poll();
-
-        if ((int32_t)(system_ticks - next_pattern_tick) >= 0) {
-            gpio_write_masked(GPIO_FOREGROUND_MASK, pattern);
-
-            pattern <<= 1;
-            if (pattern == GPIO_TIMER_LED) {
-                pattern = 1u;
-            }
-
-            next_pattern_tick += GPIO_PATTERN_PERIOD_MS;
-        }
     }
 }

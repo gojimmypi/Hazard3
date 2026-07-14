@@ -4,6 +4,10 @@
 #include <stdint.h>
 
 uint32_t hazard3_doom_draw_frame_count(void);
+uint32_t hazard3_doom_last_copy_cycles(void);
+uint32_t hazard3_doom_last_present_cycles(void);
+uint32_t hazard3_doom_copy_cycles_total(void);
+uint32_t hazard3_doom_present_cycles_total(void);
 void hazard3_doom_input_reset(void);
 int hazard3_doom_exit_requested(void);
 

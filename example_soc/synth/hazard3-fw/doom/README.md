@@ -1,8 +1,7 @@
-# Hazard3 doomgeneric SDRAM image,UART loader and memory-backed IWAD
+# Hazard3 doomgeneric SDRAM image, UART loaders, cached SDRAM, indexed HDMI, and UART controls
 
 Upstream source is `ozkl/doomgeneric`, checked out at
 `third_party/doomgeneric` and licensed under GPL-2.0.
-
 
 Clone the dependency from the `hazard3-fw` directory:
 
@@ -11,14 +10,33 @@ mkdir -p third_party
 git clone https://github.com/ozkl/doomgeneric.git third_party/doomgeneric
 ```
 
+Find a Doom WAD file, such as the `doom_dos.ZIP/DOOM1.WAD` in the [DOOM v1.9 (Shareware Episode, 1995)](https://archive.org/details/doom_20230531) zip download.
+
+No other downloaded files are needed here, only the WAD file.
+
 The Hazard3-specific files in this directory are:
 
-- `doomgeneric_hazard3.c`: implementations of the five doomgeneric platform hooks.
+- `doomgeneric_hazard3.c`: implementations of the doomgeneric platform hooks,
+  including UART keyboard input and indexed HDMI frame presentation.
+- `doomgeneric_hazard3.h`: Hazard3 doomgeneric platform declarations.
 - `hazard3_platform.h`: interface exported by the current firmware.
-- `hazard3_newlib.c`: UART-backed newlib system-call layer for a later full link.
+- `hazard3_monitor_services.h`: monitor ABI service table shared with the
+  linked Doom image.
+- `hazard3_newlib.c`: UART-backed newlib system-call layer and memory-backed
+  read-only IWAD file implementation.
 - `doom_sources.sh`: upstream source list without a desktop platform backend.
+- `doom_build_flags.sh`: shared, GCC 12.2-safe RV32 compile settings.
 - `build-size-probe.sh`: RV32 compile and object-size report.
-- `doom_port_smoke.c`: current on-board memory/timer readiness test.
+- `build-doom-image.sh`: full linked Doom image build and H3L packaging.
+- `doom_image_format.h`: packaged Doom image header format.
+- `doom_image_loader.c`: monitor-side H3L executable-image receiver.
+- `doom_image_main.c`: linked Doom image entry point.
+- `doom_wad_format.h`: packaged IWAD header format.
+- `doom_wad_loader.c` and `doom_wad_loader.h`: monitor-side H3W IWAD receiver
+  and validation.
+- `upload-doom-image.py`: host-side H3L image uploader.
+- `upload-wad.py`: host-side H3W IWAD uploader.
+- `doom_port_smoke.c`: on-board memory/timer readiness test.
 - `sdram_exec_test.c`: copies and executes an RV32 payload from SDRAM.
 - `sdram_exec_payload.S`: position-independent RV32 payload used by that test.
 
@@ -28,16 +46,57 @@ Run the size probe after cloning upstream:
 ./doom/build-size-probe.sh
 ```
 
+## Performance architecture
+
+This version removes the largest measured costs from the first working HDMI
+milestone:
+
+- Doom code, WAD data, and heap use a 64 KiB, two-way, write-back SDRAM cache
+  with 32-byte lines.
+- The SDRAM controller keeps matching rows open between accesses.
+- Doom renders its native 320x200 8-bit indexed screen directly into the upper
+  64 KiB of the ULX3S internal SRAM at `0x00010000`.
+- `DG_DrawFrame()` performs one unrolled 64,000-byte copy into an uncached SDRAM
+  staging buffer. It no longer performs 64,000 software palette conversions.
+- Hardware copies the completed staging frame into the inactive full-frame ECP5
+  block-RAM buffer, then swaps block-RAM buffers during vertical blank.
+- A hardware palette RAM converts each Doom index to RGB332 during scanout.
+- Doom defaults to low-detail rendering with view size 8. The Doom Options menu
+  can select high detail and a larger view when image quality is preferred over
+  maximum frame rate.
+- The FPGA enables the selected Hazard3 performance features, including faster
+  multiply, four-bit-per-cycle divide, and branch prediction.
+- GCC 12.2.0 builds the monitor and Doom image with the known-working
+  `rv32ima_zicsr_zifencei` and `-Os` combination. Do not restore the earlier
+  `-O3` plus Zba/Zbb/Zbs experiment; it causes internal compiler errors in
+  multiple upstream Doom source files with this toolchain.
+- The LED0-6 chase and LED7 heartbeat run in the machine-timer interrupt, so all
+  eight LEDs continue updating while Doom owns the foreground loop.
+
+Actual frame rate depends on place-and-route timing and the workload on screen.
+Use the counters printed after Ctrl-X to measure the board rather than assuming
+a target frame rate.
 
 ## Memory map
 
-- `0x00000000-0x0001ffff`: internal-SRAM monitor, traps, and stack
-- `0x20000000-0x200fffff`: destructive SDRAM diagnostics
-- `0x20100000-0x203fffff`: linked Doom image
-- `0x20400000-0x22bfffff`: Doom heap and zone memory
-- `0x22c00000-0x23bfffff`: validated read-only IWAD, up to 16 MiB
-- `0x23c00000-0x23c0f9ff`: 320x200 RGB332 framebuffer
-- `0x23c0fa00-0x23ffffff`: future double-buffer/video-control reservation
+- `0x00000000-0x0000ffff`: internal-SRAM monitor, traps, and monitor/Doom stack
+- `0x00010000-0x0001f9ff`: Doom 320x200 indexed working screen in internal SRAM
+- `0x0001fa00-0x0001ffff`: unused internal SRAM
+- `0x20000000-0x200fffff`: physical first MiB, uncached
+- `0x24000000-0x27ffffff`: uncached diagnostic alias of the full 64 MiB SDRAM
+- `0x20100000-0x203fffff`: cached linked Doom image
+- `0x20400000-0x22bfffff`: cached Doom heap and zone memory
+- `0x22c00000-0x23bfffff`: cached validated read-only IWAD, up to 16 MiB
+- `0x23c00000-0x23c0f9ff`: uncached indexed staging framebuffer 0
+- `0x23c10000-0x23c1f9ff`: uncached indexed staging framebuffer 1
+- `0x23c20000-0x23ffffff`: reserved video aperture
+
+The HDMI controller's CPU registers are at `0x4000c000`.
+
+The diagnostic alias deliberately mirrors the full physical SDRAM. The memory
+controller consumes address bits 25:1, so address bit 26 selects the uncached
+AHB alias without changing the SDRAM row, bank, or column address. The monitor
+uses the alias for destructive tests; Doom uses the original physical map.
 
 The image and IWAD use separate UART protocols. Each transfer sends a fixed
 64-byte little-endian header, waits for a monitor data-ready marker, then sends
@@ -45,13 +104,70 @@ the payload. The monitor validates range fields and an IEEE CRC32. The IWAD
 loader additionally checks the `IWAD` identifier, directory bounds, and every
 lump's file range before marking the WAD usable.
 
+## Build the FPGA
+
+The monitor service ABI is version 3. Rebuild the FPGA, monitor, and Doom image;
+an ABI-3 Doom image will reject an older monitor.
+
+From `example_soc/synth`:
+
+```bash
+make -f ULX3S.mk clean
+make -f ULX3S.mk bit
+```
+
+The ULX3S build selects nextpnr's heap placer. The shared
+`scripts/synth_ecp5.mk` change preserves simulated annealing as the default for
+other boards.
+
+Inspect `pnr.log` before programming:
+
+```bash
+grep -E "Max frequency|FAIL|Warning|DP16KD" pnr.log
+```
+
+`ULX3S.mk` still passes `--timing-allow-fail`, so the existence of a bitstream
+does not prove timing closure. Do not treat a clock marked `FAIL` as validated.
+
+Program the new `fpga_ulx3s.bit`. Reprogramming the FPGA clears SDRAM, so the
+Doom image and IWAD must both be uploaded again.
+
 ## Build and reload the monitor
+
+From `example_soc/synth/hazard3-fw`:
 
 ```bash
 ./build.sh
 ```
 
-Reload `hazard3-test.elf` using VisualGDB. Loader commands are:
+Output:
+
+```text
+hazard3-test.elf
+```
+
+The preferred load-and-run path is the standalone GDB loader. Keep OpenOCD
+running, ensure VisualGDB is disconnected, and use either:
+
+```bash
+./load-and-run.sh
+```
+
+or from PowerShell:
+
+```powershell
+.\load-and-run.cmd
+```
+
+The standalone loader connects, halts, loads `hazard3-test.elf`, sets the entry
+point, resumes the CPU, and disconnects. It avoids VisualGDB stack-inspection
+timeouts that can send SIGINT and leave the monitor halted.
+
+VisualGDB can still be used for debugging, but the target must be resumed and
+detached before UART uploads. Confirm that the LED animations are running and
+that the UART monitor responds before starting an uploader.
+
+Loader commands are:
 
 ```text
 l    receive a packaged Doom image over UART
@@ -61,11 +177,13 @@ j    launch the validated Doom image and IWAD
 
 ## Build the linked Doom image
 
-The monitor ABI changed for the WAD service fields, so rebuild the image:
+Rebuild the linked image whenever the monitor ABI or Doom platform code changes:
 
 ```bash
 ./doom/build-doom-image.sh
 ```
+
+The Doom image build uses the shared `doom/doom_build_flags.sh` settings.
 
 Output:
 
@@ -77,6 +195,8 @@ doom/build-doom-image/hazard3-doom.h3d
 
 Close PuTTY or any other program that owns the external UART port.
 
+Install pyserial once, when needed:
+
 ```bash
 python3 -m pip install pyserial
 ```
@@ -86,8 +206,7 @@ First upload the Doom executable without launching it:
 ```bash
 python doom/upload-doom-image.py \
     doom/build-doom-image/hazard3-doom.h3d \
-    --port COM6 \
-    --launch
+    --port COM7
 ```
 
 Or in PowerShell:
@@ -100,27 +219,7 @@ py .\doom\upload-doom-image.py `
 
 At 115200 baud, a roughly 600 KiB image takes about one minute.
 
-Expected result:
-
-```text
-H3L OK elapsed_ms=...
-Launching Doom image from SDRAM entry=0x20100000
-Doom SDRAM image startup
-  monitor ABI: PASS
-  320x200 indexed framebuffer allocation: PASS
-  Doom zone allocator: PASS bytes=0x00600000
-  monitor timer service: PASS
-  full Doom engine objects: LINKED
-  WAD storage: NOT IMPLEMENTED
-Doom SDRAM image startup: PASS
-Doom image returned status=0x00000000 ...
-```
-
-The image is invalidated after it returns because writable `.data` has changed.
-Upload again before relaunching. Commands `a`, `r`, `q`, and `x` also invalidate
-a loaded image because they overwrite the image reservation.
-
-Then upload a WAD file and launch. Doom Shareware normally uses
+Then upload a legally obtained IWAD and launch. Doom Shareware normally uses
 the filename `doom1.wad`:
 
 ```powershell
@@ -129,8 +228,6 @@ py .\doom\upload-wad.py `
     --port COM7 `
     --launch
 ```
-
-
 
 The uploader derives the Doom-visible name from the input filename. Use
 `--name doom1.wad` when the local file has a different name.
@@ -146,32 +243,97 @@ H3W DATA
 H3W OK
 ```
 
-Expected Doom progress includes WAD discovery, Doom's normal startup messages,
-the first completed HDMI framebuffer, several additional game ticks, and:
+Expected startup and performance-path markers include:
 
 ```text
-Doom renderer: first HDMI framebuffer completed
-Doom HDMI framebuffer milestone: PASS
+Doom SDRAM image startup
+  monitor ABI: PASS
+Doom platform: cached indexed renderer + block-RAM HDMI initialized
+Doom renderer: first indexed block-RAM frame queued
+  performance mode: on-chip screen, 64 KiB cache, low detail, view size 8
+Doom interactive HDMI loop: READY
 ```
 
 The executable image is invalidated after it returns because writable `.data`
 has changed. The validated IWAD remains loaded, so another run requires only a
-new image upload followed by command `j`. Commands `a`, `r`, and `q` invalidate
-both image and IWAD because they overwrite those SDRAM regions. Command `x`
-invalidates only the executable image.
+new image upload followed by command `j`.
 
-The HDMI hardware reads the framebuffer as RGB332 and scales 320x200 to
-960x600 inside the native 1024x600 output. `DG_DrawFrame()` converts Doom's
-active 256-color palette to RGB332 while copying each completed frame. This is
-a single-buffer implementation, so tearing is possible. Controls and sound
-remain stubbed; double buffering and frame-synchronous swaps are next.
+Commands `a`, `r`, and `q` invalidate both the image and IWAD because they
+overwrite those SDRAM regions. Command `x` invalidates only the executable
+image.
+
+For later runs without resetting or reprogramming the board, upload only the
+rebuilt image, reopen PuTTY, and enter:
+
+```text
+j
+```
+
+## HDMI presentation details
+
+The Elecrow panel remains at 1024x600. Doom itself remains a native 320x200
+indexed renderer. The FPGA repeats every source pixel and line three times,
+producing a centered 960x600 image with 32-pixel black side borders.
+
+Two complete 320x200 frames and two matching 256-entry palette banks are stored
+in ECP5 block RAM. SDRAM is read only during a requested frame presentation,
+rather than continuously for every display refresh. The inactive block-RAM
+frame is filled first and becomes visible only during vertical blank, avoiding
+the tearing of the earlier single-buffer RGB332 implementation.
+
+For a sharper image, open Doom's Options menu and select High Detail. Increasing
+Screen Size enlarges the gameplay viewport. These settings increase renderer
+work and can reduce frame rate.
+
+The optional standalone FPGA-generated HDMI test pattern remains available in
+`fpga_ulx3s.v` as the disabled `hdmi_test_pattern_u` instance. Keep that code
+for display and TMDS bring-up.
 
 ## UART interactive controls
 
 After the Doom image reports `Doom interactive HDMI loop: READY`, the external
-UART becomes the keyboard input source. Use `W`/`S` to move, `A`/`D` to turn,
-`Z`/`C` to strafe, `F` or Space to fire, `E` to use, `M` for the automap, `P`
-to pause, `1` through `7` to select weapons, Enter to select menu items, and
-Escape to open or leave a menu. Hold a key to use the terminal's auto-repeat.
-Press Ctrl-X to return to the internal-SRAM monitor. Arrow-key escape sequences
-are intentionally not decoded in this milestone; use WASD.
+UART becomes the keyboard input source.
+
+Main-menu controls:
+
+```text
+Escape      open menu or go back
+W / S       move selection up/down
+A / D       adjust left/right
+Enter       select or toggle
+```
+
+Gameplay controls:
+
+```text
+W / S       move forward/backward
+A / D       turn left/right
+Z / C       strafe left/right
+F or Space  fire
+E           use/open
+M or Tab    automap
+P           pause
+1-7         select weapon
+Enter       menu selection
+Escape      menu/back
+Ctrl-X      exit Doom and return to the monitor
+```
+
+Hold movement keys to use terminal key repeat. Arrow-key escape sequences are
+not decoded; use WASD.
+
+Sound remains stubbed in this milestone.
+
+## Performance counters
+
+Ctrl-X prints measured counters:
+
+```text
+interactive_frames=... elapsed_ms=... total_frames=...
+last_copy_cycles=... last_present_cycles=...
+copy_cycles_total=... present_cycles_total=...
+```
+
+At a 50 MHz system clock, divide a cycle count by 50,000 to obtain milliseconds.
+The `interactive_frames` and `elapsed_ms` values provide the sustained frame
+rate for the exact scene tested.
