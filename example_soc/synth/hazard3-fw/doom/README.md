@@ -165,3 +165,13 @@ The HDMI hardware reads the framebuffer as RGB332 and scales 320x200 to
 active 256-color palette to RGB332 while copying each completed frame. This is
 a single-buffer implementation, so tearing is possible. Controls and sound
 remain stubbed; double buffering and frame-synchronous swaps are next.
+
+## UART interactive controls
+
+After the Doom image reports `Doom interactive HDMI loop: READY`, the external
+UART becomes the keyboard input source. Use `W`/`S` to move, `A`/`D` to turn,
+`Z`/`C` to strafe, `F` or Space to fire, `E` to use, `M` for the automap, `P`
+to pause, `1` through `7` to select weapons, Enter to select menu items, and
+Escape to open or leave a menu. Hold a key to use the terminal's auto-repeat.
+Press Ctrl-X to return to the internal-SRAM monitor. Arrow-key escape sequences
+are intentionally not decoded in this milestone; use WASD.

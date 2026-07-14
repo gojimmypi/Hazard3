@@ -6,8 +6,6 @@
 #include "hazard3_monitor_services.h"
 #include "hazard3_platform.h"
 
-#define DOOM_VIDEO_EXTRA_TICKS 8u
-
 static char argument_program[] = "doom";
 static char argument_iwad[] = "-iwad";
 static char argument_mb[] = "-mb";
@@ -55,6 +53,9 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     uint32_t start_ticks;
     uint32_t timer_elapsed;
     uint32_t frame_count;
+    uint32_t interactive_start_ticks;
+    uint32_t interactive_start_frames;
+    uint32_t interactive_elapsed;
     if (!services_are_valid(services)) {
         if (services != (const hazard3_monitor_services_t*)0 &&
             services->console_puts != (void (*)(const char*))0) {
@@ -92,27 +93,45 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     }
 
     doom_arguments[2] = (char*)services->wad_name;
+    hazard3_doom_input_reset();
     hazard3_console_puts("  entering Doom WAD discovery and initialization\r\n");
     doomgeneric_Create(
         (int)(sizeof(doom_arguments) / sizeof(doom_arguments[0])),
         doom_arguments);
 
-    hazard3_console_puts("  Doom initialization returned; running HDMI ticks\r\n");
-    for (uint32_t i = 0u; i < DOOM_VIDEO_EXTRA_TICKS; ++i) {
+    frame_count = hazard3_doom_draw_frame_count();
+    if (frame_count == 0u) {
+        hazard3_console_puts("Doom HDMI framebuffer milestone: FAIL\r\n");
+        return 3;
+    }
+
+    hazard3_console_puts("Doom interactive HDMI loop: READY\r\n");
+    hazard3_console_puts(
+        "  controls: W/S move, A/D turn, Z/C strafe, F/space fire, E use\r\n");
+    hazard3_console_puts(
+        "  M map, P pause, 1-7 weapons, Enter select, Esc menu\r\n");
+    hazard3_console_puts(
+        "  hold a key for terminal auto-repeat; Ctrl-X returns to monitor\r\n");
+
+    interactive_start_ticks = hazard3_ticks_ms();
+    interactive_start_frames = frame_count;
+    while (!hazard3_doom_exit_requested()) {
         doomgeneric_Tick();
     }
+    interactive_elapsed = hazard3_ticks_ms() - interactive_start_ticks;
     frame_count = hazard3_doom_draw_frame_count();
-    hazard3_console_puts("  HDMI frames completed=");
+
+    hazard3_console_puts("Doom interactive HDMI loop: EXIT\r\n");
+    hazard3_console_puts("  interactive_frames=");
+    hazard3_console_put_hex32(frame_count - interactive_start_frames);
+    hazard3_console_puts(" elapsed_ms=");
+    hazard3_console_put_hex32(interactive_elapsed);
+    hazard3_console_puts(" total_frames=");
     hazard3_console_put_hex32(frame_count);
     hazard3_console_puts("\r\n  heap_used=");
     hazard3_console_put_hex32(hazard3_heap_used());
     hazard3_console_puts(" heap_remaining=");
     hazard3_console_put_hex32(hazard3_heap_remaining());
-    hazard3_console_puts("\r\n");
-    if (frame_count == 0u) {
-        hazard3_console_puts("Doom HDMI framebuffer milestone: FAIL\r\n");
-        return 3;
-    }
-    hazard3_console_puts("Doom HDMI framebuffer milestone: PASS\r\n");
+    hazard3_console_puts("\r\nDoom UART-control milestone: PASS\r\n");
     return 0;
 }

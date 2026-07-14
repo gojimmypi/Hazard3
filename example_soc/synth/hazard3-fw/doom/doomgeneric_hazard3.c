@@ -2,6 +2,7 @@
 
 #include "doomgeneric.h"
 #include "doomgeneric_hazard3.h"
+#include "doomkeys.h"
 #include "hazard3_platform.h"
 #include "i_video.h"
 
@@ -18,6 +19,16 @@ static volatile uint32_t* video_framebuffer;
 static uint8_t rgb332_palette[256];
 static int rgb332_palette_valid;
 static int video_available;
+
+// UART input is converted into one-Doom-tic key pulses. A key-down event is
+// emitted in the tick that receives a character, and the matching key-up is
+// deferred until the next call to DG_GetKey(). This is important because Doom
+// processes all events gathered during one tick before it builds the movement
+// command; emitting down and up in the same tick would cancel movement.
+static int key_release_pending;
+static unsigned char key_release_code;
+static int stop_input_scan;
+static int exit_requested;
 
 static uint8_t color_to_rgb332(const struct color* color)
 {
@@ -86,12 +97,127 @@ uint32_t DG_GetTicksMs(void)
     return hazard3_ticks_ms();
 }
 
+static int uart_character_to_doom_key(uint8_t character, unsigned char* key)
+{
+    switch (character) {
+    case 'w':
+    case 'W':
+        *key = KEY_UPARROW;
+        return 1;
+
+    case 's':
+    case 'S':
+        *key = KEY_DOWNARROW;
+        return 1;
+
+    case 'a':
+    case 'A':
+        *key = KEY_LEFTARROW;
+        return 1;
+
+    case 'd':
+    case 'D':
+        *key = KEY_RIGHTARROW;
+        return 1;
+
+    case 'z':
+    case 'Z':
+        *key = KEY_STRAFE_L;
+        return 1;
+
+    case 'c':
+    case 'C':
+        *key = KEY_STRAFE_R;
+        return 1;
+
+    case 'f':
+    case 'F':
+    case ' ':
+        *key = KEY_FIRE;
+        return 1;
+
+    case 'e':
+    case 'E':
+        *key = KEY_USE;
+        return 1;
+
+    case 'm':
+    case 'M':
+    case '\t':
+        *key = KEY_TAB;
+        return 1;
+
+    case 'p':
+    case 'P':
+        *key = KEY_PAUSE;
+        return 1;
+
+    case '\r':
+        *key = KEY_ENTER;
+        return 1;
+
+    case 0x1bu:
+        *key = KEY_ESCAPE;
+        return 1;
+
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+        *key = character;
+        return 1;
+
+    default:
+        return 0;
+    }
+}
+
 int DG_GetKey(int* pressed, unsigned char* key)
 {
-    (void)pressed;
-    (void)key;
+    uint8_t character;
 
-    /* Keyboard input is added after the first visible-video milestone. */
+    if (pressed == (int*)0 || key == (unsigned char*)0) {
+        return 0;
+    }
+
+    if (stop_input_scan) {
+        stop_input_scan = 0;
+        return 0;
+    }
+
+    if (key_release_pending) {
+        *pressed = 0;
+        *key = key_release_code;
+        key_release_pending = 0;
+        return 1;
+    }
+
+    // Consume a bounded number of ignored terminal characters per tick. This
+    // discards line-feed bytes from CR/LF terminals without risking an
+    // unbounded loop if the UART receives unsupported escape sequences.
+    for (uint32_t ignored = 0u; ignored < 4u; ++ignored) {
+        if (!hazard3_console_getc_nonblocking(&character)) {
+            return 0;
+        }
+
+        if (character == 0x18u) {
+            // Ctrl-X exits the SDRAM Doom image and returns to the monitor.
+            exit_requested = 1;
+            return 0;
+        }
+
+        if (uart_character_to_doom_key(character, key)) {
+            *pressed = 1;
+            key_release_code = *key;
+            key_release_pending = 1;
+            stop_input_scan = 1;
+            return 1;
+        }
+    }
+
     return 0;
 }
 
@@ -105,4 +231,17 @@ void DG_SetWindowTitle(const char* title)
 uint32_t hazard3_doom_draw_frame_count(void)
 {
     return draw_frame_count;
+}
+
+void hazard3_doom_input_reset(void)
+{
+    key_release_pending = 0;
+    key_release_code = 0u;
+    stop_input_scan = 0;
+    exit_requested = 0;
+}
+
+int hazard3_doom_exit_requested(void)
+{
+    return exit_requested;
 }

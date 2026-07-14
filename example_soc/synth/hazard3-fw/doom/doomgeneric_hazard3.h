@@ -4,5 +4,7 @@
 #include <stdint.h>
 
 uint32_t hazard3_doom_draw_frame_count(void);
+void hazard3_doom_input_reset(void);
+int hazard3_doom_exit_requested(void);
 
 #endif
