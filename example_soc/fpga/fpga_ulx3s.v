@@ -75,7 +75,7 @@ fpga_reset #(
 	.rst_n       (rst_n_tmds_x5)
 );
 
-`if 0
+`ifdef 0
 ulx3s_hdmi_test_pattern hdmi_test_pattern_u (
 	.clk_pix       (clk_video_pix),
 	.rst_n_pix     (rst_n_video_pix),
