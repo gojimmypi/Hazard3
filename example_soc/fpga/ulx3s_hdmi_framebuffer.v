@@ -20,7 +20,10 @@
 // Frame data may be either RGB332 or native Doom palette indices. Indexed mode
 // uses one independently stored 256-entry RGB332 palette for each SDRAM staging
 // buffer, so palette changes become visible atomically with the matching frame.
-module ulx3s_hdmi_framebuffer (
+module ulx3s_hdmi_framebuffer #(
+    parameter [24:0] FRAMEBUFFER0_HALFWORD_BASE = 25'h1e00000,
+    parameter [24:0] FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000
+) (
     input  wire        clk_sys,
     input  wire        rst_n_sys,
     input  wire        clk_pix,
@@ -66,11 +69,8 @@ localparam SOURCE_WORDS_PER_FRAME = SOURCE_WIDTH * SOURCE_HEIGHT / 2;
 localparam IMAGE_X_START = (H_ACTIVE - SOURCE_WIDTH * 3) / 2;
 localparam IMAGE_X_END = IMAGE_X_START + SOURCE_WIDTH * 3;
 
-// Byte addresses 0x23c00000 and 0x23c10000 are offsets 0x03c00000 and
-// 0x03c10000 within the SDRAM target. Native SDRAM requests use halfword
-// addresses, so the two bases are separated by 0x8000 halfwords.
-localparam [24:0] FRAMEBUFFER0_HALFWORD_BASE = 25'h1e00000;
-localparam [24:0] FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000;
+// Native SDRAM requests use halfword addresses. The board wrapper selects
+// staging-buffer offsets for its 64 MiB or 32 MiB external-memory profile.
 
 localparam [3:0]
     REG_STATUS        = 4'h0,

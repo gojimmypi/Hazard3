@@ -3,20 +3,12 @@
 
 #include <stdint.h>
 
+#include "hazard3_memory_map.h"
+
 #define HAZARD3_DOOM_IMAGE_MAGIC          0x31443348u /* "H3D1" */
 #define HAZARD3_DOOM_IMAGE_FORMAT_VERSION 1u
 #define HAZARD3_DOOM_IMAGE_HEADER_BYTES   64u
 #define HAZARD3_DOOM_IMAGE_FLAG_CRC32     (1u << 0)
-
-#define HAZARD3_SDRAM_BASE                0x20000000u
-#define HAZARD3_DOOM_IMAGE_BASE           0x20100000u
-#define HAZARD3_DOOM_IMAGE_LIMIT          0x20400000u
-#define HAZARD3_DOOM_HEAP_BASE            0x20400000u
-#define HAZARD3_DOOM_HEAP_LIMIT           0x22c00000u
-#define HAZARD3_DOOM_WAD_BASE             0x22c00000u
-#define HAZARD3_DOOM_WAD_LIMIT            0x23c00000u
-#define HAZARD3_VIDEO_BASE                0x23c00000u
-#define HAZARD3_VIDEO_LIMIT               0x24000000u
 
 typedef struct hazard3_doom_image_header {
     uint32_t magic;

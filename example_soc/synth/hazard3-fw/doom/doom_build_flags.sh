@@ -13,6 +13,21 @@ if [[ -z "${DOOMGENERIC_DIR:-}" || -z "${SCRIPT_DIR:-}" ]]; then
     return 1
 fi
 
+
+memory_profile="${HAZARD3_MEMORY_PROFILE:-64m}"
+case "${memory_profile}" in
+64m)
+    DOOM_MEMORY_PROFILE_FLAGS=()
+    ;;
+32m)
+    DOOM_MEMORY_PROFILE_FLAGS=(-DHAZARD3_SDRAM_32MB)
+    ;;
+*)
+    echo "Unsupported HAZARD3_MEMORY_PROFILE: ${memory_profile} (use 64m or 32m)" >&2
+    return 1
+    ;;
+esac
+
 DOOM_ARCH_FLAGS=(
     -march=rv32ima_zicsr_zifencei
     -mabi=ilp32
@@ -20,6 +35,7 @@ DOOM_ARCH_FLAGS=(
 
 DOOM_COMMON_COMPILE_FLAGS=(
     "${DOOM_ARCH_FLAGS[@]}"
+    "${DOOM_MEMORY_PROFILE_FLAGS[@]}"
     -mcmodel=medany
     -mno-relax
     -Os

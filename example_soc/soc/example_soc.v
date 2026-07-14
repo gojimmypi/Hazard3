@@ -12,7 +12,10 @@ module example_soc #(
 	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
-	parameter SDRAM_ENABLE = 0,     // Enable the ULX3S external SDRAM target
+	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
+	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
+	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
+	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
 
 	`include "hazard3_config.vh"
 ) (
@@ -33,7 +36,7 @@ module example_soc #(
 
 	output wire [7:0]        gpio_out,
 
-	// Optional ULX3S 16-bit SDR SDRAM interface
+	// Optional ULX3S/ULX4M 16-bit SDR SDRAM interface
 	output wire [12:0]       sdram_a,
 	output wire [1:0]        sdram_ba,
 	inout  wire [15:0]       sdram_d,
@@ -630,15 +633,14 @@ ahb_sync_sram #(
 generate
 if (SDRAM_ENABLE) begin: sdram_enabled
     // Cache normal Doom image, heap and IWAD accesses. Keep the physical
-    // first MiB, the uncached 0x24000000 diagnostic alias, and the four-MiB
-    // video aperture uncached. The alias reaches the same 64 MiB SDRAM because
-    // the physical controller uses address bits 25:1 and ignores address bit 26.
+    // first MiB, the diagnostic alias, and the four-MiB video aperture uncached.
+    // Board-level parameters select the 64 MiB ULX3S or 32 MiB ULX4M-LS map.
     wire sdram_diagnostic_aperture =
         (sdram_haddr & 32'hfff00000) == 32'h20000000;
     wire sdram_diagnostic_alias =
-        (sdram_haddr & 32'hfc000000) == 32'h24000000;
+        (sdram_haddr & SDRAM_DIAGNOSTIC_ALIAS_MASK) == 32'h24000000;
     wire sdram_video_aperture =
-        (sdram_haddr & 32'hffc00000) == 32'h23c00000;
+        (sdram_haddr & 32'hffc00000) == SDRAM_VIDEO_APERTURE_BASE;
     wire sdram_access_cacheable =
         !sdram_diagnostic_aperture &&
         !sdram_diagnostic_alias &&
@@ -691,7 +693,8 @@ if (SDRAM_ENABLE) begin: sdram_enabled
     );
 
     ahb_sdram #(
-        .CLK_MHZ (CLK_MHZ)
+        .CLK_MHZ   (CLK_MHZ),
+        .COL_WIDTH (SDRAM_COL_WIDTH)
     ) sdram_u (
         .clk               (clk),
         .rst_n             (rst_n),

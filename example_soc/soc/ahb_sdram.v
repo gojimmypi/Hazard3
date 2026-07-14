@@ -13,7 +13,10 @@
 module ahb_sdram #(
     parameter W_ADDR = 32,
     parameter W_DATA = 32,
-    parameter CLK_MHZ = 50
+    parameter CLK_MHZ = 50,
+    parameter ROW_WIDTH = 13,
+    parameter COL_WIDTH = 10,
+    parameter BANK_WIDTH = 2
 ) (
     input  wire              clk,
     input  wire              rst_n,
@@ -32,7 +35,7 @@ module ahb_sdram #(
     output wire [W_DATA-1:0] ahbls_hrdata,
 
     // Read-only native SDRAM port for video frame presentation. Requests are
-    // 16-bit halfword addresses within the 64 MiB SDRAM window.
+    // 16-bit halfword addresses within the selected SDRAM window.
     input  wire              video_req_valid,
     output wire              video_req_ready,
     input  wire [24:0]       video_req_addr,
@@ -50,6 +53,8 @@ module ahb_sdram #(
     output wire              sdram_casn,
     output wire              sdram_wen
 );
+
+localparam SDRAM_ADDR_WIDTH = BANK_WIDTH + ROW_WIDTH + COL_WIDTH;
 
 localparam [2:0]
     ST_IDLE          = 3'd0,
@@ -85,8 +90,10 @@ wire select_video_request = video_req_valid &&
     (!ahb_controller_req_valid || !last_grant_video);
 wire controller_req_valid = select_video_request || ahb_controller_req_valid;
 wire controller_req_write = select_video_request ? 1'b0 : ahb_controller_req_write;
-wire [24:0] controller_req_addr = select_video_request ?
+wire [24:0] selected_controller_req_addr = select_video_request ?
     video_req_addr : operation_addr;
+wire [SDRAM_ADDR_WIDTH-1:0] controller_req_addr =
+    selected_controller_req_addr[SDRAM_ADDR_WIDTH-1:0];
 wire [15:0] controller_req_wdata = select_video_request ?
     16'd0 : operation_wdata;
 wire [1:0] controller_req_wmask = select_video_request ?
@@ -111,7 +118,10 @@ assign ahbls_hresp = 1'b0;
 assign ahbls_hrdata = read_data;
 
 ulx3s_sdram_controller #(
-    .CLK_MHZ (CLK_MHZ)
+    .CLK_MHZ    (CLK_MHZ),
+    .ROW_WIDTH  (ROW_WIDTH),
+    .COL_WIDTH  (COL_WIDTH),
+    .BANK_WIDTH (BANK_WIDTH)
 ) controller_u (
     .clk         (clk),
     .rst_n       (rst_n),

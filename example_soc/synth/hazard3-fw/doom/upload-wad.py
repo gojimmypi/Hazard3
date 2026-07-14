@@ -8,8 +8,10 @@ import time
 
 WAD_PACKAGE_MAGIC = 0x31573348
 WAD_HEADER_BYTES = 64
-WAD_BASE = 0x22C00000
-WAD_LIMIT = 0x23C00000
+MEMORY_PROFILES = {
+    "64m": (0x22C00000, 0x23C00000),
+    "32m": (0x21000000, 0x21C00000),
+}
 READY_MARKER = b"H3W READY\r\n"
 DATA_MARKER = b"H3W DATA\r\n"
 OK_MARKER = b"H3W OK"
@@ -51,11 +53,13 @@ def validate_name(name: str) -> bytes:
     return encoded + bytes(16 - len(encoded))
 
 
-def validate_iwad(wad: bytes) -> tuple[int, int]:
+def validate_iwad(wad: bytes, wad_base: int, wad_limit: int) -> tuple[int, int]:
     if len(wad) < 12:
         raise RuntimeError("file is shorter than a WAD header")
-    if len(wad) > WAD_LIMIT - WAD_BASE:
-        raise RuntimeError("IWAD exceeds the reserved 16 MiB SDRAM region")
+    if len(wad) > wad_limit - wad_base:
+        reserved_mib = (wad_limit - wad_base) // (1024 * 1024)
+        raise RuntimeError(
+            f"IWAD exceeds the reserved {reserved_mib} MiB SDRAM region")
     identification, lump_count, directory_offset = struct.unpack_from("<4sII", wad, 0)
     if identification != b"IWAD":
         raise RuntimeError("this milestone requires an IWAD file")
@@ -71,7 +75,7 @@ def validate_iwad(wad: bytes) -> tuple[int, int]:
     return lump_count, directory_offset
 
 
-def create_header(wad: bytes, name: bytes) -> tuple[bytes, int]:
+def create_header(wad: bytes, name: bytes, wad_base: int) -> tuple[bytes, int]:
     crc = binascii.crc32(wad) & 0xFFFFFFFF
     header = struct.pack(
         "<8I16s4I",
@@ -79,7 +83,7 @@ def create_header(wad: bytes, name: bytes) -> tuple[bytes, int]:
         WAD_HEADER_BYTES,
         1,
         1,
-        WAD_BASE,
+        wad_base,
         len(wad),
         crc,
         0,
@@ -96,10 +100,13 @@ def create_header(wad: bytes, name: bytes) -> tuple[bytes, int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Upload an IWAD to the Hazard3 ULX3S SDRAM WAD region")
+        description="Upload an IWAD to the Hazard3 ECP5 SDRAM WAD region")
     parser.add_argument("wad", type=pathlib.Path)
     parser.add_argument("--port", required=True)
     parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument(
+        "--memory-profile", choices=MEMORY_PROFILES, default="64m",
+        help="must match the monitor build (default: 64m)")
     parser.add_argument("--chunk-size", type=int, default=4096)
     parser.add_argument("--name", help="Doom-visible filename; defaults to the input basename")
     parser.add_argument("--launch", action="store_true")
@@ -107,15 +114,17 @@ def main() -> int:
     args = parser.parse_args()
     if args.chunk_size <= 0:
         raise RuntimeError("chunk size must be positive")
+    wad_base, wad_limit = MEMORY_PROFILES[args.memory_profile]
     wad = args.wad.read_bytes()
-    lump_count, directory_offset = validate_iwad(wad)
+    lump_count, directory_offset = validate_iwad(wad, wad_base, wad_limit)
     visible_name = args.name if args.name is not None else args.wad.name.lower()
     encoded_name = validate_name(visible_name)
-    header, crc = create_header(wad, encoded_name)
+    header, crc = create_header(wad, encoded_name, wad_base)
     serial = import_serial()
     print(
-        f"Opening {args.port} at {args.baud}; name={visible_name}, "
-        f"bytes={len(wad)}, lumps={lump_count}, directory=0x{directory_offset:08x}, "
+        f"Opening {args.port} at {args.baud}; profile={args.memory_profile}, "
+        f"load=0x{wad_base:08x}, name={visible_name}, bytes={len(wad)}, "
+        f"lumps={lump_count}, directory=0x{directory_offset:08x}, "
         f"CRC32=0x{crc:08x}")
     with serial.Serial(
             args.port, args.baud, timeout=0.1, write_timeout=10.0) as port:

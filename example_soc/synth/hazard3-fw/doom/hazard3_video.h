@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "hazard3_memory_map.h"
+
 #define HAZARD3_VIDEO_REG_BASE          0x4000c000u
 #define HAZARD3_VIDEO_STATUS            \
     (*(volatile uint32_t *)(HAZARD3_VIDEO_REG_BASE + 0x00u))
@@ -33,8 +35,6 @@
 #define HAZARD3_VIDEO_CONTROL_BUFFER1         (1u << 1)
 #define HAZARD3_VIDEO_CONTROL_PRESENT         (1u << 2)
 
-#define HAZARD3_VIDEO_FRAMEBUFFER0_BASE       0x23c00000u
-#define HAZARD3_VIDEO_FRAMEBUFFER1_BASE       0x23c10000u
 #define HAZARD3_VIDEO_FRAMEBUFFER_WIDTH       320u
 #define HAZARD3_VIDEO_FRAMEBUFFER_HEIGHT      200u
 #define HAZARD3_VIDEO_FRAMEBUFFER_BYTES       \

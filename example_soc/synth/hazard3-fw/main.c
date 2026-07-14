@@ -44,16 +44,22 @@
 #define GPIO_FOREGROUND_MASK       0x7fu
 #define GPIO_TIMER_LED             0x80u
 
-#define SDRAM_DIAGNOSTIC_ALIAS_BASE 0x24000000u
+#define SDRAM_DIAGNOSTIC_ALIAS_BASE HAZARD3_SDRAM_DIAGNOSTIC_ALIAS_BASE
 #define SDRAM_BASE                 SDRAM_DIAGNOSTIC_ALIAS_BASE
-#define SDRAM_SIZE_BYTES           (64u * 1024u * 1024u)
-#define SDRAM_BANK_BYTES           (16u * 1024u * 1024u)
-#define SDRAM_BANK_COUNT           4u
+#define SDRAM_SIZE_BYTES           HAZARD3_SDRAM_BYTES
+#define SDRAM_BANK_BYTES           HAZARD3_SDRAM_BANK_BYTES
+#define SDRAM_BANK_COUNT           HAZARD3_SDRAM_BANK_COUNT
 #define SDRAM_QUICK_TEST_BYTES     (64u * 1024u)
 #define SDRAM_FULL_TEST_BYTES      (1024u * 1024u)
 #define SDRAM_RANDOM_TEST_BYTES    (1024u * 1024u)
 #define SDRAM_RANDOM_TEST_PASSES   SDRAM_BANK_COUNT
-#define SDRAM_SPARSE_POINT_COUNT   30u
+#ifdef HAZARD3_SDRAM_32MB
+#define SDRAM_ADDRESS_BIT_COUNT    23u
+#else
+#define SDRAM_ADDRESS_BIT_COUNT    24u
+#endif
+#define SDRAM_SPARSE_POINT_COUNT   (1u + SDRAM_ADDRESS_BIT_COUNT + \
+    (SDRAM_BANK_COUNT - 1u) + 2u)
 
 #define SDRAM_DIAGNOSTIC_BYTES     (1024u * 1024u)
 #define SDRAM_DOOM_IMAGE_BYTES     (3u * 1024u * 1024u)
@@ -208,7 +214,9 @@ static void console_print_help(void)
     uart_puts("\r\nCommands:\r\n");
     uart_puts("  h or ?  help\r\n");
     uart_puts("  m       destructive reserved 1 MiB SDRAM test (heap-safe)\r\n");
-    uart_puts("  a       sparse 64 MiB address/bank alias test\r\n");
+    uart_puts("  a       sparse ");
+    uart_puts(HAZARD3_SDRAM_PROFILE_NAME);
+    uart_puts(" address/bank alias test\r\n");
     uart_puts("  r       pseudorandom 1 MiB test in each SDRAM bank\r\n");
     uart_puts("  q       complete SDRAM qualification suite\r\n");
     uart_puts("  k       SDRAM heap allocation/stress test\r\n");
@@ -227,7 +235,7 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ULX3S Doom UART loader firmware\r\n");
+    uart_puts("\r\nHazard3 ECP5 Doom UART loader firmware\r\n");
     uart_puts("> ");
 }
 
@@ -667,30 +675,32 @@ static int sdram_test_finish(uint32_t start_ticks, int passed)
 
 static uint32_t sdram_sparse_offset(uint32_t point)
 {
+    uint32_t address_bit_count = 0u;
+    uint32_t byte_count = SDRAM_SIZE_BYTES;
+
+    while (byte_count > sizeof(uint32_t)) {
+        byte_count >>= 1u;
+        ++address_bit_count;
+    }
+
     if (point == 0u) {
         return 0u;
     }
 
-    if (point <= 24u) {
+    if (point <= address_bit_count) {
         return 1u << (point + 1u);
     }
 
-    switch (point) {
-    case 25u:
-        return 0x00fffffcu;
-
-    case 26u:
-        return 0x01fffffcu;
-
-    case 27u:
-        return 0x02fffffcu;
-
-    case 28u:
-        return 0x03000000u;
-
-    default:
-        return SDRAM_SIZE_BYTES - sizeof(uint32_t);
+    point -= address_bit_count + 1u;
+    if (point < SDRAM_BANK_COUNT - 1u) {
+        return (point + 1u) * SDRAM_BANK_BYTES - sizeof(uint32_t);
     }
+
+    if (point == SDRAM_BANK_COUNT - 1u) {
+        return (SDRAM_BANK_COUNT - 1u) * SDRAM_BANK_BYTES;
+    }
+
+    return SDRAM_SIZE_BYTES - sizeof(uint32_t);
 }
 
 static uint32_t sdram_sparse_value(uint32_t point, int inverted)
@@ -706,10 +716,10 @@ static int sdram_sparse_phase(int inverted)
     uint32_t failures_before = sdram_last_failures;
 
     /*
-     * The point set contains the base address, every word-address bit from
-     * byte-address bit 2 through bit 25, the last word of every 16 MiB bank,
-     * and the base of bank 3. Writing every point before reading any point
-     * detects stuck address lines and aliasing between rows, columns, or banks.
+     * The point set contains the base address, every valid word-address bit,
+     * the last word of every SDRAM bank, and the base of the final bank.
+     * Writing every point before reading any point detects stuck address lines
+     * and aliasing between rows, columns, or banks.
      */
     for (uint32_t point = 0u; point < SDRAM_SPARSE_POINT_COUNT; ++point) {
         volatile uint32_t* address = (volatile uint32_t*)(uintptr_t)(
@@ -738,7 +748,9 @@ static int sdram_run_sparse_test(void)
     int passed;
     int phase_passed;
 
-    uart_puts("\r\nSDRAM sparse 64 MiB address/bank alias test: base=");
+    uart_puts("\r\nSDRAM sparse ");
+    uart_puts(HAZARD3_SDRAM_PROFILE_NAME);
+    uart_puts(" address/bank alias test: base=");
     uart_put_hex32(SDRAM_BASE);
     uart_puts(" bytes=");
     uart_put_hex32(SDRAM_SIZE_BYTES);
@@ -1548,15 +1560,32 @@ static void uart_init(void)
 
 static void console_init(void)
 {
-    uart_puts("\r\nHazard3 ULX3S boot\r\n");
-    uart_puts("UART: gp0 RX / gp1 TX, 115200 8N1\r\n");
+    uart_puts("\r\nHazard3 ECP5 board boot\r\n");
+    uart_puts("UART: board serial RX / TX, 115200 8N1\r\n");
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("Internal screen: 0x00010000-0x0001F9FF (320x200 indexed)\r\n");
-    uart_puts("LED0-7: timer ISR (continues while Doom runs)\r\n");
-    uart_puts("SDRAM: physical 0x20000000, uncached diagnostics alias 0x24000000\r\n");
-    uart_puts("Doom image: 0x20100000-0x203FFFFF\r\n");
-    uart_puts("Heap: 0x20400000-0x22BFFFFF\r\n");
-    uart_puts("IWAD: 0x22C00000-0x23BFFFFF, video reserve at 0x23C00000\r\n");
+    uart_puts("Board LEDs: timer ISR (continues while Doom runs)\r\n");
+    uart_puts("SDRAM profile: ");
+    uart_puts(HAZARD3_SDRAM_PROFILE_NAME);
+    uart_puts(", physical base=");
+    uart_put_hex32(HAZARD3_SDRAM_PHYSICAL_BASE);
+    uart_puts(", uncached diagnostics alias=");
+    uart_put_hex32(HAZARD3_SDRAM_DIAGNOSTIC_ALIAS_BASE);
+    uart_puts("\r\nDoom image: ");
+    uart_put_hex32(HAZARD3_DOOM_IMAGE_BASE);
+    uart_puts("-");
+    uart_put_hex32(HAZARD3_DOOM_IMAGE_LIMIT - 1u);
+    uart_puts("\r\nHeap: ");
+    uart_put_hex32(HAZARD3_DOOM_HEAP_BASE);
+    uart_puts("-");
+    uart_put_hex32(HAZARD3_DOOM_HEAP_LIMIT - 1u);
+    uart_puts("\r\nIWAD: ");
+    uart_put_hex32(HAZARD3_DOOM_WAD_BASE);
+    uart_puts("-");
+    uart_put_hex32(HAZARD3_DOOM_WAD_LIMIT - 1u);
+    uart_puts(", video reserve at ");
+    uart_put_hex32(HAZARD3_VIDEO_BASE);
+    uart_puts("\r\n");
     uart_puts("HDMI: 1024x600, block-RAM double buffer, indexed/RGB332\r\n");
     uart_puts("Doom: l=load image, w=load IWAD, j=launch\r\n");
 }
