@@ -29,6 +29,7 @@ The Hazard3-specific files in this directory are:
 - `build-size-probe.sh`: RV32 compile and object-size report.
 - `build-doom-image.sh`: full linked Doom image build and H3L packaging.
 - `doom_image_format.h`: packaged Doom image header format.
+- `hazard3_memory_map.h`: shared ULX3S 64 MiB and ULX4M-LS 32 MiB map.
 - `doom_image_loader.c`: monitor-side H3L executable-image receiver.
 - `doom_image_main.c`: linked Doom image entry point.
 - `doom_wad_format.h`: packaged IWAD header format.
@@ -55,7 +56,7 @@ milestone:
   with 32-byte lines.
 - The SDRAM controller keeps matching rows open between accesses.
 - Doom renders its native 320x200 8-bit indexed screen directly into the upper
-  64 KiB of the ULX3S internal SRAM at `0x00010000`.
+  64 KiB of the FPGA internal SRAM at `0x00010000`.
 - `DG_DrawFrame()` performs one unrolled 64,000-byte copy into an uncached SDRAM
   staging buffer. It no longer performs 64,000 software palette conversions.
 - Hardware copies the completed staging frame into the inactive full-frame ECP5
@@ -79,42 +80,60 @@ a target frame rate.
 
 ## Memory map
 
-- `0x00000000-0x0000ffff`: internal-SRAM monitor, traps, and monitor/Doom stack
-- `0x00010000-0x0001f9ff`: Doom 320x200 indexed working screen in internal SRAM
+Both builds keep the internal 128 KiB SRAM map:
+
+- `0x00000000-0x0000ffff`: monitor, traps, and monitor/Doom stack
+- `0x00010000-0x0001f9ff`: Doom 320x200 indexed working screen
 - `0x0001fa00-0x0001ffff`: unused internal SRAM
-- `0x20000000-0x200fffff`: physical first MiB, uncached
-- `0x24000000-0x27ffffff`: uncached diagnostic alias of the full 64 MiB SDRAM
+
+The default `64m` profile is the proven ULX3S map:
+
+- `0x20000000-0x23ffffff`: physical 64 MiB SDRAM
+- `0x24000000-0x27ffffff`: uncached diagnostic alias
 - `0x20100000-0x203fffff`: cached linked Doom image
 - `0x20400000-0x22bfffff`: cached Doom heap and zone memory
-- `0x22c00000-0x23bfffff`: cached validated read-only IWAD, up to 16 MiB
-- `0x23c00000-0x23c0f9ff`: uncached indexed staging framebuffer 0
-- `0x23c10000-0x23c1f9ff`: uncached indexed staging framebuffer 1
-- `0x23c20000-0x23ffffff`: reserved video aperture
+- `0x22c00000-0x23bfffff`: cached IWAD reservation, 16 MiB
+- `0x23c00000-0x23ffffff`: uncached video reservation
 
-The HDMI controller's CPU registers are at `0x4000c000`.
+The `32m` profile is for an ULX4M-LS v0.0.2 with a sufficiently large FPGA:
 
-The diagnostic alias deliberately mirrors the full physical SDRAM. The memory
-controller consumes address bits 25:1, so address bit 26 selects the uncached
-AHB alias without changing the SDRAM row, bank, or column address. The monitor
-uses the alias for destructive tests; Doom uses the original physical map.
+- `0x20000000-0x21ffffff`: physical 32 MiB SDRAM
+- `0x24000000-0x25ffffff`: uncached diagnostic alias
+- `0x20100000-0x203fffff`: cached linked Doom image
+- `0x20400000-0x20ffffff`: cached Doom heap, 12 MiB
+- `0x21000000-0x21bfffff`: cached IWAD reservation, 12 MiB
+- `0x21c00000-0x21ffffff`: uncached video reservation
 
-The image and IWAD use separate UART protocols. Each transfer sends a fixed
-64-byte little-endian header, waits for a monitor data-ready marker, then sends
-the payload. The monitor validates range fields and an IEEE CRC32. The IWAD
-loader additionally checks the `IWAD` identifier, directory bounds, and every
-lump's file range before marking the WAD usable.
+Within either video reservation, framebuffer 0 begins at the reservation base
+and framebuffer 1 begins 64 KiB later. The HDMI controller registers remain at
+`0x4000c000`.
+
+The diagnostic alias mirrors physical SDRAM while bypassing the write-back
+cache. The monitor uses it for destructive qualification; Doom uses the
+physical cached map. The image and IWAD protocols validate fixed-size headers,
+ranges, and IEEE CRC32 values before accepting a transfer.
 
 ## Build the FPGA
 
 The monitor service ABI is version 3. Rebuild the FPGA, monitor, and Doom image;
 an ABI-3 Doom image will reject an older monitor.
 
-From `example_soc/synth`:
+From `example_soc/synth`, build the proven ULX3S target:
 
 ```bash
 make -f ULX3S.mk clean
 make -f ULX3S.mk bit
 ```
+
+For an ULX4M-LS v0.0.2 populated with an 85F FPGA:
+
+```bash
+make -f ULX4M_LS_85F.mk clean
+make -f ULX4M_LS_85F.mk bit
+```
+
+See `../ULX4M_PORT.md` for the 12F capacity limit, the 32 MiB software profile,
+and the separate ULX4M-LD DDR3 integration work.
 
 The ULX3S build selects nextpnr's heap placer. The shared
 `scripts/synth_ecp5.mk` change preserves simulated annealing as the default for
@@ -129,15 +148,19 @@ grep -E "Max frequency|FAIL|Warning|DP16KD" pnr.log
 `ULX3S.mk` still passes `--timing-allow-fail`, so the existence of a bitstream
 does not prove timing closure. Do not treat a clock marked `FAIL` as validated.
 
-Program the new `fpga_ulx3s.bit`. Reprogramming the FPGA clears SDRAM, so the
-Doom image and IWAD must both be uploaded again.
+Program the bitstream matching the selected board. Reprogramming the FPGA
+clears SDRAM, so the Doom image and IWAD must both be uploaded again.
 
 ## Build and reload the monitor
 
-From `example_soc/synth/hazard3-fw`:
+From `example_soc/synth/hazard3-fw`, use the profile matching the FPGA:
 
 ```bash
+# ULX3S, default 64 MiB profile
 ./build.sh
+
+# ULX4M-LS, 32 MiB profile
+HAZARD3_MEMORY_PROFILE=32m ./build.sh
 ```
 
 Output:
@@ -177,10 +200,15 @@ j    launch the validated Doom image and IWAD
 
 ## Build the linked Doom image
 
-Rebuild the linked image whenever the monitor ABI or Doom platform code changes:
+Rebuild the linked image whenever the monitor ABI or Doom platform code changes.
+Use the same profile as the monitor:
 
 ```bash
+# ULX3S
 ./doom/build-doom-image.sh
+
+# ULX4M-LS
+HAZARD3_MEMORY_PROFILE=32m ./doom/build-doom-image.sh
 ```
 
 The Doom image build uses the shared `doom/doom_build_flags.sh` settings.
@@ -228,6 +256,9 @@ py .\doom\upload-wad.py `
     --port COM7 `
     --launch
 ```
+
+For the ULX4M-LS 32 MiB profile, add `--memory-profile 32m`. The default is
+`64m` for ULX3S. The selected uploader profile must match the monitor build.
 
 The uploader derives the Doom-visible name from the input filename. Use
 `--name doom1.wad` when the local file has a different name.

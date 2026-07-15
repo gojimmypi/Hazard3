@@ -1,0 +1,259 @@
+/*****************************************************************************\
+|                        Copyright (C) 2026 gojimmypi                        |
+|                         SPDX-License-Identifier: MIT                       |
+\*****************************************************************************/
+
+`default_nettype none
+
+// Hazard3 + Doom target for ULX4M-LD v0.0.2 with native-Verilog DDR3.
+module fpga_ulx4m_ld (
+    input  wire        clk_osc,
+    output wire [7:0]  led,
+
+    output wire        uart_tx,
+    input  wire        uart_rx,
+
+    output wire [3:0]  gpdi_dp,
+
+    output wire [14:0] ddram_a,
+    output wire [2:0]  ddram_ba,
+    output wire        ddram_cas_n,
+    output wire        ddram_cke,
+    output wire        ddram_clk_n,
+    output wire        ddram_clk_p,
+    output wire        ddram_cs_n,
+    output wire [1:0]  ddram_dm,
+    inout  wire [15:0] ddram_dq,
+    inout  wire [1:0]  ddram_dqs_n,
+    inout  wire [1:0]  ddram_dqs_p,
+    output wire        ddram_odt,
+    output wire        ddram_ras_n,
+    output wire        ddram_reset_n,
+    output wire        ddram_we_n
+);
+
+wire clk_sys;
+wire clk_ddr;
+wire clk_ddr_90;
+wire pll_ddr_locked;
+wire rst_n_sys;
+
+pll_25_25_100_90 pll_ddr_u (
+    .clkin          (clk_osc),
+    .clk_controller (clk_sys),
+    .clk_ddr        (clk_ddr),
+    .clk_ddr_90     (clk_ddr_90),
+    .locked         (pll_ddr_locked)
+);
+
+fpga_reset #(
+    .SHIFT (3)
+) rstgen_sys_u (
+    .clk         (clk_sys),
+    .force_rst_n (pll_ddr_locked),
+    .rst_n       (rst_n_sys)
+);
+
+// The video clock tree is unchanged from the working ULX3S target.
+wire clk_video_pix;
+wire clk_tmds_x5;
+wire pll_video_locked;
+wire rst_n_video_pix;
+wire rst_n_tmds_x5;
+
+pll_25_50_250 pll_video_u (
+    .clkin       (clk_osc),
+    .clk_pix     (clk_video_pix),
+    .clk_tmds_x5 (clk_tmds_x5),
+    .locked      (pll_video_locked)
+);
+
+fpga_reset #(
+    .SHIFT (3)
+) rstgen_video_pix_u (
+    .clk         (clk_video_pix),
+    .force_rst_n (pll_video_locked),
+    .rst_n       (rst_n_video_pix)
+);
+
+fpga_reset #(
+    .SHIFT (3)
+) rstgen_tmds_u (
+    .clk         (clk_tmds_x5),
+    .force_rst_n (pll_video_locked),
+    .rst_n       (rst_n_tmds_x5)
+);
+
+wire        video_sdram_req_valid;
+wire        video_sdram_req_ready;
+wire [24:0] video_sdram_req_addr;
+wire        video_sdram_rsp_valid;
+wire [15:0] video_sdram_rsp_rdata;
+wire        video_sdram_init_done;
+
+wire        video_apb_psel;
+wire        video_apb_penable;
+wire        video_apb_pwrite;
+wire [15:0] video_apb_paddr;
+wire [31:0] video_apb_pwdata;
+wire [31:0] video_apb_prdata;
+wire        video_apb_pready;
+wire        video_apb_pslverr;
+
+ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
+    .clk_sys          (clk_sys),
+    .rst_n_sys        (rst_n_sys),
+    .clk_pix          (clk_video_pix),
+    .rst_n_pix        (rst_n_video_pix),
+    .clk_tmds_x5      (clk_tmds_x5),
+    .rst_n_tmds_x5    (rst_n_tmds_x5),
+
+    .sdram_req_valid  (video_sdram_req_valid),
+    .sdram_req_ready  (video_sdram_req_ready),
+    .sdram_req_addr   (video_sdram_req_addr),
+    .sdram_rsp_valid  (video_sdram_rsp_valid),
+    .sdram_rsp_rdata  (video_sdram_rsp_rdata),
+    .sdram_init_done  (video_sdram_init_done),
+
+    .apbs_psel        (video_apb_psel),
+    .apbs_penable     (video_apb_penable),
+    .apbs_pwrite      (video_apb_pwrite),
+    .apbs_paddr       (video_apb_paddr),
+    .apbs_pwdata      (video_apb_pwdata),
+    .apbs_prdata      (video_apb_prdata),
+    .apbs_pready      (video_apb_pready),
+    .apbs_pslverr     (video_apb_pslverr),
+
+    .gpdi_dp          (gpdi_dp)
+);
+
+wire [7:0] soc_gpio_out;
+wire       ddr3_calib_complete;
+wire [31:0] ddr3_debug_status;
+
+// D7 is a hardware heartbeat driven directly from the board oscillator. It
+// proves that the user bitstream is active even if either PLL or DDR3 stalls.
+wire heartbeat;
+
+blinky #(
+    .CLK_HZ   (25_000_000),
+    .BLINK_HZ (1)
+) heartbeat_u (
+    .clk   (clk_osc),
+    .blink (heartbeat)
+);
+
+// Before calibration, D6 and D5 show the video and DDR PLL locks and D4-D0
+// expose UberDDR3 state_calibrate[4:0]. After calibration, D6-D0 return to the
+// existing Hazard3 GPIO behavior while D7 remains the hardware heartbeat.
+assign led = ddr3_calib_complete ? {heartbeat, soc_gpio_out[6:0]} : {
+    heartbeat,
+    pll_video_locked,
+    pll_ddr_locked,
+    ddr3_debug_status[4:0]
+};
+
+// The SDR SDRAM outputs remain internal and unused on ULX4M-LD. They are kept
+// here only because example_soc retains its proven ULX3S interface.
+wire [12:0] unused_sdram_a;
+wire [1:0]  unused_sdram_ba;
+wire [15:0] unused_sdram_d;
+wire [1:0]  unused_sdram_dqm;
+wire        unused_sdram_cke;
+wire        unused_sdram_csn;
+wire        unused_sdram_rasn;
+wire        unused_sdram_casn;
+wire        unused_sdram_wen;
+
+example_soc #(
+    .DTM_TYPE           ("ECP5"),
+    .SRAM_DEPTH         (1 << 15),
+    .CLK_MHZ            (25),
+    .SDRAM_ENABLE       (1),
+    .DDR3_ENABLE        (1),
+
+    .EXTENSION_M        (1),
+    .EXTENSION_A        (0),
+    .EXTENSION_C        (1),
+    .EXTENSION_ZBA      (1),
+    .EXTENSION_ZBB      (1),
+    .EXTENSION_ZBC      (0),
+    .EXTENSION_ZBS      (1),
+    .EXTENSION_ZBKB     (0),
+    .EXTENSION_ZIFENCEI (1),
+    .EXTENSION_XH3BEXTM (0),
+    .EXTENSION_XH3PMPM  (0),
+    .EXTENSION_XH3POWER (0),
+    .CSR_COUNTER        (1),
+    .MUL_FAST           (1),
+    .MUL_FASTER         (1),
+    .MULH_FAST          (1),
+    .MULDIV_UNROLL      (4),
+    .FAST_BRANCHCMP     (1),
+    .BRANCH_PREDICTOR   (1)
+) soc_u (
+    .clk     (clk_sys),
+    .rst_n   (rst_n_sys),
+
+    // JTAG connections are provided internally by the ECP5 JTAGG primitive.
+    .tck     (1'b0),
+    .trst_n  (1'b0),
+    .tms     (1'b0),
+    .tdi     (1'b0),
+    .tdo     (),
+
+    .uart_tx (uart_tx),
+    .uart_rx (uart_rx),
+
+    .gpio_out (soc_gpio_out),
+
+    .sdram_a    (unused_sdram_a),
+    .sdram_ba   (unused_sdram_ba),
+    .sdram_d    (unused_sdram_d),
+    .sdram_dqm  (unused_sdram_dqm),
+    .sdram_cke  (unused_sdram_cke),
+    .sdram_csn  (unused_sdram_csn),
+    .sdram_rasn (unused_sdram_rasn),
+    .sdram_casn (unused_sdram_casn),
+    .sdram_wen  (unused_sdram_wen),
+
+    .ddr3_clk            (clk_ddr),
+    .ddr3_clk_90         (clk_ddr_90),
+    .ddram_a             (ddram_a),
+    .ddram_ba            (ddram_ba),
+    .ddram_cas_n         (ddram_cas_n),
+    .ddram_cke           (ddram_cke),
+    .ddram_clk_n         (ddram_clk_n),
+    .ddram_clk_p         (ddram_clk_p),
+    .ddram_cs_n          (ddram_cs_n),
+    .ddram_dm            (ddram_dm),
+    .ddram_dq            (ddram_dq),
+    .ddram_dqs_n         (ddram_dqs_n),
+    .ddram_dqs_p         (ddram_dqs_p),
+    .ddram_odt           (ddram_odt),
+    .ddram_ras_n         (ddram_ras_n),
+    .ddram_reset_n       (ddram_reset_n),
+    .ddram_we_n          (ddram_we_n),
+    .ddr3_calib_complete (ddr3_calib_complete),
+    .ddr3_debug_status   (ddr3_debug_status),
+
+    .video_sdram_req_valid (video_sdram_req_valid),
+    .video_sdram_req_ready (video_sdram_req_ready),
+    .video_sdram_req_addr  (video_sdram_req_addr),
+    .video_sdram_rsp_valid (video_sdram_rsp_valid),
+    .video_sdram_rsp_rdata (video_sdram_rsp_rdata),
+    .video_sdram_init_done (video_sdram_init_done),
+
+    .video_apb_psel        (video_apb_psel),
+    .video_apb_penable     (video_apb_penable),
+    .video_apb_pwrite      (video_apb_pwrite),
+    .video_apb_paddr       (video_apb_paddr),
+    .video_apb_pwdata      (video_apb_pwdata),
+    .video_apb_prdata      (video_apb_prdata),
+    .video_apb_pready      (video_apb_pready),
+    .video_apb_pslverr     (video_apb_pslverr)
+);
+
+endmodule
+
+`default_nettype wire

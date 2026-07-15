@@ -5,6 +5,52 @@ remain unchanged. The first ULX4M milestone adds a separate ULX4M-LS v0.0.2
 board wrapper, constraints, and 32 MiB SDRAM profile without changing the
 proven ULX3S top level.
 
+## Programming the ULX4M
+
+All examples start from the workspace directory:
+
+```bash
+WORKSPACE=/mnt/c/workspace/
+PROJECT_WORKSPACE="$WORKSPACE/Hazard3"
+```
+
+### Quick Start FPGA
+
+Build from the `example_soc/synth` directory. Optionally name the window `ULX4M SoC`.
+
+Hold the middle `BTN2` before and 2 seconds after powering up, then release. Confirm Windows enumerates a USB device.
+
+![ULX4M-USB-enumeration](../../doc/images/ULX4M-USB-enumeration.jpg)
+
+The ULX4M identifier is `1D50-614B`.
+
+Complete synthesis:
+
+```bash
+# e.g. /mnt/c/workspace/Hazard3/example_soc/synth
+cd ${PROJECT_WORKSPACE}/example_soc/synth
+
+make -B -f ULX4M_LD_85F.mk bit
+```
+
+Program using the [openFPGALoader]()
+
+```bash
+openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 fpga_ulx4m_ld.bit
+```
+
+After programming: 
+- Unplug USB
+- Wait 20 seconds
+- Re-plug USB (do not hold down any buttons)
+
+### Quick Start Firmware
+
+```
+cd ${PROJECT_WORKSPACE}/example_soc/synth/hard3-fw
+HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
+```
+
 ## Added target: ULX4M-LS v0.0.2, 85F FPGA
 
 `ULX4M_LS_85F.mk` uses:
@@ -83,7 +129,9 @@ A compact 12F profile needs architectural changes rather than a device switch:
 
 ULX4M-LD replaces SDR SDRAM with DDR3. Its FPGA capacity is sufficient, but its
 memory is not electrically or logically compatible with
-`ulx3s_sdram_controller.v`. The correct path is an ECP5 DDR3 PHY/controller,
+`ulx3s_sdram_controller.v`. 
+
+The correct path is an ECP5 DDR3 PHY/controller,
 such as LiteDRAM's `ECP5DDRPHY`, behind a new AHB adapter. Do not apply the
 ULX4M-LS constraints or SDR controller to an ULX4M-LD board.
 

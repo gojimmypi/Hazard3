@@ -19,6 +19,16 @@
 
 #define UART_CSR_ENABLE       (1u << 0)
 
+#ifndef HAZARD3_SYS_CLK_HZ
+#define HAZARD3_SYS_CLK_HZ 50000000u
+#endif
+
+#define UART_BAUD_HZ          115200u
+#define UART_OVERSAMPLE       8u
+#define UART_DIV_X16          ((HAZARD3_SYS_CLK_HZ * 16u + \
+    (UART_BAUD_HZ * UART_OVERSAMPLE) / 2u) / \
+    (UART_BAUD_HZ * UART_OVERSAMPLE))
+
 #define UART_FSTAT_TX_FULL    (1u << 8)
 #define UART_FSTAT_RX_EMPTY   (1u << 25)
 
@@ -1547,14 +1557,11 @@ void machine_trap_handler(uint32_t mcause, uint32_t mepc, uint32_t mtval)
 static void uart_init(void)
 {
     /*
-     * At a 50 MHz system clock with 8x UART oversampling:
-     *
-     *     50,000,000 / (115,200 * 8) = 54.253...
-     *
-     * The divider contains a 10-bit integer field in bits 13:4 and a
-     * four-bit fractional field in bits 3:0. Use 54 + 4/16.
+     * The UART divider is unsigned 10.4 fixed point. Calculate and round the
+     * divider from the board-specific system clock supplied by the build.
+     * The default remains 50 MHz for the existing ULX3S target.
      */
-    UART_DIV = (54u << 4) | 4u;
+    UART_DIV = UART_DIV_X16;
     UART_CSR = UART_CSR_ENABLE;
 }
 
@@ -1564,7 +1571,7 @@ static void console_init(void)
     uart_puts("UART: board serial RX / TX, 115200 8N1\r\n");
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("Internal screen: 0x00010000-0x0001F9FF (320x200 indexed)\r\n");
-    uart_puts("Board LEDs: timer ISR (continues while Doom runs)\r\n");
+    uart_puts("Board LEDs: D7 hardware heartbeat, D0-D6 timer ISR\r\n");
     uart_puts("SDRAM profile: ");
     uart_puts(HAZARD3_SDRAM_PROFILE_NAME);
     uart_puts(", physical base=");

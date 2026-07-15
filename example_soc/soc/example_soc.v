@@ -13,6 +13,7 @@ module example_soc #(
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
 	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
+	parameter DDR3_ENABLE = 0,      // Use native-Verilog DDR3 instead of SDR SDRAM
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
 	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
 	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
@@ -46,6 +47,28 @@ module example_soc #(
 	output wire              sdram_rasn,
 	output wire              sdram_casn,
 	output wire              sdram_wen,
+
+	// Optional ULX4M-LD DDR3 interface. DDR3_ENABLE selects this target while
+	// retaining the same cached AHB and read-only video interfaces.
+	input  wire              ddr3_clk,
+	input  wire              ddr3_clk_90,
+	output wire [14:0]       ddram_a,
+	output wire [2:0]        ddram_ba,
+	output wire              ddram_cas_n,
+	output wire              ddram_cke,
+	output wire              ddram_clk_n,
+	output wire              ddram_clk_p,
+	output wire              ddram_cs_n,
+	output wire [1:0]        ddram_dm,
+	inout  wire [15:0]       ddram_dq,
+	inout  wire [1:0]        ddram_dqs_n,
+	inout  wire [1:0]        ddram_dqs_p,
+	output wire              ddram_odt,
+	output wire              ddram_ras_n,
+	output wire              ddram_reset_n,
+	output wire              ddram_we_n,
+	output wire              ddr3_calib_complete,
+	output wire [31:0]       ddr3_debug_status,
 
 	// Optional read-only native SDRAM port for video scanout
 	input  wire              video_sdram_req_valid,
@@ -692,43 +715,121 @@ if (SDRAM_ENABLE) begin: sdram_enabled
         .dst_hrdata      (sdram_mem_hrdata)
     );
 
-    ahb_sdram #(
-        .CLK_MHZ   (CLK_MHZ),
-        .COL_WIDTH (SDRAM_COL_WIDTH)
-    ) sdram_u (
-        .clk               (clk),
-        .rst_n             (rst_n),
+    if (DDR3_ENABLE) begin: ddr3_target
+        ahb_uberddr3 ddr3_u (
+            .clk                  (clk),
+            .rst_n                (rst_n),
+            .ddr3_clk             (ddr3_clk),
+            .ddr3_clk_90          (ddr3_clk_90),
 
-        .ahbls_hready_resp (sdram_mem_hready_resp),
-        .ahbls_hready      (sdram_mem_hready),
-        .ahbls_hresp       (sdram_mem_hresp),
-        .ahbls_haddr       (sdram_mem_haddr),
-        .ahbls_hwrite      (sdram_mem_hwrite),
-        .ahbls_htrans      (sdram_mem_htrans),
-        .ahbls_hsize       (sdram_mem_hsize),
-        .ahbls_hburst      (sdram_mem_hburst),
-        .ahbls_hprot       (sdram_mem_hprot),
-        .ahbls_hmastlock   (sdram_mem_hmastlock),
-        .ahbls_hwdata      (sdram_mem_hwdata),
-        .ahbls_hrdata      (sdram_mem_hrdata),
+            .ahbls_hready_resp    (sdram_mem_hready_resp),
+            .ahbls_hready         (sdram_mem_hready),
+            .ahbls_hresp          (sdram_mem_hresp),
+            .ahbls_haddr          (sdram_mem_haddr),
+            .ahbls_hwrite         (sdram_mem_hwrite),
+            .ahbls_htrans         (sdram_mem_htrans),
+            .ahbls_hsize          (sdram_mem_hsize),
+            .ahbls_hburst         (sdram_mem_hburst),
+            .ahbls_hprot          (sdram_mem_hprot),
+            .ahbls_hmastlock      (sdram_mem_hmastlock),
+            .ahbls_hwdata         (sdram_mem_hwdata),
+            .ahbls_hrdata         (sdram_mem_hrdata),
 
-        .video_req_valid   (video_sdram_req_valid),
-        .video_req_ready   (video_sdram_req_ready),
-        .video_req_addr    (video_sdram_req_addr),
-        .video_rsp_valid   (video_sdram_rsp_valid),
-        .video_rsp_rdata   (video_sdram_rsp_rdata),
-        .video_init_done   (video_sdram_init_done),
+            .video_req_valid      (video_sdram_req_valid),
+            .video_req_ready      (video_sdram_req_ready),
+            .video_req_addr       (video_sdram_req_addr),
+            .video_rsp_valid      (video_sdram_rsp_valid),
+            .video_rsp_rdata      (video_sdram_rsp_rdata),
+            .video_init_done      (video_sdram_init_done),
 
-        .sdram_a           (sdram_a),
-        .sdram_ba          (sdram_ba),
-        .sdram_d           (sdram_d),
-        .sdram_dqm         (sdram_dqm),
-        .sdram_cke         (sdram_cke),
-        .sdram_csn         (sdram_csn),
-        .sdram_rasn        (sdram_rasn),
-        .sdram_casn        (sdram_casn),
-        .sdram_wen         (sdram_wen)
-    );
+            .ddram_a              (ddram_a),
+            .ddram_ba             (ddram_ba),
+            .ddram_cas_n          (ddram_cas_n),
+            .ddram_cke            (ddram_cke),
+            .ddram_clk_n          (ddram_clk_n),
+            .ddram_clk_p          (ddram_clk_p),
+            .ddram_cs_n           (ddram_cs_n),
+            .ddram_dm             (ddram_dm),
+            .ddram_dq             (ddram_dq),
+            .ddram_dqs_n          (ddram_dqs_n),
+            .ddram_dqs_p          (ddram_dqs_p),
+            .ddram_odt            (ddram_odt),
+            .ddram_ras_n          (ddram_ras_n),
+            .ddram_reset_n        (ddram_reset_n),
+            .ddram_we_n           (ddram_we_n),
+
+            .calib_complete       (ddr3_calib_complete),
+            .debug_status         (ddr3_debug_status)
+        );
+
+        assign sdram_a = 13'd0;
+        assign sdram_ba = 2'b00;
+        assign sdram_d = 16'hzzzz;
+        assign sdram_dqm = 2'b11;
+        assign sdram_cke = 1'b0;
+        assign sdram_csn = 1'b1;
+        assign sdram_rasn = 1'b1;
+        assign sdram_casn = 1'b1;
+        assign sdram_wen = 1'b1;
+    end else begin: sdr_sdram_target
+        ahb_sdram #(
+            .CLK_MHZ   (CLK_MHZ),
+            .COL_WIDTH (SDRAM_COL_WIDTH)
+        ) sdram_u (
+            .clk               (clk),
+            .rst_n             (rst_n),
+
+            .ahbls_hready_resp (sdram_mem_hready_resp),
+            .ahbls_hready      (sdram_mem_hready),
+            .ahbls_hresp       (sdram_mem_hresp),
+            .ahbls_haddr       (sdram_mem_haddr),
+            .ahbls_hwrite      (sdram_mem_hwrite),
+            .ahbls_htrans      (sdram_mem_htrans),
+            .ahbls_hsize       (sdram_mem_hsize),
+            .ahbls_hburst      (sdram_mem_hburst),
+            .ahbls_hprot       (sdram_mem_hprot),
+            .ahbls_hmastlock   (sdram_mem_hmastlock),
+            .ahbls_hwdata      (sdram_mem_hwdata),
+            .ahbls_hrdata      (sdram_mem_hrdata),
+
+            .video_req_valid   (video_sdram_req_valid),
+            .video_req_ready   (video_sdram_req_ready),
+            .video_req_addr    (video_sdram_req_addr),
+            .video_rsp_valid   (video_sdram_rsp_valid),
+            .video_rsp_rdata   (video_sdram_rsp_rdata),
+            .video_init_done   (video_sdram_init_done),
+
+            .sdram_a           (sdram_a),
+            .sdram_ba          (sdram_ba),
+            .sdram_d           (sdram_d),
+            .sdram_dqm         (sdram_dqm),
+            .sdram_cke         (sdram_cke),
+            .sdram_csn         (sdram_csn),
+            .sdram_rasn        (sdram_rasn),
+            .sdram_casn        (sdram_casn),
+            .sdram_wen         (sdram_wen)
+        );
+
+        assign ddram_a = 15'd0;
+        assign ddram_ba = 3'd0;
+        assign ddram_cas_n = 1'b1;
+        assign ddram_cke = 1'b0;
+        assign ddram_clk_n = 1'b0;
+        assign ddram_clk_p = 1'b0;
+        assign ddram_cs_n = 1'b1;
+        assign ddram_dm = 2'b11;
+        assign ddram_dq = 16'hzzzz;
+        assign ddram_dqs_n = 2'bzz;
+        assign ddram_dqs_p = 2'bzz;
+        assign ddram_odt = 1'b0;
+        assign ddram_ras_n = 1'b1;
+        assign ddram_reset_n = 1'b0;
+        assign ddram_we_n = 1'b1;
+        assign ddr3_calib_complete = 1'b0;
+        assign ddr3_debug_status = 32'd0;
+
+        wire unused_ddr3_clocks = ddr3_clk ^ ddr3_clk_90;
+    end
 end else begin: sdram_disabled
     assign sdram_hready_resp = 1'b1;
     assign sdram_hresp = 1'b0;
@@ -749,9 +850,28 @@ end else begin: sdram_disabled
     assign video_sdram_rsp_rdata = 16'd0;
     assign video_sdram_init_done = 1'b0;
 
+    assign ddram_a = 15'd0;
+    assign ddram_ba = 3'd0;
+    assign ddram_cas_n = 1'b1;
+    assign ddram_cke = 1'b0;
+    assign ddram_clk_n = 1'b0;
+    assign ddram_clk_p = 1'b0;
+    assign ddram_cs_n = 1'b1;
+    assign ddram_dm = 2'b11;
+    assign ddram_dq = 16'hzzzz;
+    assign ddram_dqs_n = 2'bzz;
+    assign ddram_dqs_p = 2'bzz;
+    assign ddram_odt = 1'b0;
+    assign ddram_ras_n = 1'b1;
+    assign ddram_reset_n = 1'b0;
+    assign ddram_we_n = 1'b1;
+    assign ddr3_calib_complete = 1'b0;
+    assign ddr3_debug_status = 32'd0;
+
     wire unused_sdram_hready = sdram_hready;
     wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
         video_sdram_req_addr};
+    wire unused_ddr3_clocks = ddr3_clk ^ ddr3_clk_90;
 end
 endgenerate
 
