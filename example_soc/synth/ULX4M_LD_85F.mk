@@ -6,10 +6,22 @@ DOTF=../fpga/fpga_ulx4m_ld.f
 
 SYNTH_OPT=-abc9
 PLACER=heap
-PNR_OPT=--timing-allow-fail
+PNR_OPT=--timing-allow-fail --speed 8
 
-DEVICE=um5g-85k
+# Select the exact ECP5 variant installed on the ULX4M-LD module. The shared
+# fpgascripts default IDCODE is for LFE5U-85F and must be overridden for both
+# LFE5UM and LFE5UM5G devices.
+ULX4M_LD_DEVICE ?= um-85k
+DEVICE=$(ULX4M_LD_DEVICE)
 PACKAGE=CABGA381
+
+ifeq ($(ULX4M_LD_DEVICE),um-85k)
+DEVICE_IDCODE=0x01113043
+else ifeq ($(ULX4M_LD_DEVICE),um5g-85k)
+DEVICE_IDCODE=0x81113043
+else
+$(error Unsupported ULX4M_LD_DEVICE '$(ULX4M_LD_DEVICE)'; use um-85k or um5g-85k)
+endif
 
 include $(SCRIPTS)/synth_ecp5.mk
 
@@ -39,4 +51,15 @@ $(CHIPNAME).json: ../soc/cache_tags_zero.hex $(UBERDDR3_SOURCES)
 dfu: bit
 	dfu-util -a 0 -D $(CHIPNAME).bit -R
 
-.PHONY: fetch-uberddr3 dfu
+# Build named copies for each FPGA variant. The normal $(CHIPNAME).bit is
+# also produced so the existing dfu target and programming commands continue
+# to work unchanged.
+bit-um:
+	$(MAKE) -B -f ULX4M_LD_85F.mk ULX4M_LD_DEVICE=um-85k bit
+	cp $(CHIPNAME).bit $(CHIPNAME)_um85.bit
+
+bit-um5g:
+	$(MAKE) -B -f ULX4M_LD_85F.mk ULX4M_LD_DEVICE=um5g-85k bit
+	cp $(CHIPNAME).bit $(CHIPNAME)_um5g85.bit
+
+.PHONY: fetch-uberddr3 dfu bit-um bit-um5g

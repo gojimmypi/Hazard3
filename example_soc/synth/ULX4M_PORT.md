@@ -30,7 +30,7 @@ Complete synthesis:
 # e.g. /mnt/c/workspace/Hazard3/example_soc/synth
 cd ${PROJECT_WORKSPACE}/example_soc/synth
 
-make -B -f ULX4M_LD_85F.mk bit
+make -B -f ULX4M_LD_85F.mk bit-um
 ```
 
 Program using the [openFPGALoader]()
@@ -39,15 +39,73 @@ Program using the [openFPGALoader]()
 openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 fpga_ulx4m_ld.bit
 ```
 
-After programming: 
-- Unplug USB
-- Wait 20 seconds
-- Re-plug USB (do not hold down any buttons)
+After programming:
+
+- Unplug USB.
+- Re-plug USB without holding any buttons.
+- The full ULX4M-LD image should blink D7 at approximately 1 Hz. D7 is
+  clocked directly from `clk_osc`, so this heartbeat does not depend on
+  Hazard3, either PLL, DDR3 calibration, or firmware.
+
+If D7 does not blink, first use the standalone configuration diagnostic. It
+blinks all eight module LEDs together at 1 Hz and contains no SoC, PLL, DDR3,
+HDMI, or UART logic:
+
+```bash
+# Build for an LFE5UM-85F device.
+make -f ULX4M_LD_BLINKY_85F.mk bit-um
+
+# Build for an LFE5UM5G-85F device.
+make -f ULX4M_LD_BLINKY_85F.mk bit-um5g
+```
+
+The resulting files are:
+
+- `fpga_ulx4m_ld_blinky_um85.bit`
+- `fpga_ulx4m_ld_blinky_um5g85.bit`
+
+The ECP5 family encoded by `ecppack` must match the selected nextpnr device.
+The shared `fpgascripts/synth_ecp5.mk` default is `0x41113043`, which is the
+IDCODE for `LFE5U-85F`, not `LFE5UM-85F`. These ULX4M makefiles override it
+as follows:
+
+- `LFE5UM-85F`: `0x01113043`
+- `LFE5UM5G-85F`: `0x81113043`
+
+For the installed `LFE5UM-85F-8BG381C`, the build log must therefore show:
+
+```text
+nextpnr-ecp5 ... --um-85k ... --speed 8 ...
+ecppack ... --idcode 0x01113043 ...
+```
+
+Program only the file matching the exact marking on the FPGA package. For
+example:
+
+```bash
+openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 \
+    fpga_ulx4m_ld_blinky_um85.bit
+```
+
+After the download, unplug and reconnect power without holding `BTN2`. If the
+module remains in its DFU bootloader, explicitly request bootloader exit before
+the power cycle:
+
+```bash
+dfu-util -a 0 -e
+```
+
+The full SoC target now accepts the same explicit device selection:
+
+```bash
+make -f ULX4M_LD_85F.mk bit-um
+make -f ULX4M_LD_85F.mk bit-um5g
+```
 
 ### Quick Start Firmware
 
 ```
-cd ${PROJECT_WORKSPACE}/example_soc/synth/hard3-fw
+cd ${PROJECT_WORKSPACE}/example_soc/synth/hazard3-fw
 HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
 ```
 

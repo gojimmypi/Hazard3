@@ -8,7 +8,7 @@ controller. It does not use LiteX, Migen, or generated LiteDRAM HDL.
 
 ```text
 ULX4M-LD PCB revision: v0.0.2
-FPGA: LFE5UM5G-85F-8BG381C
+FPGA: LFE5UM-85F-8BG381C
 DDR3: MT41K256M16, 512 MiB physical
 Carrier HDMI connector: CM4-IO-BASE-A HDMI0
 ```
