@@ -244,10 +244,34 @@ static void console_print_help(void)
     uart_puts("> ");
 }
 
+static int build_ids_match(uint32_t fpga_build_id,
+    uint32_t ddr_core_build_id, uint32_t ddr_adapter_build_id)
+{
+    return fpga_build_id == HAZARD3_FPGA_BUILD_ID_EXPECTED &&
+        ddr_core_build_id == HAZARD3_DDR_CORE_BUILD_ID_EXPECTED &&
+        ddr_adapter_build_id == HAZARD3_DDR_ADAPTER_BUILD_ID_EXPECTED;
+}
+
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ECP5 Doom UART loader firmware v0.0.0\r\n");
-    uart_puts("> ");
+    uint32_t fpga_build_id = HAZARD3_VIDEO_FPGA_BUILD_ID;
+    uint32_t ddr_core_build_id = HAZARD3_VIDEO_DDR_CORE_BUILD_ID;
+    uint32_t ddr_adapter_build_id = HAZARD3_VIDEO_DDR_ADAPTER_BUILD_ID;
+
+    uart_puts("\r\nfirmware_build=");
+    uart_puts(HAZARD3_FIRMWARE_BUILD_NAME);
+    uart_puts(" firmware_id=");
+    uart_put_hex32(HAZARD3_FIRMWARE_BUILD_ID);
+    uart_puts("\r\nfpga_id=");
+    uart_put_hex32(fpga_build_id);
+    uart_puts(" ddr_core_id=");
+    uart_put_hex32(ddr_core_build_id);
+    uart_puts(" ddr_adapter_id=");
+    uart_put_hex32(ddr_adapter_build_id);
+    uart_puts(" build_match=");
+    uart_puts(build_ids_match(fpga_build_id, ddr_core_build_id,
+        ddr_adapter_build_id) ? "YES" : "NO");
+    uart_puts("\r\nddr_controller=LiteDRAM-2024.12/ECP5DDRPHY\r\n> ");
 }
 
 static void memory_barrier(void)
@@ -259,37 +283,6 @@ static int external_memory_ready(void)
 {
     return (HAZARD3_VIDEO_STATUS &
         HAZARD3_VIDEO_STATUS_SDRAM_READY) != 0u;
-}
-
-static const char* ddr3_calibration_state_name(uint32_t state)
-{
-    switch (state) {
-    case 0u:  return "IDLE";
-    case 1u:  return "BITSLIP_DQS_TRAIN_1";
-    case 2u:  return "MPR_READ";
-    case 3u:  return "COLLECT_DQS";
-    case 4u:  return "ANALYZE_DQS";
-    case 5u:  return "CALIBRATE_DQS";
-    case 6u:  return "BITSLIP_DQS_TRAIN_2";
-    case 7u:  return "START_WRITE_LEVEL";
-    case 8u:  return "WAIT_FOR_FEEDBACK";
-    case 9u:  return "ISSUE_WRITE_1";
-    case 10u: return "ISSUE_WRITE_2";
-    case 11u: return "ISSUE_READ";
-    case 12u: return "READ_DATA";
-    case 13u: return "ANALYZE_DATA";
-    case 14u: return "CHECK_STARTING_DATA";
-    case 15u: return "BITSLIP_DQS_TRAIN_3";
-    case 17u: return "BURST_WRITE";
-    case 18u: return "BURST_READ";
-    case 19u: return "RANDOM_WRITE";
-    case 20u: return "RANDOM_READ";
-    case 21u: return "ALTERNATE_WRITE_READ";
-    case 22u: return "FINISH_READ";
-    case 23u: return "DONE_CALIBRATE";
-    case 24u: return "ANALYZE_DATA_LOW_FREQ";
-    default:  return "UNKNOWN";
-    }
 }
 
 static int external_memory_wait_ready(uint32_t timeout_ms)
@@ -1260,8 +1253,13 @@ static int sdram_run_heap_test(void)
 
 static void console_print_status(void)
 {
-    uint32_t ddr3_debug = HAZARD3_VIDEO_DDR_DEBUG;
-    uint32_t ddr3_state = ddr3_debug & HAZARD3_VIDEO_DDR_STATE_MASK;
+    uint32_t fpga_build_id = HAZARD3_VIDEO_FPGA_BUILD_ID;
+    uint32_t ddr_status = HAZARD3_VIDEO_DDR_STATUS;
+    uint32_t ddr_core_build_id = HAZARD3_VIDEO_DDR_CORE_BUILD_ID;
+    uint32_t ddr_adapter_build_id = HAZARD3_VIDEO_DDR_ADAPTER_BUILD_ID;
+    uint32_t ddr_adapter_state =
+        (ddr_status & HAZARD3_DDR_STATUS_STATE_MASK) >>
+        HAZARD3_DDR_STATUS_STATE_SHIFT;
 
     uart_puts("\r\nsystem_ticks=");
     uart_put_hex32(system_ticks);
@@ -1399,13 +1397,40 @@ static void console_print_status(void)
     uart_put_hex32(HAZARD3_VIDEO_DMA_CYCLES);
     uart_puts(" presents=");
     uart_put_hex32(HAZARD3_VIDEO_PRESENT_COUNT);
-    uart_puts("\r\nddr3_debug=");
-    uart_put_hex32(ddr3_debug);
-    uart_puts(" ddr3_calib_state=");
-    uart_put_hex32(ddr3_state);
-    uart_puts(" (");
-    uart_puts(ddr3_calibration_state_name(ddr3_state));
-    uart_puts(")");
+    uart_puts("\r\nfirmware_build=");
+    uart_puts(HAZARD3_FIRMWARE_BUILD_NAME);
+    uart_puts(" firmware_id=");
+    uart_put_hex32(HAZARD3_FIRMWARE_BUILD_ID);
+    uart_puts(" fpga_id=");
+    uart_put_hex32(fpga_build_id);
+    uart_puts(" ddr_core_id=");
+    uart_put_hex32(ddr_core_build_id);
+    uart_puts(" ddr_adapter_id=");
+    uart_put_hex32(ddr_adapter_build_id);
+    uart_puts(" build_match=");
+    uart_puts(build_ids_match(fpga_build_id, ddr_core_build_id,
+        ddr_adapter_build_id) ? "YES" : "NO");
+    uart_puts("\r\nddr_controller=LiteDRAM-2024.12/ECP5DDRPHY");
+    uart_puts(" ddr_status=");
+    uart_put_hex32(ddr_status);
+    uart_puts(" marker=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_MARKER_MASK) ==
+        HAZARD3_DDR_STATUS_MARKER ? "VALID" : "INVALID");
+    uart_puts(" init_done=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_INIT_DONE) != 0u ? "YES" : "NO");
+    uart_puts(" init_error=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_INIT_ERROR) != 0u ? "YES" : "NO");
+    uart_puts(" pll_locked=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_PLL_LOCKED) != 0u ? "YES" : "NO");
+    uart_puts(" user_clock_ready=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_USER_CLOCK_READY) != 0u ?
+        "YES" : "NO");
+    uart_puts(" ready=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_READY) != 0u ? "YES" : "NO");
+    uart_puts(" adapter_state=");
+    uart_put_hex32(ddr_adapter_state);
+    uart_puts(" wb_error=");
+    uart_puts((ddr_status & HAZARD3_DDR_STATUS_WB_ERROR) != 0u ? "YES" : "NO");
 
     doom_image_loader_print_status();
     doom_wad_loader_print_status();
@@ -1675,6 +1700,11 @@ static void uart_init(void)
 static void console_init(void)
 {
     uart_puts("\r\nHazard3 ECP5 board boot\r\n");
+    uart_puts("firmware_build=");
+    uart_puts(HAZARD3_FIRMWARE_BUILD_NAME);
+    uart_puts(" firmware_build_id=");
+    uart_put_hex32(HAZARD3_FIRMWARE_BUILD_ID);
+    uart_puts("\r\n");
     uart_puts("UART: board serial RX / TX, 115200 8N1\r\n");
     uart_puts("Timer: 10 ms machine interrupt\r\n");
     uart_puts("Internal screen: 0x00010000-0x0001F9FF (320x200 indexed)\r\n");

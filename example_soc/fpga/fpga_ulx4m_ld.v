@@ -5,7 +5,8 @@
 
 `default_nettype none
 
-// Hazard3 + Doom target for ULX4M-LD v0.0.3 with native-Verilog DDR3.
+// Hazard3 + Doom target for ULX4M-LD v0.0.3 with LiteDRAM ECP5 DDR3.
+// FPGA build: ULX4M-LD-LITEDRAM-R2-20260716
 module fpga_ulx4m_ld (
     input  wire        clk_osc,
     output wire [7:0]  led,
@@ -19,12 +20,10 @@ module fpga_ulx4m_ld (
     output wire [2:0]  ddram_ba,
     output wire        ddram_cas_n,
     output wire        ddram_cke,
-    output wire        ddram_clk_n,
     output wire        ddram_clk_p,
     output wire        ddram_cs_n,
     output wire [1:0]  ddram_dm,
     inout  wire [15:0] ddram_dq,
-    inout  wire [1:0]  ddram_dqs_n,
     inout  wire [1:0]  ddram_dqs_p,
     output wire        ddram_odt,
     output wire        ddram_ras_n,
@@ -32,25 +31,17 @@ module fpga_ulx4m_ld (
     output wire        ddram_we_n
 );
 
-wire clk_sys;
-wire clk_ddr;
-wire clk_ddr_90;
-wire pll_ddr_locked;
+// Hazard3 remains on the board's direct 25 MHz oscillator. LiteDRAM has its
+// own independently generated 75/150 MHz clock domains and reports their PLL
+// state through the DDR status register. This avoids cascading two PLLs.
+wire clk_sys = clk_osc;
 wire rst_n_sys;
-
-pll_25_25_100_90 pll_ddr_u (
-    .clkin          (clk_osc),
-    .clk_controller (clk_sys),
-    .clk_ddr        (clk_ddr),
-    .clk_ddr_90     (clk_ddr_90),
-    .locked         (pll_ddr_locked)
-);
 
 fpga_reset #(
     .SHIFT (3)
 ) rstgen_sys_u (
     .clk         (clk_sys),
-    .force_rst_n (pll_ddr_locked),
+    .force_rst_n (1'b1),
     .rst_n       (rst_n_sys)
 );
 
@@ -96,7 +87,7 @@ wire        video_apb_penable;
 wire        video_apb_pwrite;
 wire [15:0] video_apb_paddr;
 wire [31:0] video_apb_pwdata;
-wire [31:0] video_apb_prdata;
+reg  [31:0] video_apb_prdata;
 wire [31:0] video_apb_prdata_framebuffer;
 wire        video_apb_pready;
 wire        video_apb_pslverr;
@@ -105,11 +96,22 @@ wire [7:0]  soc_gpio_out;
 wire        ddr3_calib_complete;
 wire [31:0] ddr3_debug_status;
 
-// Register 7 is unused by the shared framebuffer block. On ULX4M-LD, expose
-// UberDDR3's raw debug word there so firmware can report the exact calibration
-// state without relying on the active-low board LEDs.
-assign video_apb_prdata = video_apb_paddr[5:2] == 4'h7
-    ? ddr3_debug_status : video_apb_prdata_framebuffer;
+// Runtime build IDs let firmware prove that the intended bitstream and the
+// intended LiteDRAM implementation are actually running on the board.
+localparam [31:0] FPGA_BUILD_ID       = 32'h4c445232; // ASCII "LDR2"
+localparam [31:0] DDR_CORE_BUILD_ID   = 32'h32343132; // ASCII "2412"
+localparam [31:0] DDR_ADAPTER_BUILD_ID = 32'h41444232; // ASCII "ADB2"
+
+// Registers 7-10 are unused by the shared framebuffer block.
+always @(*) begin
+    case (video_apb_paddr[5:2])
+    4'h7: video_apb_prdata = FPGA_BUILD_ID;
+    4'h8: video_apb_prdata = ddr3_debug_status;
+    4'h9: video_apb_prdata = DDR_CORE_BUILD_ID;
+    4'ha: video_apb_prdata = DDR_ADAPTER_BUILD_ID;
+    default: video_apb_prdata = video_apb_prdata_framebuffer;
+    endcase
+end
 
 ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
     .clk_sys          (clk_sys),
@@ -150,14 +152,18 @@ blinky #(
     .blink (heartbeat)
 );
 
-// Before calibration, D6 and D5 show the video and DDR PLL locks and D4-D0
-// expose UberDDR3 state_calibrate[4:0]. After calibration, D6-D0 return to the
-// existing Hazard3 GPIO behavior while D7 remains the hardware heartbeat.
+// Before initialization completes, the LEDs expose LiteDRAM status:
+// D7 heartbeat, D6 video PLL, D5 DDR PLL, D4 init_done, D3 init_error,
+// D2 user clock ready, D1 adapter busy, D0 user Wishbone busy.
 assign led = ddr3_calib_complete ? {heartbeat, soc_gpio_out[6:0]} : {
     heartbeat,
     pll_video_locked,
-    pll_ddr_locked,
-    ddr3_debug_status[4:0]
+    ddr3_debug_status[2],
+    ddr3_debug_status[0],
+    ddr3_debug_status[1],
+    ddr3_debug_status[3],
+    ddr3_debug_status[5],
+    ddr3_debug_status[6]
 };
 
 // The SDR SDRAM outputs remain internal and unused on ULX4M-LD. They are kept
@@ -171,6 +177,8 @@ wire        unused_sdram_csn;
 wire        unused_sdram_rasn;
 wire        unused_sdram_casn;
 wire        unused_sdram_wen;
+wire        unused_ddram_clk_n;
+wire [1:0]  unused_ddram_dqs_n;
 
 example_soc #(
     .DTM_TYPE           ("ECP5"),
@@ -224,18 +232,19 @@ example_soc #(
     .sdram_casn (unused_sdram_casn),
     .sdram_wen  (unused_sdram_wen),
 
-    .ddr3_clk            (clk_ddr),
-    .ddr3_clk_90         (clk_ddr_90),
+    // Legacy clock ports are unused by the LiteDRAM adapter.
+    .ddr3_clk            (1'b0),
+    .ddr3_clk_90         (1'b0),
     .ddram_a             (ddram_a),
     .ddram_ba            (ddram_ba),
     .ddram_cas_n         (ddram_cas_n),
     .ddram_cke           (ddram_cke),
-    .ddram_clk_n         (ddram_clk_n),
+    .ddram_clk_n         (unused_ddram_clk_n),
     .ddram_clk_p         (ddram_clk_p),
     .ddram_cs_n          (ddram_cs_n),
     .ddram_dm            (ddram_dm),
     .ddram_dq            (ddram_dq),
-    .ddram_dqs_n         (ddram_dqs_n),
+    .ddram_dqs_n         (unused_ddram_dqs_n),
     .ddram_dqs_p         (ddram_dqs_p),
     .ddram_odt           (ddram_odt),
     .ddram_ras_n         (ddram_ras_n),

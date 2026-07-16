@@ -2,6 +2,8 @@ BLOCK RESETPATHS;
 BLOCK ASYNCPATHS;
 
 # ULX4M-LD v0.0.3, LFE5UM-85F-8BG381C.
+# FPGA build ULX4M-LD-LITEDRAM-R2-20260716.
+# LiteDRAM 2024.12 / LiteX 2024.12 / ECP5DDRPHY.
 # The populated ULX4M-LD DDR3 and FPGA banks 2/3 use the +1V35 rail.
 
 BANK 2 VCCIO 1.35 V;
@@ -144,19 +146,14 @@ IOBUF PORT "ddram_dq[13]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 IOBUF PORT "ddram_dq[14]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 IOBUF PORT "ddram_dq[15]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 
-# DDR3 strobes and complementary clock outputs. UberDDR3 drives the positive
-# and negative pins as separate ECP5 I/O cells, so each pin uses single-ended
-# SSTL135_I rather than assigning a differential type to the B-side pin.
-LOCATE COMP "ddram_dqs_n[0]" SITE "M17";
-LOCATE COMP "ddram_dqs_n[1]" SITE "H20";
+# LiteDRAM uses the ECP5 differential DQS/clock I/O resources. Only the
+# positive package pin is named; nextpnr selects the paired negative pin. This
+# is also the form used by LiteDRAM's ECP5 PHY and avoids creating a second
+# incompatible I/O cell on the B-side pad.
 LOCATE COMP "ddram_dqs_p[0]" SITE "N16";
 LOCATE COMP "ddram_dqs_p[1]" SITE "G19";
-IOBUF PORT "ddram_dqs_n[0]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
-IOBUF PORT "ddram_dqs_n[1]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
-IOBUF PORT "ddram_dqs_p[0]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
-IOBUF PORT "ddram_dqs_p[1]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
+IOBUF PORT "ddram_dqs_p[0]" IO_TYPE=SSTL135D_I SLEWRATE=FAST DIFFRESISTOR=100 TERMINATION=OFF;
+IOBUF PORT "ddram_dqs_p[1]" IO_TYPE=SSTL135D_I SLEWRATE=FAST DIFFRESISTOR=100 TERMINATION=OFF;
 
 LOCATE COMP "ddram_clk_p" SITE "L20";
-LOCATE COMP "ddram_clk_n" SITE "M20";
-IOBUF PORT "ddram_clk_p" IO_TYPE=SSTL135_I SLEWRATE=FAST;
-IOBUF PORT "ddram_clk_n" IO_TYPE=SSTL135_I SLEWRATE=FAST;
+IOBUF PORT "ddram_clk_p" IO_TYPE=SSTL135D_I SLEWRATE=FAST;
