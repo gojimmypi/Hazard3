@@ -14,30 +14,16 @@ PACKAGE=CABGA381
 
 include $(SCRIPTS)/synth_ecp5.mk
 
-UBERDDR3_SOURCES= \
-    ../third_party/UberDDR3/rtl/ddr3_top.v \
-    ../third_party/UberDDR3/rtl/ddr3_controller.v \
-    ../third_party/UberDDR3/rtl/ecp5_phy/ddr3_phy_ecp5.v \
-    ../third_party/UberDDR3/rtl/ecp5_phy/iserdes_soft.v \
-    ../third_party/UberDDR3/rtl/ecp5_phy/oserdes_soft.v
+LITEDRAM_GENERATED_FILES= \
+    ../third_party/LiteDRAM/generated/litedram_ulx4m_cpu.v \
+    ../third_party/LiteDRAM/generated/litedram_ulx4m_cpu_rom.init \
+    ../third_party/LiteDRAM/generated/litedram_ulx4m_cpu_sram.init
 
-# Populate the pinned native-Verilog dependency once, then review and commit
-# those source files normally.
-fetch-uberddr3:
-	../third_party/UberDDR3/fetch_sources.sh
-
-$(UBERDDR3_SOURCES):
-	@if [ ! -f "$@" ]; then \
-		echo "Missing UberDDR3 native-Verilog source: $@"; \
-		echo "Run: make -f ULX4M_LD_85F.mk fetch-uberddr3"; \
-		exit 1; \
-	fi
-
-# Power-up initialization file for the unified SDRAM/DDR3 cache tag RAM.
-$(CHIPNAME).json: ../soc/cache_tags_zero.hex $(UBERDDR3_SOURCES)
+# Power-up initialization files for LiteDRAM and the external-memory cache.
+$(CHIPNAME).json: ../soc/cache_tags_zero.hex $(LITEDRAM_GENERATED_FILES)
 
 # Load through the ULX4M module DFU bootloader.
 dfu: bit
 	dfu-util -a 0 -D $(CHIPNAME).bit -R
 
-.PHONY: fetch-uberddr3 dfu
+.PHONY: dfu

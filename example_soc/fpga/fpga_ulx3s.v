@@ -97,9 +97,35 @@ wire        video_apb_penable;
 wire        video_apb_pwrite;
 wire [15:0] video_apb_paddr;
 wire [31:0] video_apb_pwdata;
-wire [31:0] video_apb_prdata;
+reg  [31:0] video_apb_prdata;
+wire [31:0] video_apb_prdata_framebuffer;
 wire        video_apb_pready;
 wire        video_apb_pslverr;
+
+// Runtime IDs use the same APB slots as ULX4M-LD so one monitor firmware can
+// verify either board without compile-time board selection.
+localparam [31:0] FPGA_BUILD_ID          = 32'h554c5035; // ASCII "ULP5"
+localparam [31:0] MEMORY_CORE_BUILD_ID   = 32'h53445235; // ASCII "SDR5"
+localparam [31:0] MEMORY_ADAPTER_BUILD_ID = 32'h41485335; // ASCII "AHS5"
+wire [31:0] memory_status = {
+    16'h5344,                 // ASCII "SD"
+    11'd0,
+    video_sdram_init_done,    // ready
+    rst_n_sys,                // user clock/reset ready
+    pll_sys_locked,
+    1'b0,                     // no initialization error
+    video_sdram_init_done
+};
+
+always @(*) begin
+    case (video_apb_paddr[5:2])
+    4'h7: video_apb_prdata = FPGA_BUILD_ID;
+    4'h8: video_apb_prdata = memory_status;
+    4'h9: video_apb_prdata = MEMORY_CORE_BUILD_ID;
+    4'ha: video_apb_prdata = MEMORY_ADAPTER_BUILD_ID;
+    default: video_apb_prdata = video_apb_prdata_framebuffer;
+    endcase
+end
 
 ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
 	.clk_sys          (clk_sys),
@@ -121,7 +147,7 @@ ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
 	.apbs_pwrite      (video_apb_pwrite),
 	.apbs_paddr       (video_apb_paddr),
 	.apbs_pwdata      (video_apb_pwdata),
-	.apbs_prdata      (video_apb_prdata),
+	.apbs_prdata      (video_apb_prdata_framebuffer),
 	.apbs_pready      (video_apb_pready),
 	.apbs_pslverr     (video_apb_pslverr),
 

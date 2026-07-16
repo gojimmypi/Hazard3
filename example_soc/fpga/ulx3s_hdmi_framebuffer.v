@@ -5,17 +5,18 @@
 
 `default_nettype none
 
-// Double-buffered 320x200 framebuffer output for the ULX3S GPDI port.
+// Double-buffered 320x200 framebuffer output shared by ULX3S and ULX4M.
 //
-// Software renders into cached SDRAM, copies one completed 8-bit frame into one
-// of two uncached staging buffers, and requests presentation through the APB
-// registers below. Hardware then copies that frame once from SDRAM into the
-// inactive ECP5 block-RAM framebuffer and swaps block-RAM banks during vertical
-// blank. The display therefore no longer consumes SDRAM bandwidth continuously.
+// The fast path writes a completed Doom frame directly into the inactive ECP5
+// block-RAM bank through two APB registers, then swaps banks during vertical
+// blank. This removes the earlier 64 KiB SDRAM staging copy and the subsequent
+// SDRAM-to-block-RAM DMA from every Doom frame. The original SDRAM DMA path is
+// retained for monitor diagnostics and backward compatibility.
 //
-// The Elecrow panel is driven at 1024x600. Each source pixel is repeated three
-// times horizontally and each source line three times vertically, producing a
-// 960x600 image with 32-pixel black bars on each side.
+// The Elecrow panel is driven at 1024x600. A 5/16 horizontal phase accumulator
+// maps all 320 source pixels across all 1024 output pixels, while each source
+// line is repeated three times vertically. The panel is therefore fully filled
+// without the former 32-pixel side borders.
 //
 // Frame data may be either RGB332 or native Doom palette indices. Indexed mode
 // uses one independently stored 256-entry RGB332 palette for each SDRAM staging
@@ -64,10 +65,9 @@ localparam V_TOTAL  = V_ACTIVE + V_FRONT + V_SYNC + V_BACK;
 
 localparam SOURCE_WIDTH = 320;
 localparam SOURCE_HEIGHT = 200;
-localparam SOURCE_WORDS_PER_LINE = SOURCE_WIDTH / 2;
 localparam SOURCE_WORDS_PER_FRAME = SOURCE_WIDTH * SOURCE_HEIGHT / 2;
-localparam IMAGE_X_START = (H_ACTIVE - SOURCE_WIDTH * 3) / 2;
-localparam IMAGE_X_END = IMAGE_X_START + SOURCE_WIDTH * 3;
+localparam H_SCALE_NUMERATOR = SOURCE_WIDTH / 64;
+localparam H_SCALE_DENOMINATOR = H_ACTIVE / 64;
 
 // Native SDRAM requests use halfword addresses. The board wrapper selects
 // staging-buffer offsets for its 64 MiB or 32 MiB external-memory profile.
@@ -77,18 +77,24 @@ localparam [3:0]
     REG_CONTROL       = 4'h1,
     REG_PALETTE_INDEX = 4'h2,
     REG_PALETTE_DATA  = 4'h3,
-    REG_FRAME_COUNT   = 4'h4,
-    REG_DMA_CYCLES    = 4'h5,
-    REG_PRESENT_COUNT = 4'h6;
+    REG_FRAME_COUNT    = 4'h4,
+    REG_DMA_CYCLES     = 4'h5,
+    REG_PRESENT_COUNT  = 4'h6,
+    REG_DIRECT_ADDRESS = 4'hb,
+    REG_DIRECT_DATA    = 4'hc;
 
 localparam CONTROL_INDEXED = 0;
 localparam CONTROL_BUFFER  = 1;
 localparam CONTROL_PRESENT = 2;
+localparam CONTROL_DIRECT  = 3;
 
-assign apbs_pready = 1'b1;
-assign apbs_pslverr = 1'b0;
-wire apb_write = apbs_psel && apbs_penable && apbs_pwrite;
 wire [3:0] apb_word_address = apbs_paddr[5:2];
+wire direct_data_access = apbs_psel && apbs_penable && apbs_pwrite
+    && apb_word_address == REG_DIRECT_DATA;
+reg direct_write_high_half;
+assign apbs_pready = !direct_data_access || direct_write_high_half;
+assign apbs_pslverr = 1'b0;
+wire apb_write = apbs_psel && apbs_penable && apbs_pwrite && apbs_pready;
 
 // ----------------------------------------------------------------------------
 // Full-frame ECP5 block RAM and palette RAM
@@ -98,6 +104,12 @@ wire [15:0] frame_write_address;
 wire [15:0] frame_write_data;
 wire [15:0] frame_read_address;
 wire [15:0] frame_read_data;
+
+reg [15:0] direct_write_address;
+reg [31:0] direct_write_data;
+wire direct_low_write = direct_data_access && !direct_write_high_half;
+wire direct_high_write = direct_data_access && direct_write_high_half;
+wire direct_frame_write = direct_low_write || direct_high_write;
 
 ulx3s_frame_ram frame_ram_u (
     .write_clk     (clk_sys),
@@ -184,9 +196,16 @@ wire [24:0] selected_framebuffer_base = dma_source_buffer
     ? FRAMEBUFFER1_HALFWORD_BASE : FRAMEBUFFER0_HALFWORD_BASE;
 assign sdram_req_valid = dma_state == DMA_REQUEST;
 assign sdram_req_addr = selected_framebuffer_base + dma_word;
-assign frame_write_enable = dma_state == DMA_RESPONSE && sdram_rsp_valid;
-assign frame_write_address = {dma_target_buffer, dma_word};
-assign frame_write_data = sdram_rsp_rdata;
+
+wire dma_frame_write = dma_state == DMA_RESPONSE && sdram_rsp_valid;
+assign frame_write_enable = direct_frame_write || dma_frame_write;
+assign frame_write_address = direct_frame_write
+    ? (direct_high_write ? direct_write_address + 1'b1
+        : direct_write_address)
+    : {dma_target_buffer, dma_word};
+assign frame_write_data = direct_frame_write
+    ? (direct_high_write ? direct_write_data[31:16] : apbs_pwdata[15:0])
+    : sdram_rsp_rdata;
 
 always @ (posedge clk_sys or negedge rst_n_sys) begin
     if (!rst_n_sys) begin
@@ -225,6 +244,9 @@ end
 always @ (posedge clk_sys or negedge rst_n_sys) begin
     if (!rst_n_sys) begin
         palette_address_sys <= 9'd0;
+        direct_write_address <= 16'd0;
+        direct_write_data <= 32'd0;
+        direct_write_high_half <= 1'b0;
         control_indexed_sys <= 1'b0;
         control_buffer_sys <= 1'b0;
         dma_state <= DMA_WAIT_INIT;
@@ -240,6 +262,17 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
         swap_source_sys <= 1'b0;
         swap_indexed_sys <= 1'b0;
     end else begin
+        if (direct_low_write) begin
+            direct_write_data <= apbs_pwdata;
+            direct_write_high_half <= 1'b1;
+        end else if (direct_high_write) begin
+            direct_write_address <= direct_write_address + 2'd2;
+            direct_write_high_half <= 1'b0;
+        end
+
+        if (apb_write && apb_word_address == REG_DIRECT_ADDRESS)
+            direct_write_address <= apbs_pwdata[15:0];
+
         if (apb_write && apb_word_address == REG_PALETTE_INDEX)
             palette_address_sys <= apbs_pwdata[8:0];
         else if (palette_write_enable)
@@ -261,13 +294,24 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
 
         DMA_IDLE: begin
             if (present_command && present_can_start) begin
-                dma_word <= 15'd0;
                 dma_source_buffer <= apbs_pwdata[CONTROL_BUFFER];
-                dma_target_buffer <= !active_internal_sync1;
                 dma_indexed <= apbs_pwdata[CONTROL_INDEXED];
                 dma_cycle_counter <= 32'd0;
                 present_count_sys <= present_count_sys + 1'b1;
-                dma_state <= DMA_REQUEST;
+
+                if (apbs_pwdata[CONTROL_DIRECT]) begin
+                    // Software has already filled the selected internal bank.
+                    last_dma_cycles <= 32'd0;
+                    swap_buffer_sys <= apbs_pwdata[CONTROL_BUFFER];
+                    swap_source_sys <= apbs_pwdata[CONTROL_BUFFER];
+                    swap_indexed_sys <= apbs_pwdata[CONTROL_INDEXED];
+                    swap_toggle_sys <= !swap_toggle_sys;
+                    dma_state <= DMA_WAIT_SWAP;
+                end else begin
+                    dma_word <= 15'd0;
+                    dma_target_buffer <= !active_internal_sync1;
+                    dma_state <= DMA_REQUEST;
+                end
             end
         end
 
@@ -315,6 +359,8 @@ always @ (*) begin
         apbs_prdata[6] = active_internal_sync1;
         apbs_prdata[7] = dma_copy_busy;
         apbs_prdata[8] = swap_pending;
+        apbs_prdata[9] = 1'b1; // Direct block-RAM write path supported.
+        apbs_prdata[10] = direct_write_high_half;
     end
     REG_CONTROL: begin
         apbs_prdata[CONTROL_INDEXED] = control_indexed_sys;
@@ -324,6 +370,7 @@ always @ (*) begin
     REG_FRAME_COUNT: apbs_prdata = frame_count_sync1;
     REG_DMA_CYCLES: apbs_prdata = last_dma_cycles;
     REG_PRESENT_COUNT: apbs_prdata = present_count_sys;
+    REG_DIRECT_ADDRESS: apbs_prdata[15:0] = direct_write_address;
     default: apbs_prdata = 32'd0;
     endcase
 end
@@ -335,7 +382,7 @@ reg [10:0] pixel_x;
 reg [9:0] pixel_y;
 reg [8:0] source_x;
 reg [7:0] source_y;
-reg [1:0] horizontal_repeat;
+reg [4:0] horizontal_phase;
 reg [1:0] vertical_repeat;
 reg pixel_toggle;
 
@@ -354,8 +401,7 @@ wire hsync_now = pixel_x >= H_ACTIVE + H_FRONT
     && pixel_x < H_ACTIVE + H_FRONT + H_SYNC;
 wire vsync_now = pixel_y >= V_ACTIVE + V_FRONT
     && pixel_y < V_ACTIVE + V_FRONT + V_SYNC;
-wire image_region_now = pixel_x >= IMAGE_X_START
-    && pixel_x < IMAGE_X_END && pixel_y < V_ACTIVE;
+wire image_region_now = active_video_now;
 wire vblank_start = pixel_x == 0 && pixel_y == V_ACTIVE;
 assign vblank_pix = pixel_y >= V_ACTIVE;
 
@@ -393,7 +439,7 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         pixel_y <= 10'd0;
         source_x <= 9'd0;
         source_y <= 8'd0;
-        horizontal_repeat <= 2'd0;
+        horizontal_phase <= 5'd0;
         vertical_repeat <= 2'd0;
         pixel_toggle <= 1'b0;
         swap_toggle_seen_pix <= 1'b0;
@@ -418,7 +464,7 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         if (pixel_x == H_TOTAL - 1) begin
             pixel_x <= 11'd0;
             source_x <= 9'd0;
-            horizontal_repeat <= 2'd0;
+            horizontal_phase <= 5'd0;
 
             if (pixel_y == V_TOTAL - 1) begin
                 pixel_y <= 10'd0;
@@ -439,12 +485,15 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
             end
         end else begin
             pixel_x <= pixel_x + 1'b1;
-            if (pixel_x >= IMAGE_X_START && pixel_x < IMAGE_X_END - 1) begin
-                if (horizontal_repeat == 2) begin
-                    horizontal_repeat <= 2'd0;
+            if (pixel_x < H_ACTIVE - 1) begin
+                if (horizontal_phase + H_SCALE_NUMERATOR >=
+                    H_SCALE_DENOMINATOR) begin
+                    horizontal_phase <= horizontal_phase +
+                        H_SCALE_NUMERATOR - H_SCALE_DENOMINATOR;
                     source_x <= source_x + 1'b1;
                 end else begin
-                    horizontal_repeat <= horizontal_repeat + 1'b1;
+                    horizontal_phase <= horizontal_phase +
+                        H_SCALE_NUMERATOR;
                 end
             end
         end

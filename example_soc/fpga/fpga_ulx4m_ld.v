@@ -6,7 +6,7 @@
 `default_nettype none
 
 // Hazard3 + Doom target for ULX4M-LD v0.0.3 with LiteDRAM ECP5 DDR3.
-// FPGA build: ULX4M-LD-LITEDRAM-R2-20260716
+// FPGA build: ULX4M-LD-LITEDRAM-PERFORMANCE-R5-20260716
 module fpga_ulx4m_ld (
     input  wire        clk_osc,
     output wire [7:0]  led,
@@ -31,17 +31,24 @@ module fpga_ulx4m_ld (
     output wire        ddram_we_n
 );
 
-// Hazard3 remains on the board's direct 25 MHz oscillator. LiteDRAM has its
-// own independently generated 75/150 MHz clock domains and reports their PLL
-// state through the DDR status register. This avoids cascading two PLLs.
-wire clk_sys = clk_osc;
+// Match the proven ULX3S Hazard3 clock rate. LiteDRAM still receives the
+// board's direct 25 MHz oscillator and generates its independent 75/150 MHz
+// memory clock domains; the existing bundled-data CDC crosses between them.
+wire clk_sys;
+wire pll_sys_locked;
 wire rst_n_sys;
+
+pll_25_50 pll_sys_u (
+    .clkin   (clk_osc),
+    .clkout0 (clk_sys),
+    .locked  (pll_sys_locked)
+);
 
 fpga_reset #(
     .SHIFT (3)
 ) rstgen_sys_u (
     .clk         (clk_sys),
-    .force_rst_n (1'b1),
+    .force_rst_n (pll_sys_locked),
     .rst_n       (rst_n_sys)
 );
 
@@ -98,9 +105,9 @@ wire [31:0] ddr3_debug_status;
 
 // Runtime build IDs let firmware prove that the intended bitstream and the
 // intended LiteDRAM implementation are actually running on the board.
-localparam [31:0] FPGA_BUILD_ID       = 32'h4c445232; // ASCII "LDR2"
-localparam [31:0] DDR_CORE_BUILD_ID   = 32'h32343132; // ASCII "2412"
-localparam [31:0] DDR_ADAPTER_BUILD_ID = 32'h41444232; // ASCII "ADB2"
+localparam [31:0] FPGA_BUILD_ID        = 32'h4c445035; // ASCII "LDP5"
+localparam [31:0] DDR_CORE_BUILD_ID    = 32'h32343132; // ASCII "2412"
+localparam [31:0] DDR_ADAPTER_BUILD_ID = 32'h41444c35; // ASCII "ADL5"
 
 // Registers 7-10 are unused by the shared framebuffer block.
 always @(*) begin
@@ -183,9 +190,9 @@ wire [1:0]  unused_ddram_dqs_n;
 example_soc #(
     .DTM_TYPE           ("ECP5"),
     .SRAM_DEPTH         (1 << 15),
-    .CLK_MHZ            (25),
+    .CLK_MHZ            (50),
     .SDRAM_ENABLE       (1),
-    .DDR3_ENABLE        (1),
+    .LITEDRAM_ENABLE     (1),
 
     .EXTENSION_M        (1),
     .EXTENSION_A        (0),
@@ -232,9 +239,8 @@ example_soc #(
     .sdram_casn (unused_sdram_casn),
     .sdram_wen  (unused_sdram_wen),
 
-    // Legacy clock ports are unused by the LiteDRAM adapter.
-    .ddr3_clk            (1'b0),
-    .ddr3_clk_90         (1'b0),
+    // LiteDRAM keeps its proven 25 MHz reference while Hazard3 runs at 50 MHz.
+    .litedram_ref_clk    (clk_osc),
     .ddram_a             (ddram_a),
     .ddram_ba            (ddram_ba),
     .ddram_cas_n         (ddram_cas_n),

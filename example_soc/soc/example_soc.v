@@ -13,7 +13,7 @@ module example_soc #(
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
 	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
-	parameter DDR3_ENABLE = 0,      // Use native-Verilog DDR3 instead of SDR SDRAM
+	parameter LITEDRAM_ENABLE = 0,  // Use LiteDRAM DDR3 instead of SDR SDRAM
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
 	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
 	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
@@ -48,10 +48,9 @@ module example_soc #(
 	output wire              sdram_casn,
 	output wire              sdram_wen,
 
-	// Optional ULX4M-LD DDR3 interface. DDR3_ENABLE selects this target while
-	// retaining the same cached AHB and read-only video interfaces.
-	input  wire              ddr3_clk,
-	input  wire              ddr3_clk_90,
+	// Optional ULX4M-LD LiteDRAM DDR3 interface. LITEDRAM_ENABLE selects this
+	// target while retaining the shared cached AHB and video interfaces.
+	input  wire              litedram_ref_clk,
 	output wire [14:0]       ddram_a,
 	output wire [2:0]        ddram_ba,
 	output wire              ddram_cas_n,
@@ -715,12 +714,11 @@ if (SDRAM_ENABLE) begin: sdram_enabled
         .dst_hrdata      (sdram_mem_hrdata)
     );
 
-    if (DDR3_ENABLE) begin: ddr3_target
-        ahb_uberddr3 ddr3_u (
+    if (LITEDRAM_ENABLE) begin: litedram_target
+        ahb_litedram litedram_u (
             .clk                  (clk),
             .rst_n                (rst_n),
-            .ddr3_clk             (ddr3_clk),
-            .ddr3_clk_90          (ddr3_clk_90),
+            .litedram_ref_clk    (litedram_ref_clk),
 
             .ahbls_hready_resp    (sdram_mem_hready_resp),
             .ahbls_hready         (sdram_mem_hready),
@@ -828,7 +826,7 @@ if (SDRAM_ENABLE) begin: sdram_enabled
         assign ddr3_calib_complete = 1'b0;
         assign ddr3_debug_status = 32'd0;
 
-        wire unused_ddr3_clocks = ddr3_clk ^ ddr3_clk_90;
+        wire unused_litedram_ref_clk = litedram_ref_clk;
     end
 end else begin: sdram_disabled
     assign sdram_hready_resp = 1'b1;
@@ -871,7 +869,7 @@ end else begin: sdram_disabled
     wire unused_sdram_hready = sdram_hready;
     wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
         video_sdram_req_addr};
-    wire unused_ddr3_clocks = ddr3_clk ^ ddr3_clk_90;
+    wire unused_litedram_ref_clk = litedram_ref_clk;
 end
 endgenerate
 

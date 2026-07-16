@@ -5,7 +5,10 @@
 
 // AHB-Lite/video adapter for the ULX4M-LD LiteDRAM ECP5 DDR3 core.
 //
-// FINAL DDR3 IMPLEMENTATION: ULX4M-LD-LITEDRAM-R2-20260716
+// PERFORMANCE-R5 keeps the proven LiteDRAM/ECP5DDRPHY implementation and
+// crosses between a 50 MHz Hazard3/AHB domain and LiteDRAM's 75 MHz user port.
+//
+// DDR3 IMPLEMENTATION: ULX4M-LD-LITEDRAM-PERFORMANCE-R5-20260716
 //   LiteDRAM 2024.12
 //   LiteX    2024.12
 //   PHY      ECP5DDRPHY, 75 MHz system clock, DDR3-300 data rate
@@ -22,14 +25,13 @@
 
 `default_nettype none
 
-module ahb_uberddr3 #(
+module ahb_litedram #(
     parameter W_ADDR = 32,
     parameter W_DATA = 32
 ) (
     input  wire              clk,
     input  wire              rst_n,
-    input  wire              ddr3_clk,
-    input  wire              ddr3_clk_90,
+    input  wire              litedram_ref_clk,
 
     output wire              ahbls_hready_resp,
     input  wire              ahbls_hready,
@@ -221,7 +223,7 @@ end
 // MT41K256M16 geometry is 15 row bits, 10 column bits and 3 bank bits.
 // The generated LiteDRAM port is one 128-bit Wishbone word per DDR3 BL8 burst.
 litedram_ulx4m_cpu litedram_u (
-    .clk                  (clk),
+    .clk                  (litedram_ref_clk),
     .rst                  (!rst_n),
 
     .ddram_a              (ddram_a),
@@ -276,7 +278,7 @@ assign ddram_dqs_n = 2'bzz;
 assign ddram_dm = 2'b00;
 
 // -------------------------------------------------------------------------
-// 25 MHz AHB/video request state machine.
+// 50 MHz AHB/video request state machine.
 
 wire grant_video = state == ST_IDLE && calib_complete && video_req_valid &&
     (!ahb_request_present || !last_grant_video);
@@ -461,10 +463,9 @@ assign debug_status = {
     init_done_sync1
 };
 
-// Legacy fixed-frequency inputs are intentionally unused by LiteDRAM. It
-// generates its own 75/150 MHz clock domains directly from the board's 25 MHz
-// clock supplied on clk.
-wire unused = &{1'b0, ddr3_clk, ddr3_clk_90, ahbls_hburst, ahbls_hprot,
+// LiteDRAM generates its 75/150 MHz domains from litedram_ref_clk. Remaining
+// AHB attributes are not required by this one-request-at-a-time adapter.
+wire unused = &{1'b0, ahbls_hburst, ahbls_hprot,
     ahbls_hmastlock, litedram_dm_unused, litedram_uart_tx_data_unused,
     litedram_uart_tx_valid_unused, litedram_uart_rx_ready_unused};
 
