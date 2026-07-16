@@ -18,7 +18,9 @@ PROJECT_WORKSPACE="$WORKSPACE/Hazard3"
 
 Build from the `example_soc/synth` directory. Optionally name the window `ULX4M SoC`.
 
-Hold the middle `BTN2` before and 2 seconds after powering up, then release. Confirm Windows enumerates a USB device.
+With power disconnected, move either ULX4M `SW1` slider to its `ON`
+position, then connect USB power. LED0-LED2 should remain on and Windows should
+enumerate the DFU device.
 
 ![ULX4M-USB-enumeration](../../doc/images/ULX4M-USB-enumeration.jpg)
 
@@ -33,15 +35,17 @@ cd ${PROJECT_WORKSPACE}/example_soc/synth
 make -B -f ULX4M_LD_85F.mk bit-um
 ```
 
-Program using the [openFPGALoader]()
+Program using `openFPGALoader`:
 
 ```bash
-openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 fpga_ulx4m_ld.bit
+./openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 \
+    fpga_ulx4m_ld_um85.bit
 ```
 
 After programming:
 
 - Unplug USB.
+- Move both ULX4M `SW1` sliders to `OFF`.
 - Re-plug USB without holding any buttons.
 - The full ULX4M-LD image should blink D7 at approximately 1 Hz. D7 is
   clocked directly from `clk_osc`, so this heartbeat does not depend on
@@ -53,10 +57,10 @@ HDMI, or UART logic:
 
 ```bash
 # Build for an LFE5UM-85F device.
-make -f ULX4M_LD_BLINKY_85F.mk bit-um
+make -B -f ULX4M_LD_BLINKY_85F.mk bit-um
 
 # Build for an LFE5UM5G-85F device.
-make -f ULX4M_LD_BLINKY_85F.mk bit-um5g
+make -B -f ULX4M_LD_BLINKY_85F.mk bit-um5g
 ```
 
 The resulting files are:
@@ -83,31 +87,41 @@ Program only the file matching the exact marking on the FPGA package. For
 example:
 
 ```bash
-openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 \
+./openFPGALoader.exe --dfu --vid 0x1d50 --pid 0x614b --altsetting 0 \
     fpga_ulx4m_ld_blinky_um85.bit
 ```
 
-After the download, unplug and reconnect power without holding `BTN2`. If the
-module remains in its DFU bootloader, explicitly request bootloader exit before
-the power cycle:
+After the download, disconnect power, move both ULX4M `SW1` sliders to
+`OFF`, and reconnect power without holding any module button. The Windows
+`openFPGALoader.exe` transfer already sends the final zero-length DFU download
+request; a separate Linux `dfu-util` command is not required for this WSL
+programming path.
+
+The full SoC target accepts the same explicit device selection. For this
+board, use the UM targets:
 
 ```bash
-dfu-util -a 0 -e
+make -B -f ULX4M_LD_85F.mk bit-um
+make -f ULX4M_LD_85F.mk program-um
 ```
 
-The full SoC target now accepts the same explicit device selection:
+The full ULX4M-LD FPGA, 25 MHz monitor, and matching 64 MiB Doom image can be
+built together with:
 
 ```bash
-make -f ULX4M_LD_85F.mk bit-um
-make -f ULX4M_LD_85F.mk bit-um5g
+./build-ulx4m-ld-doom.sh
 ```
 
 ### Quick Start Firmware
 
-```
+```bash
 cd ${PROJECT_WORKSPACE}/example_soc/synth/hazard3-fw
-HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
+HAZARD3_MEMORY_PROFILE=64m HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
 ```
+
+The monitor waits up to five seconds for external-memory calibration before
+running its boot test. A timeout leaves the UART monitor responsive and blocks
+external-memory and Doom operations until the DDR3 ready bit appears.
 
 ## Added target: ULX4M-LS v0.0.2, 85F FPGA
 
@@ -193,18 +207,27 @@ The correct path is an ECP5 DDR3 PHY/controller,
 such as LiteDRAM's `ECP5DDRPHY`, behind a new AHB adapter. Do not apply the
 ULX4M-LS constraints or SDR controller to an ULX4M-LD board.
 
-The LD milestone remains:
+The LD RTL now includes the native UberDDR3 controller, AHB bridge, unified
+cache, HDMI frame-transfer arbitration, and the existing 64 MiB software map.
+The remaining milestone is hardware qualification:
 
-1. generate and qualify a standalone ULX4M-LD DDR3 core;
-2. bridge its native or Wishbone user port to the SoC AHB target;
-3. preserve the existing software-visible memory profile where practical;
-4. arbitrate the HDMI frame-transfer port with CPU traffic;
-5. run the quick, alias, pseudorandom, heap, execute-from-RAM, HDMI, and Doom
-   tests before treating the target as supported.
+1. confirm DDR3 calibration reaches completion;
+2. run the quick, alias, pseudorandom, heap, and execute-from-DDR tests;
+3. verify the HDMI test frame through the carrier HDMI0 connector;
+4. upload and launch the linked Doom image and IWAD;
+5. measure frame-copy and presentation counters before treating the target as
+   fully supported.
 
 ## Validation state
 
-The new files have been checked for internal address-map consistency, complete
-LPF coverage of the ULX4M-LS top-level ports, duplicate pin assignments, Python
-syntax, and both C memory-profile definitions. They have not yet been
-synthesized, timed, programmed, or tested on hardware in this archive.
+ULX4M-LD standalone blinky has been built, programmed through DFU, and booted
+successfully on an `LFE5UM-85F-8BG381C` device using `--um-85k`, `--speed 8`,
+and IDCODE `0x01113043`. This proves the corrected FPGA selection, DFU write,
+boot, oscillator, and LED constraints.
+
+The common source has also been checked for address-map consistency, LPF port
+coverage, duplicate pin assignments, shell/Python/C syntax, and matching 64 MiB
+monitor and Doom profiles. The full Hazard3 + DDR3 + HDMI image still requires
+an exact UM rebuild and hardware qualification of DDR3 calibration, external
+memory tests, HDMI output, Doom image loading, and IWAD launch before ULX4M-LD
+can be considered fully supported.

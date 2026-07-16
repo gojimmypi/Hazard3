@@ -1,9 +1,25 @@
 #!/bin/bash
+set -euo pipefail
 
-/opt/riscv/bin/riscv32-unknown-elf-gdb \
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GDB="${GDB:-/opt/riscv/bin/riscv32-unknown-elf-gdb}"
+ELF="${1:-${SCRIPT_DIR}/hazard3-test.elf}"
+
+if [[ ! -x "${GDB}" ]]; then
+    echo "Missing RISC-V GDB executable: ${GDB}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${ELF}" ]]; then
+    echo "Missing firmware ELF: ${ELF}" >&2
+    echo "Run ../build-ulx4m-ld-doom.sh from example_soc/synth first." >&2
+    exit 1
+fi
+
+"${GDB}" \
     --batch \
     --quiet \
-    hazard3-test.elf \
+    "${ELF}" \
     -ex 'set confirm off' \
     -ex 'set pagination off' \
     -ex 'set remotetimeout 120' \

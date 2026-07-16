@@ -86,6 +86,7 @@
 #define SDRAM_HEAP_ALIGNMENT       16u
 #define SDRAM_HEAP_LARGE_TEST_BYTES (4u * 1024u * 1024u)
 #define SDRAM_HEAP_SMALL_BLOCK_COUNT 8u
+#define EXTERNAL_MEMORY_READY_TIMEOUT_MS 5000u
 
 #if (SDRAM_RANDOM_TEST_BYTES == 0u) || \
     ((SDRAM_RANDOM_TEST_BYTES & (SDRAM_RANDOM_TEST_BYTES - 1u)) != 0u)
@@ -254,6 +255,39 @@ static void memory_barrier(void)
     __asm__ volatile ("fence rw, rw" ::: "memory");
 }
 
+static int external_memory_ready(void)
+{
+    return (HAZARD3_VIDEO_STATUS &
+        HAZARD3_VIDEO_STATUS_SDRAM_READY) != 0u;
+}
+
+static int external_memory_wait_ready(uint32_t timeout_ms)
+{
+    uint32_t start_ticks = system_ticks;
+
+    while (!external_memory_ready()) {
+        if (system_ticks - start_ticks >= timeout_ms) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int external_memory_require_ready(const char* operation)
+{
+    if (external_memory_ready()) {
+        return 1;
+    }
+
+    uart_puts("\r\nREFUSED: external memory is not ready; ");
+    uart_puts(operation);
+    uart_puts(" was not started.\r\n");
+    uart_puts(
+        "Check external-memory initialization and video_status bit 4.\r\n");
+    return 0;
+}
+
 static uint8_t video_dim_rgb332(uint8_t pixel)
 {
     uint8_t red = (uint8_t)((pixel >> 5) & 7u);
@@ -305,10 +339,16 @@ static int video_present_rgb332_buffer0(uint32_t timeout_ms)
 
 static void video_write_test_pattern(void)
 {
-    volatile uint32_t* destination =
-        hazard3_video_framebuffer_words(0u);
-    uint32_t start_ticks = system_ticks;
+    volatile uint32_t* destination;
+    uint32_t start_ticks;
     int presented;
+
+    if (!external_memory_require_ready("the HDMI framebuffer test")) {
+        return;
+    }
+
+    destination = hazard3_video_framebuffer_words(0u);
+    start_ticks = system_ticks;
 
     uart_puts("\r\nHDMI framebuffer test pattern: base=");
     uart_put_hex32(VIDEO_FRAMEBUFFER_BASE);
@@ -507,6 +547,10 @@ void hazard3_heap_reset(void)
 
 static int sdram_destructive_test_allowed(const char* test_name)
 {
+    if (!external_memory_require_ready(test_name)) {
+        return 0;
+    }
+
     if (!sdram_heap_is_active()) {
         return 1;
     }
@@ -1311,7 +1355,9 @@ static void console_print_status(void)
     uart_put_hex32(video_pattern_runs);
     uart_puts(" elapsed_ms=");
     uart_put_hex32(video_pattern_last_elapsed_ms);
-    uart_puts("\r\nvideo_status=");
+    uart_puts("\r\nexternal_memory_ready=");
+    uart_puts(external_memory_ready() ? "YES" : "NO");
+    uart_puts(" video_status=");
     uart_put_hex32(HAZARD3_VIDEO_STATUS);
     uart_puts(" frame_count=");
     uart_put_hex32(HAZARD3_VIDEO_FRAME_COUNT);
@@ -1354,9 +1400,12 @@ static void console_poll(void)
 
         case 'm':
         case 'M':
-            (void)sdram_run_test(
-                SDRAM_FULL_TEST_BYTES,
-                "SDRAM destructive 1 MiB sequential test");
+            if (external_memory_require_ready(
+                "the destructive 1 MiB external-memory test")) {
+                (void)sdram_run_test(
+                    SDRAM_FULL_TEST_BYTES,
+                    "SDRAM destructive 1 MiB sequential test");
+            }
             uart_puts("> ");
             break;
 
@@ -1392,38 +1441,55 @@ static void console_poll(void)
 
         case 'k':
         case 'K':
-            (void)sdram_run_heap_test();
+            if (external_memory_require_ready(
+                "the external-memory heap test")) {
+                (void)sdram_run_heap_test();
+            }
             uart_puts("> ");
             break;
 
         case 'd':
         case 'D':
-            (void)doom_port_smoke_run();
+            if (external_memory_require_ready(
+                "the Doom platform smoke test")) {
+                (void)doom_port_smoke_run();
+            }
             uart_puts("> ");
             break;
 
         case 'x':
         case 'X':
-            doom_image_loader_invalidate();
-            (void)sdram_exec_test_run();
+            if (external_memory_require_ready(
+                "the execute-from-external-memory test")) {
+                doom_image_loader_invalidate();
+                (void)sdram_exec_test_run();
+            }
             uart_puts("> ");
             break;
 
         case 'l':
         case 'L':
-            (void)doom_image_loader_receive();
+            if (external_memory_require_ready(
+                "the Doom image upload")) {
+                (void)doom_image_loader_receive();
+            }
             uart_puts("> ");
             break;
 
         case 'w':
         case 'W':
-            (void)doom_wad_loader_receive();
+            if (external_memory_require_ready(
+                "the IWAD upload")) {
+                (void)doom_wad_loader_receive();
+            }
             uart_puts("> ");
             break;
 
         case 'j':
         case 'J':
-            (void)doom_image_loader_launch();
+            if (external_memory_require_ready("the Doom launch")) {
+                (void)doom_image_loader_launch();
+            }
             uart_puts("> ");
             break;
 
@@ -1607,8 +1673,19 @@ int main(void)
     timer_init();
     console_init();
 
-    (void)sdram_run_test(SDRAM_QUICK_TEST_BYTES, "SDRAM boot quick test");
-    video_write_test_pattern();
+    uart_puts("External memory initialization: waiting up to 5 seconds...\r\n");
+    if (external_memory_wait_ready(EXTERNAL_MEMORY_READY_TIMEOUT_MS)) {
+        uart_puts("External memory initialization: READY\r\n");
+        (void)sdram_run_test(
+            SDRAM_QUICK_TEST_BYTES,
+            "SDRAM boot quick test");
+        video_write_test_pattern();
+    } else {
+        uart_puts("External memory initialization: TIMEOUT\r\n");
+        uart_puts(
+            "The UART monitor remains available; external-memory and Doom ");
+        uart_puts("commands will be refused until calibration completes.\r\n");
+    }
     uart_puts("Type h or ? for help.\r\n> ");
 
     for (;;) {

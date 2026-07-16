@@ -4,9 +4,10 @@
 /*
  * Hazard3 external-memory profiles.
  *
- * The proven ULX3S target has 64 MiB of 16-bit SDR SDRAM. The ULX4M-LS
- * v0.0.2 target has 32 MiB and is selected by defining HAZARD3_SDRAM_32MB
- * when building both the monitor and the separately linked Doom image.
+ * The proven ULX3S target has 64 MiB of 16-bit SDR SDRAM. ULX4M-LD uses
+ * the same software map over the low 64 MiB of its DDR3 device. ULX4M-LS
+ * v0.0.2 has 32 MiB and is selected by defining HAZARD3_SDRAM_32MB when
+ * building both the monitor and the separately linked Doom image.
  */
 #define HAZARD3_SDRAM_PHYSICAL_BASE          0x20000000u
 #define HAZARD3_SDRAM_DIAGNOSTIC_ALIAS_BASE  0x24000000u

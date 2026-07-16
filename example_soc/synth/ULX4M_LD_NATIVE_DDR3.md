@@ -36,15 +36,34 @@ before distributing a combined source tree or bitstream.
 
 ## Build
 
+Build the exact `LFE5UM-85F-8BG381C` variant:
+
 ```bash
-make -B -f ULX4M_LD_85F.mk bit
+make -B -f ULX4M_LD_85F.mk bit-um
 ```
 
-Load the volatile bitstream through DFU:
+The build log must contain all three selections:
+
+```text
+nextpnr-ecp5 ... --um-85k ... --speed 8 ...
+ecppack ... --idcode 0x01113043 ...
+Part: LFE5UM-85F-8CABGA381
+```
+
+Enter DFU with either ULX4M `SW1` slider ON, then program the named bitstream
+through the proven Windows openFPGALoader path from WSL:
 
 ```bash
-dfu-util -l
-make -f ULX4M_LD_85F.mk dfu
+make -f ULX4M_LD_85F.mk program-um
+```
+
+Power off after programming, return both `SW1` sliders to OFF, and power the
+module normally.
+
+To build the FPGA, 25 MHz monitor, and matching 64 MiB Doom image in one step:
+
+```bash
+./build-ulx4m-ld-doom.sh
 ```
 
 D7 is a one-hertz hardware heartbeat driven directly from the 25 MHz board
@@ -54,11 +73,14 @@ D6-D0 return to Hazard3 GPIO while D7 remains the hardware heartbeat. Rebuild
 the monitor for the 25 MHz system clock:
 
 ```bash
-HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
+HAZARD3_MEMORY_PROFILE=64m HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
 ```
 
-Then load `hazard3-test.elf` and run the existing SDRAM quick qualification
-before uploading Doom or a WAD.
+Then load `hazard3-test.elf`. The monitor now waits up to five seconds for
+DDR3 calibration before touching external memory. If calibration does not
+complete, the UART monitor remains responsive and refuses external-memory and
+Doom commands rather than hanging on its boot test. Run the complete
+qualification before uploading Doom or a WAD.
 
 ## UART
 
@@ -74,10 +96,14 @@ FPGA uart_tx: N3, data from FPGA to FTDI
 
 1. Confirm D7 blinks and both PLL lock indicators appear during DDR3 initialization.
 2. Wait for UberDDR3 state 23 and the transition to Hazard3 GPIO on D6-D0.
-3. Rebuild the monitor for the 25 MHz UART divider, then connect OpenOCD and load it.
-4. Run the monitor SDRAM quick test and a larger destructive test.
-5. Confirm HDMI0 displays the monitor framebuffer.
-6. Upload the existing Doom image and IWAD.
+3. Load the 25 MHz monitor and confirm `External memory initialization: READY`.
+4. Confirm the automatic 64 KiB boot test passes.
+5. Run `q` for the complete address, pattern, and pseudorandom qualification.
+6. Run `k`, `d`, and `x` for heap, Doom-platform, and execute-from-DDR tests.
+7. Confirm HDMI0 displays the automatic monitor framebuffer test pattern.
+8. Upload the linked Doom image and IWAD, then launch with `j`.
 
-This is a first hardware-integration target. It has not yet been calibrated or
-place-and-routed on the physical ULX4M-LD in this environment.
+The standalone all-LED configuration diagnostic is hardware-verified on the
+installed `LFE5UM-85F-8BG381C`. The full DDR3, monitor, HDMI, and Doom path still
+requires the qualification sequence above before this target should be called
+fully supported.

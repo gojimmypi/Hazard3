@@ -86,7 +86,8 @@ Both builds keep the internal 128 KiB SRAM map:
 - `0x00010000-0x0001f9ff`: Doom 320x200 indexed working screen
 - `0x0001fa00-0x0001ffff`: unused internal SRAM
 
-The default `64m` profile is the proven ULX3S map:
+The default `64m` profile is used by the proven ULX3S target and by the
+ULX4M-LD target, which exposes the low 64 MiB of its DDR3 device:
 
 - `0x20000000-0x23ffffff`: physical 64 MiB SDRAM
 - `0x24000000-0x27ffffff`: uncached diagnostic alias
@@ -132,8 +133,28 @@ make -f ULX4M_LS_85F.mk clean
 make -f ULX4M_LS_85F.mk bit
 ```
 
-See `../ULX4M_PORT.md` for the 12F capacity limit, the 32 MiB software profile,
-and the separate ULX4M-LD DDR3 integration work.
+For the ULX4M-LD fitted with `LFE5UM-85F-8BG381C`, build the exact UM variant:
+
+```bash
+make -B -f ULX4M_LD_85F.mk bit-um
+```
+
+The LD build must show `--um-85k`, `--speed 8`, and
+`--idcode 0x01113043`. Program the resulting named bitstream with:
+
+```bash
+make -f ULX4M_LD_85F.mk program-um
+```
+
+The complete LD FPGA, monitor, and Doom-image build can be run with:
+
+```bash
+./build-ulx4m-ld-doom.sh
+```
+
+See `../ULX4M_PORT.md` for the 12F capacity limit and the 32 MiB ULX4M-LS
+software profile. See `../ULX4M_LD_NATIVE_DDR3.md` for the LD DDR3
+qualification sequence.
 
 The ULX3S build selects nextpnr's heap placer. The shared
 `scripts/synth_ecp5.mk` change preserves simulated annealing as the default for
@@ -159,8 +180,11 @@ From `example_soc/synth/hazard3-fw`, use the profile matching the FPGA:
 # ULX3S, default 64 MiB profile
 ./build.sh
 
-# ULX4M-LS, 32 MiB profile
+# ULX4M-LS, 32 MiB profile at 50 MHz
 HAZARD3_MEMORY_PROFILE=32m ./build.sh
+
+# ULX4M-LD, low 64 MiB of DDR3 at a 25 MHz system clock
+HAZARD3_MEMORY_PROFILE=64m HAZARD3_SYS_CLK_HZ=25000000 ./build.sh
 ```
 
 Output:
@@ -169,22 +193,18 @@ Output:
 hazard3-test.elf
 ```
 
-The preferred load-and-run path is the standalone GDB loader. Keep OpenOCD
-running, ensure VisualGDB is disconnected, and use either:
+The preferred load-and-run path is the included Bash GDB loader. Keep OpenOCD
+running, ensure VisualGDB is disconnected, and run from
+`example_soc/synth/hazard3-fw`:
 
 ```bash
-./load-and-run.sh
+bash ./load_firmware.sh
 ```
 
-or from PowerShell:
-
-```powershell
-.\load-and-run.cmd
-```
-
-The standalone loader connects, halts, loads `hazard3-test.elf`, sets the entry
-point, resumes the CPU, and disconnects. It avoids VisualGDB stack-inspection
-timeouts that can send SIGINT and leave the monitor halted.
+The loader connects, halts, loads `hazard3-test.elf`, compares the loaded
+sections, sets the entry point, resumes the CPU, and disconnects. It avoids
+VisualGDB stack-inspection timeouts that can send SIGINT and leave the monitor
+halted. Override the debugger path with `GDB=/path/to/riscv32-gdb` when needed.
 
 VisualGDB can still be used for debugging, but the target must be resumed and
 detached before UART uploads. Confirm that the LED animations are running and
@@ -209,6 +229,9 @@ Use the same profile as the monitor:
 
 # ULX4M-LS
 HAZARD3_MEMORY_PROFILE=32m ./doom/build-doom-image.sh
+
+# ULX4M-LD uses the default 64 MiB map
+HAZARD3_MEMORY_PROFILE=64m ./doom/build-doom-image.sh
 ```
 
 The Doom image build uses the shared `doom/doom_build_flags.sh` settings.
@@ -257,8 +280,9 @@ py .\doom\upload-wad.py `
     --launch
 ```
 
-For the ULX4M-LS 32 MiB profile, add `--memory-profile 32m`. The default is
-`64m` for ULX3S. The selected uploader profile must match the monitor build.
+For the ULX4M-LS 32 MiB profile, add `--memory-profile 32m`. The default
+`64m` profile is correct for both ULX3S and ULX4M-LD. The selected uploader
+profile must match the monitor build.
 
 The uploader derives the Doom-visible name from the input filename. Use
 `--name doom1.wad` when the local file has a different name.
@@ -365,6 +389,7 @@ last_copy_cycles=... last_present_cycles=...
 copy_cycles_total=... present_cycles_total=...
 ```
 
-At a 50 MHz system clock, divide a cycle count by 50,000 to obtain milliseconds.
-The `interactive_frames` and `elapsed_ms` values provide the sustained frame
-rate for the exact scene tested.
+At a 50 MHz system clock, divide a cycle count by 50,000 to obtain
+milliseconds. On ULX4M-LD, which currently runs Hazard3 at 25 MHz, divide by
+25,000 instead. The `interactive_frames` and `elapsed_ms` values provide the
+sustained frame rate for the exact scene tested.
