@@ -16,9 +16,13 @@ static char argument_mb_value[] = "6";
 static char argument_nogui[] = "-nogui";
 static char argument_nosound[] = "-nosound";
 static char argument_nomusic[] = "-nomusic";
+
+#ifdef DOOM_WARP
 static char argument_warp[] = "-warp";
 static char argument_episode[] = "1";
 static char argument_map[] = "1";
+#endif
+
 static char* doom_arguments[] = {
     argument_program,
     argument_iwad,
@@ -27,10 +31,14 @@ static char* doom_arguments[] = {
     argument_mb_value,
     argument_nogui,
     argument_nosound,
-    argument_nomusic,
+    argument_nomusic
+
+#ifdef DOOM_WARP
+    ,
     argument_warp,
     argument_episode,
     argument_map
+#endif
 };
 
 static int services_are_valid(const hazard3_monitor_services_t* services)
@@ -122,7 +130,12 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     R_SetViewSize(screenblocks, detailLevel);
     hazard3_console_puts(
         "  performance mode: on-chip screen, 64 KiB cache, low detail, view size 6\r\n");
+
+#ifdef DOOM_WARP
     hazard3_console_puts("  auto-start: E1M1\r\n");
+#else
+    hazard3_console_puts("  startup mode: Doom title/demo attract loop\r\n");
+#endif
 
     frame_count = hazard3_doom_draw_frame_count();
     if (frame_count == 0u) {
