@@ -9,6 +9,10 @@
 #include "hazard3_video.h"
 
 #define LOADER_BYTE_TIMEOUT_MS 5000u
+#define IMAGE_BACKUP_ALIGNMENT 16u
+#define SDRAM_UNCACHED_ALIAS_OFFSET \
+    (HAZARD3_SDRAM_DIAGNOSTIC_ALIAS_BASE - \
+        HAZARD3_SDRAM_PHYSICAL_BASE)
 
 static hazard3_doom_image_header_t loaded_header;
 static uint32_t receive_run_count;
@@ -21,8 +25,14 @@ static uint32_t last_crc_expected;
 static uint32_t last_crc_actual;
 static uint32_t last_entry_return;
 static uint32_t image_loaded;
+static uint32_t image_backup_address;
+static uint32_t image_backup_crc;
+static uint32_t image_restore_count;
+static uint32_t image_restart_ready;
 
 extern void* _sbrk(ptrdiff_t increment);
+
+static void clear_bss(uint32_t address, uint32_t byte_count);
 
 static uint32_t crc32_update(uint32_t crc, uint8_t value)
 {
@@ -102,6 +112,131 @@ static int header_is_valid(const hazard3_doom_image_header_t* header)
     return 1;
 }
 
+static uint32_t align_down(uint32_t value, uint32_t alignment)
+{
+    return value & ~(alignment - 1u);
+}
+
+static uint32_t image_backup_uncached_address(void)
+{
+    return image_backup_address + SDRAM_UNCACHED_ALIAS_OFFSET;
+}
+
+static void copy_memory(
+    volatile uint8_t* destination,
+    const volatile uint8_t* source,
+    uint32_t byte_count)
+{
+    while ((((uintptr_t)destination | (uintptr_t)source) & 3u) != 0u &&
+        byte_count != 0u) {
+        *destination++ = *source++;
+        --byte_count;
+    }
+
+    {
+        volatile uint32_t* destination_words =
+            (volatile uint32_t*)(uintptr_t)destination;
+        const volatile uint32_t* source_words =
+            (const volatile uint32_t*)(uintptr_t)source;
+        uint32_t word_count = byte_count / sizeof(uint32_t);
+
+        for (uint32_t i = 0u; i < word_count; ++i) {
+            destination_words[i] = source_words[i];
+        }
+
+        destination += word_count * sizeof(uint32_t);
+        source += word_count * sizeof(uint32_t);
+        byte_count -= word_count * sizeof(uint32_t);
+    }
+
+    while (byte_count != 0u) {
+        *destination++ = *source++;
+        --byte_count;
+    }
+}
+
+static uint32_t crc32_memory(
+    const volatile uint8_t* source,
+    uint32_t byte_count)
+{
+    uint32_t crc = 0xffffffffu;
+
+    for (uint32_t i = 0u; i < byte_count; ++i) {
+        crc = crc32_update(crc, source[i]);
+    }
+
+    return crc ^ 0xffffffffu;
+}
+
+static int prepare_image_backup(
+    const hazard3_doom_image_header_t* header)
+{
+    uint32_t active_end = header->bss_address + header->bss_bytes;
+    uint32_t backup_address = align_down(
+        HAZARD3_DOOM_IMAGE_LIMIT - header->image_bytes,
+        IMAGE_BACKUP_ALIGNMENT);
+    volatile uint8_t* destination;
+    const volatile uint8_t* source;
+
+    if (backup_address < active_end ||
+        backup_address < HAZARD3_DOOM_IMAGE_BASE ||
+        backup_address + header->image_bytes >
+            HAZARD3_DOOM_IMAGE_LIMIT) {
+        return 0;
+    }
+
+    image_backup_address = backup_address;
+    destination = (volatile uint8_t*)(uintptr_t)(
+        image_backup_uncached_address());
+    source = (const volatile uint8_t*)(uintptr_t)header->load_address;
+
+    copy_memory(destination, source, header->image_bytes);
+    hazard3_memory_barrier();
+
+    image_backup_crc = crc32_memory(destination, header->image_bytes);
+    if (image_backup_crc != header->payload_crc32) {
+        image_backup_address = 0u;
+        image_backup_crc = 0u;
+        return 0;
+    }
+
+    image_restart_ready = 1u;
+    return 1;
+}
+
+static int restore_image_from_backup(void)
+{
+    volatile uint8_t* destination;
+    const volatile uint8_t* source;
+    uint32_t restored_crc;
+
+    if (image_restart_ready == 0u ||
+        image_backup_address == 0u) {
+        return 0;
+    }
+
+    destination = (volatile uint8_t*)(uintptr_t)loaded_header.load_address;
+    source = (const volatile uint8_t*)(uintptr_t)(
+        image_backup_uncached_address());
+
+    copy_memory(destination, source, loaded_header.image_bytes);
+    clear_bss(loaded_header.bss_address, loaded_header.bss_bytes);
+    hazard3_memory_barrier();
+
+    restored_crc = crc32_memory(
+        (const volatile uint8_t*)(uintptr_t)loaded_header.load_address,
+        loaded_header.image_bytes);
+    if (restored_crc != loaded_header.payload_crc32) {
+        image_restart_ready = 0u;
+        image_loaded = 0u;
+        return 0;
+    }
+
+    ++image_restore_count;
+    __asm__ volatile ("fence.i" ::: "memory");
+    return 1;
+}
+
 static void clear_bss(uint32_t address, uint32_t byte_count)
 {
     volatile uint32_t* words = (volatile uint32_t*)(uintptr_t)address;
@@ -150,6 +285,9 @@ static void print_header_summary(const hazard3_doom_image_header_t* header)
 void doom_image_loader_invalidate(void)
 {
     image_loaded = 0u;
+    image_restart_ready = 0u;
+    image_backup_address = 0u;
+    image_backup_crc = 0u;
 }
 
 int doom_image_loader_receive(void)
@@ -160,6 +298,10 @@ int doom_image_loader_receive(void)
     uint32_t crc = 0xffffffffu;
     ++receive_run_count;
     image_loaded = 0u;
+    image_restart_ready = 0u;
+    image_backup_address = 0u;
+    image_backup_crc = 0u;
+    image_restore_count = 0u;
     last_crc_actual = 0u;
     last_crc_expected = 0u;
     start_ticks = hazard3_ticks_ms();
@@ -213,10 +355,21 @@ int doom_image_loader_receive(void)
         hazard3_console_puts("\r\n");
         return 0;
     }
-    clear_bss(header.bss_address, header.bss_bytes);
-    hazard3_memory_barrier();
-    __asm__ volatile ("fence.i" ::: "memory");
     copy_header(&loaded_header, &header);
+    if (!prepare_image_backup(&header)) {
+        ++receive_failure_count;
+        last_receive_elapsed_ms = hazard3_ticks_ms() - start_ticks;
+        hazard3_console_puts(
+            "H3L ERROR could not create verified restart image\r\n");
+        return 0;
+    }
+    if (!restore_image_from_backup()) {
+        ++receive_failure_count;
+        last_receive_elapsed_ms = hazard3_ticks_ms() - start_ticks;
+        hazard3_console_puts(
+            "H3L ERROR could not verify restored image\r\n");
+        return 0;
+    }
     image_loaded = 1u;
     last_receive_elapsed_ms = hazard3_ticks_ms() - start_ticks;
     hazard3_console_puts("H3L OK elapsed_ms=");
@@ -269,9 +422,13 @@ int doom_image_loader_launch(void)
         return 0;
     }
     hazard3_heap_reset();
-    clear_bss(loaded_header.bss_address, loaded_header.bss_bytes);
-    hazard3_memory_barrier();
-    __asm__ volatile ("fence.i" ::: "memory");
+    if (!restore_image_from_backup()) {
+        ++launch_failure_count;
+        hazard3_console_puts(
+            "\r\nDoom restart image verification failed. "
+            "Upload the H3D again.\r\n");
+        return 0;
+    }
     entry = (doom_entry_fn_t)(uintptr_t)loaded_header.entry_address;
     hazard3_console_puts("\r\nLaunching Doom image from SDRAM entry=");
     hazard3_console_put_hex32(loaded_header.entry_address);
@@ -285,7 +442,6 @@ int doom_image_loader_launch(void)
     last_launch_elapsed_ms = hazard3_ticks_ms() - start_ticks;
     hazard3_console_input_capture_end();
     last_entry_return = (uint32_t)result;
-    image_loaded = 0u;
     hazard3_console_puts("Doom image returned status=");
     hazard3_console_put_hex32(last_entry_return);
     hazard3_console_puts(" elapsed_ms=");
@@ -295,7 +451,7 @@ int doom_image_loader_launch(void)
     hazard3_console_puts(" overflows=");
     hazard3_console_put_hex32(hazard3_console_input_capture_overflows());
     hazard3_console_puts(
-        "\r\nImage state invalidated after return; IWAD remains loaded.\r\n");
+        "\r\nRestart image preserved; enter j to restart without uploading.\r\n");
     if (result != 0) {
         ++launch_failure_count;
         return 0;
@@ -313,6 +469,10 @@ void doom_image_loader_print_status(void)
     hazard3_console_put_hex32(receive_failure_count);
     hazard3_console_puts(" receive_elapsed_ms=");
     hazard3_console_put_hex32(last_receive_elapsed_ms);
+    hazard3_console_puts(" restart_ready=");
+    hazard3_console_puts(image_restart_ready != 0u ? "YES" : "NO");
+    hazard3_console_puts(" restores=");
+    hazard3_console_put_hex32(image_restore_count);
     hazard3_console_puts("\r\ndoom_image_bytes=");
     hazard3_console_put_hex32(loaded_header.image_bytes);
     hazard3_console_puts(" entry=");
@@ -323,6 +483,10 @@ void doom_image_loader_print_status(void)
     hazard3_console_put_hex32(last_crc_expected);
     hazard3_console_puts(" actual=");
     hazard3_console_put_hex32(last_crc_actual);
+    hazard3_console_puts(" backup=");
+    hazard3_console_put_hex32(image_backup_address);
+    hazard3_console_puts(" backup_crc=");
+    hazard3_console_put_hex32(image_backup_crc);
     hazard3_console_puts("\r\ndoom_launch_runs=");
     hazard3_console_put_hex32(launch_run_count);
     hazard3_console_puts(" launch_failures=");

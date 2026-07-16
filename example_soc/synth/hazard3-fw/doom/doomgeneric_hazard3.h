@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-#define HAZARD3_DOOM_IMAGE_BUILD_ID 0x44335233u
+#define HAZARD3_DOOM_IMAGE_BUILD_ID 0x44335234u
 #define HAZARD3_DOOM_IMAGE_BUILD_NAME \
-    "H3-Doom-UART-R3-20260716"
+    "H3-Doom-Restart-R4-20260716"
 
 uint32_t hazard3_doom_draw_frame_count(void);
 uint32_t hazard3_doom_last_copy_cycles(void);

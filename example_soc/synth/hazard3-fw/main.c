@@ -291,7 +291,7 @@ static void console_print_help(void)
     uart_puts("  x       execute copied RV32 code from SDRAM\r\n");
     uart_puts("  l       receive a packaged Doom image over UART\r\n");
     uart_puts("  w       receive an IWAD into reserved SDRAM\r\n");
-    uart_puts("  j       launch the validated Doom image and IWAD\r\n");
+    uart_puts("  j       launch/restart the validated Doom image and IWAD\r\n");
     uart_puts("  f       rewrite/present the 320x200 RGB332 HDMI test frame\r\n");
     uart_puts("  z       reset heap; invalidates every heap pointer\r\n");
     uart_puts("  s       status\r\n");

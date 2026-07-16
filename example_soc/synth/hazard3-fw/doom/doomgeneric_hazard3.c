@@ -14,6 +14,7 @@
 #define HAZARD3_VIDEO_WORDS (HAZARD3_VIDEO_FRAMEBUFFER_BYTES / 4u)
 #define HAZARD3_VIDEO_PRESENT_TIMEOUT_MS 1000u
 #define HAZARD3_UART_KEY_HOLD_MS 120u
+#define HAZARD3_ESCAPE_SEQUENCE_TIMEOUT_MS 40u
 
 static uint32_t draw_frame_count;
 static uint32_t back_buffer_index;
@@ -35,6 +36,10 @@ static uint32_t key_release_deadline_ms;
 static int stop_input_scan;
 static int exit_requested;
 static int input_activity_reported;
+static uint8_t escape_sequence_state;
+static uint32_t escape_sequence_deadline_ms;
+static uint8_t deferred_character;
+static int deferred_character_valid;
 
 static uint32_t read_cycle_counter(void)
 {
@@ -289,6 +294,74 @@ static int uart_character_to_doom_key(uint8_t character, unsigned char* key)
     }
 }
 
+static int emit_key_down(
+    int* pressed,
+    unsigned char* key,
+    unsigned char key_code,
+    uint8_t source_character)
+{
+    *pressed = 1;
+    *key = key_code;
+    key_release_code = key_code;
+    key_release_deadline_ms =
+        hazard3_ticks_ms() + HAZARD3_UART_KEY_HOLD_MS;
+    key_release_pending = 1;
+    stop_input_scan = 1;
+
+    if (!input_activity_reported) {
+        hazard3_console_puts(
+            "Doom UART input: ACTIVE first_character=");
+        hazard3_console_put_hex32(source_character);
+        hazard3_console_puts("\r\n");
+        input_activity_reported = 1;
+    }
+
+    return 1;
+}
+
+static int decode_escape_sequence(
+    uint8_t character,
+    unsigned char* key)
+{
+    if (escape_sequence_state == 1u) {
+        if (character == '[' || character == 'O') {
+            escape_sequence_state = 2u;
+            escape_sequence_deadline_ms =
+                hazard3_ticks_ms() +
+                HAZARD3_ESCAPE_SEQUENCE_TIMEOUT_MS;
+            return 0;
+        }
+
+        deferred_character = character;
+        deferred_character_valid = 1;
+        escape_sequence_state = 0u;
+        *key = KEY_ESCAPE;
+        return 1;
+    }
+
+    if (escape_sequence_state == 2u) {
+        escape_sequence_state = 0u;
+        switch (character) {
+        case 'A':
+            *key = KEY_UPARROW;
+            return 1;
+        case 'B':
+            *key = KEY_DOWNARROW;
+            return 1;
+        case 'C':
+            *key = KEY_RIGHTARROW;
+            return 1;
+        case 'D':
+            *key = KEY_LEFTARROW;
+            return 1;
+        default:
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
 int DG_GetKey(int* pressed, unsigned char* key)
 {
     uint8_t character;
@@ -314,12 +387,31 @@ int DG_GetKey(int* pressed, unsigned char* key)
         return 1;
     }
 
-    // Consume a bounded number of ignored terminal characters per tick. This
-    // discards line-feed bytes from CR/LF terminals without risking an
-    // unbounded loop if the UART receives unsupported escape sequences.
+    if (escape_sequence_state != 0u &&
+        (int32_t)(hazard3_ticks_ms() -
+            escape_sequence_deadline_ms) >= 0) {
+        escape_sequence_state = 0u;
+        return emit_key_down(
+            pressed, key, KEY_ESCAPE, 0x1bu);
+    }
+
+    // Consume a bounded number of ignored terminal characters per tick. ANSI
+    // arrow sequences are decoded as one Doom key instead of interpreting
+    // their leading escape byte as a menu command.
     for (uint32_t ignored = 0u; ignored < 4u; ++ignored) {
-        if (!hazard3_console_getc_nonblocking(&character)) {
+        if (deferred_character_valid) {
+            character = deferred_character;
+            deferred_character_valid = 0;
+        } else if (!hazard3_console_getc_nonblocking(&character)) {
             return 0;
+        }
+
+        if (escape_sequence_state != 0u) {
+            if (decode_escape_sequence(character, key)) {
+                return emit_key_down(
+                    pressed, key, *key, character);
+            }
+            continue;
         }
 
         if (character == 0x18u) {
@@ -328,22 +420,17 @@ int DG_GetKey(int* pressed, unsigned char* key)
             return 0;
         }
 
-        if (uart_character_to_doom_key(character, key)) {
-            *pressed = 1;
-            key_release_code = *key;
-            key_release_deadline_ms =
-                hazard3_ticks_ms() + HAZARD3_UART_KEY_HOLD_MS;
-            key_release_pending = 1;
-            stop_input_scan = 1;
+        if (character == 0x1bu) {
+            escape_sequence_state = 1u;
+            escape_sequence_deadline_ms =
+                hazard3_ticks_ms() +
+                HAZARD3_ESCAPE_SEQUENCE_TIMEOUT_MS;
+            continue;
+        }
 
-            if (!input_activity_reported) {
-                hazard3_console_puts(
-                    "Doom UART input: ACTIVE first_character=");
-                hazard3_console_put_hex32(character);
-                hazard3_console_puts("\r\n");
-                input_activity_reported = 1;
-            }
-            return 1;
+        if (uart_character_to_doom_key(character, key)) {
+            return emit_key_down(
+                pressed, key, *key, character);
         }
     }
 
@@ -390,6 +477,10 @@ void hazard3_doom_input_reset(void)
     stop_input_scan = 0;
     exit_requested = 0;
     input_activity_reported = 0;
+    escape_sequence_state = 0u;
+    escape_sequence_deadline_ms = 0u;
+    deferred_character = 0u;
+    deferred_character_valid = 0;
 }
 
 int hazard3_doom_exit_requested(void)

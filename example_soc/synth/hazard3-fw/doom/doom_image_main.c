@@ -132,11 +132,11 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
 
     hazard3_console_puts("Doom interactive HDMI loop: READY\r\n");
     hazard3_console_puts(
-        "  controls: W/S move, A/D turn, Z/C strafe, F/space fire, E use\r\n");
+        "  controls: W/S or arrows move/turn, Z/C strafe, F/space fire, E use\r\n");
     hazard3_console_puts(
         "  M map, P pause, 1-7 weapons, Enter select, Esc menu\r\n");
     hazard3_console_puts(
-        "  hold a key for terminal auto-repeat; Ctrl-X returns to monitor\r\n");
+        "  Esc backs out of menus; Ctrl-X returns to monitor; j restarts\r\n");
 
     interactive_start_ticks = hazard3_ticks_ms();
     interactive_start_frames = frame_count;
