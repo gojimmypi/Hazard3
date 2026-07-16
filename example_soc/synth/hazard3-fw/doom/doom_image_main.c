@@ -122,14 +122,14 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
         (int)(sizeof(doom_arguments) / sizeof(doom_arguments[0])),
         doom_arguments);
 
-    // Low-detail rendering draws one horizontal sample for each two display
-    // pixels. Keep the normal largest status-bar view while cutting the most
-    // expensive wall, sprite and span loops approximately in half.
-    screenblocks = 6;
-    detailLevel = 1;
+    // Performance-R5 doubles the ULX4M Hazard3 clock to match ULX3S and moves
+    // frame presentation off DDR. Start with Doom's largest status-bar view in
+    // high detail; the Options menu can still select low detail or full screen.
+    screenblocks = 10;
+    detailLevel = 0;
     R_SetViewSize(screenblocks, detailLevel);
     hazard3_console_puts(
-        "  performance mode: on-chip screen, 64 KiB cache, low detail, view size 6\r\n");
+        "  performance mode: 50 MHz CPU, direct EBR present, high detail, view size 10\r\n");
 
 #ifdef DOOM_WARP
     hazard3_console_puts("  auto-start: E1M1\r\n");

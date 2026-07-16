@@ -20,6 +20,7 @@ static uint32_t draw_frame_count;
 static uint32_t back_buffer_index;
 static uint32_t palette_bank_valid_mask;
 static int video_available;
+static int direct_video_available;
 static int video_failure_reported;
 static uint32_t copy_cycles_total;
 static uint32_t present_cycles_total;
@@ -28,7 +29,7 @@ static uint32_t last_present_cycles;
 
 // UART terminals do not provide key-up events. Each recognized character
 // holds the corresponding Doom key for a short real-time interval. This makes
-// one character visible at 25 MHz and lets terminal auto-repeat produce
+// one character visible even during long render loops and lets auto-repeat
 // continuous movement without overflowing the two-byte hardware FIFO.
 static int key_release_pending;
 static unsigned char key_release_code;
@@ -112,15 +113,54 @@ void DG_Init(void)
     present_cycles_total = 0u;
     last_copy_cycles = 0u;
     last_present_cycles = 0u;
+    direct_video_available =
+        (status & HAZARD3_VIDEO_STATUS_DIRECT_SUPPORTED) != 0u;
     video_available = video_base == HAZARD3_VIDEO_FRAMEBUFFER0_BASE
         && video_limit >= video_base
         && video_limit - video_base >= 2u * HAZARD3_VIDEO_FRAMEBUFFER_BYTES
         && (status & HAZARD3_VIDEO_STATUS_SDRAM_READY) != 0u;
 
     hazard3_console_puts(
-        "Doom platform: cached indexed renderer + block-RAM HDMI initialized\r\n");
+        "Doom platform: indexed renderer + direct block-RAM HDMI initialized\r\n");
+    hazard3_console_puts(
+        direct_video_available
+            ? "  presentation path: direct APB-to-EBR\r\n"
+            : "  presentation path: legacy SDRAM staging/DMA\r\n");
     if (!video_available) {
         hazard3_console_puts("Doom HDMI performance interface: FAIL\r\n");
+    }
+}
+
+static void copy_frame_direct(const uint32_t* source_words)
+{
+    HAZARD3_VIDEO_DIRECT_ADDRESS =
+        back_buffer_index != 0u ? 0x00008000u : 0u;
+
+    for (uint32_t i = 0u; i < HAZARD3_VIDEO_WORDS; i += 8u) {
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 0u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 1u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 2u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 3u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 4u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 5u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 6u];
+        HAZARD3_VIDEO_DIRECT_DATA = source_words[i + 7u];
+    }
+}
+
+static void copy_frame_legacy(
+    volatile uint32_t* destination_words,
+    const uint32_t* source_words)
+{
+    for (uint32_t i = 0u; i < HAZARD3_VIDEO_WORDS; i += 8u) {
+        destination_words[i + 0u] = source_words[i + 0u];
+        destination_words[i + 1u] = source_words[i + 1u];
+        destination_words[i + 2u] = source_words[i + 2u];
+        destination_words[i + 3u] = source_words[i + 3u];
+        destination_words[i + 4u] = source_words[i + 4u];
+        destination_words[i + 5u] = source_words[i + 5u];
+        destination_words[i + 6u] = source_words[i + 6u];
+        destination_words[i + 7u] = source_words[i + 7u];
     }
 }
 
@@ -129,40 +169,38 @@ void DG_DrawFrame(void)
     const uint32_t* source_words = (const uint32_t*)DG_ScreenBuffer;
 
     if (video_available && source_words != (const uint32_t*)0) {
-        volatile uint32_t* destination_words =
-            hazard3_video_framebuffer_words(back_buffer_index);
         uint32_t present_count_before;
         uint32_t copy_start;
         uint32_t present_start;
 
-        // Copy into the staging buffer first. The previous frame's DMA has
-        // already finished before DG_DrawFrame returns, so this alternate
-        // staging buffer is safe even if the prior block-RAM swap is waiting
-        // for vertical blank. This overlaps rendering and the 64 KiB copy with
-        // most of the previous frame's vblank wait.
-        copy_start = read_cycle_counter();
-        for (uint32_t i = 0u; i < HAZARD3_VIDEO_WORDS; i += 8u) {
-            destination_words[i + 0u] = source_words[i + 0u];
-            destination_words[i + 1u] = source_words[i + 1u];
-            destination_words[i + 2u] = source_words[i + 2u];
-            destination_words[i + 3u] = source_words[i + 3u];
-            destination_words[i + 4u] = source_words[i + 4u];
-            destination_words[i + 5u] = source_words[i + 5u];
-            destination_words[i + 6u] = source_words[i + 6u];
-            destination_words[i + 7u] = source_words[i + 7u];
+        // The direct path writes the inactive displayed bank. Wait until the
+        // prior vertical-blank swap is complete before reusing that bank.
+        if (direct_video_available && !wait_for_video_idle()) {
+            video_available = 0;
         }
-        hazard3_memory_barrier();
+
+        copy_start = read_cycle_counter();
+        if (video_available) {
+            if (direct_video_available) {
+                copy_frame_direct(source_words);
+            } else {
+                volatile uint32_t* destination_words =
+                    hazard3_video_framebuffer_words(back_buffer_index);
+                copy_frame_legacy(destination_words, source_words);
+                hazard3_memory_barrier();
+            }
+        }
         last_copy_cycles = read_cycle_counter() - copy_start;
         copy_cycles_total += last_copy_cycles;
 
         present_start = read_cycle_counter();
-        if (!wait_for_video_idle()) {
+        if (video_available && !direct_video_available &&
+            !wait_for_video_idle()) {
             video_available = 0;
         }
 
-        // Palette RAM is indexed by staging-buffer number. Do not overwrite a
-        // bank until the preceding swap has completed, because that bank may
-        // still color the currently visible block-RAM frame.
+        // Palette RAM is indexed by displayed-buffer number. Do not overwrite a
+        // bank until the preceding swap has completed.
         if (video_available) {
             if (palette_changed) {
                 palette_bank_valid_mask = 0u;
@@ -176,10 +214,12 @@ void DG_DrawFrame(void)
             HAZARD3_VIDEO_CONTROL = HAZARD3_VIDEO_CONTROL_INDEXED
                 | (back_buffer_index != 0u
                     ? HAZARD3_VIDEO_CONTROL_BUFFER1 : 0u)
+                | (direct_video_available
+                    ? HAZARD3_VIDEO_CONTROL_DIRECT : 0u)
                 | HAZARD3_VIDEO_CONTROL_PRESENT;
 
-            // Return as soon as SDRAM-to-block-RAM DMA is complete. The swap
-            // itself can finish in parallel with the next Doom render.
+            // Direct presentation only queues a vertical-blank bank swap.
+            // Legacy presentation waits for SDRAM-to-block-RAM DMA completion.
             if (wait_for_dma_complete(present_count_before)) {
                 last_present_cycles = read_cycle_counter() - present_start;
                 present_cycles_total += last_present_cycles;
@@ -200,7 +240,7 @@ void DG_DrawFrame(void)
     if (draw_frame_count == 1u) {
         hazard3_console_puts(
             video_available
-                ? "Doom renderer: first indexed block-RAM frame queued\r\n"
+                ? "Doom renderer: first direct block-RAM frame queued\r\n"
                 : "Doom renderer: first headless frame completed\r\n");
     }
 }

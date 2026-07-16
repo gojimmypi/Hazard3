@@ -82,7 +82,7 @@ mkdir -p "${BUILD_DIR}"
 GCC_VERSION="$("${CC}" -dumpfullversion -dumpversion)"
 printf 'RISC-V GCC: %s\n' "${GCC_VERSION}"
 printf 'Code generation: %s, %s\n' \
-    "${DOOM_ARCH_FLAGS[0]}" "-Os (GCC 12.2-safe)"
+    "${DOOM_ARCH_FLAGS[0]}" "-O2 (Performance-R5)"
 
 objects=()
 

@@ -2,11 +2,10 @@
 
 # Shared build flags for the Hazard3 Doom image and size probe.
 #
-# GCC 12.2.0 has an internal compiler error when this Doom source tree is
-# compiled with the earlier -O3 plus Zba/Zbb/Zbs experiment. Keep the complete
-# Doom build on the known-working RV32IMA/Os combination. Runtime performance
-# still comes from the hardware cache, indexed framebuffer, block-RAM video
-# buffers, DMA presentation path, and low-detail renderer.
+# GCC 12.2.0 has an internal compiler error with the earlier -O3 plus
+# Zba/Zbb/Zbs experiment. Performance-R5 uses the conservative RV32IMA ISA at
+# -O2. The main speedups come from the shared 50 MHz Hazard3 clock, the 64 KiB
+# cache, and direct block-RAM frame presentation without per-frame DDR traffic.
 
 if [[ -z "${DOOMGENERIC_DIR:-}" || -z "${SCRIPT_DIR:-}" ]]; then
     echo "doom_build_flags.sh must be sourced after SCRIPT_DIR and DOOMGENERIC_DIR are set" >&2
@@ -38,7 +37,7 @@ DOOM_COMMON_COMPILE_FLAGS=(
     "${DOOM_MEMORY_PROFILE_FLAGS[@]}"
     -mcmodel=medany
     -mno-relax
-    -Os
+    -O2
     -g3
     -ffunction-sections
     -fdata-sections

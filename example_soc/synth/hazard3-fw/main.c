@@ -300,12 +300,64 @@ static void console_print_help(void)
     uart_puts("> ");
 }
 
-static int build_ids_match(uint32_t fpga_build_id,
-    uint32_t ddr_core_build_id, uint32_t ddr_adapter_build_id)
+static int is_ulx4m_ld_build(uint32_t fpga_build_id)
 {
-    return fpga_build_id == HAZARD3_FPGA_BUILD_ID_EXPECTED &&
-        ddr_core_build_id == HAZARD3_DDR_CORE_BUILD_ID_EXPECTED &&
-        ddr_adapter_build_id == HAZARD3_DDR_ADAPTER_BUILD_ID_EXPECTED;
+    return fpga_build_id == HAZARD3_FPGA_BUILD_ID_ULX4M_LD;
+}
+
+static int is_ulx3s_build(uint32_t fpga_build_id)
+{
+    return fpga_build_id == HAZARD3_FPGA_BUILD_ID_ULX3S;
+}
+
+static int build_ids_match(uint32_t fpga_build_id,
+    uint32_t memory_core_build_id, uint32_t memory_adapter_build_id)
+{
+    if (is_ulx4m_ld_build(fpga_build_id)) {
+        return memory_core_build_id ==
+                HAZARD3_MEMORY_CORE_BUILD_ID_ULX4M_LD &&
+            memory_adapter_build_id ==
+                HAZARD3_MEMORY_ADAPTER_BUILD_ID_ULX4M_LD;
+    }
+
+    if (is_ulx3s_build(fpga_build_id)) {
+        return memory_core_build_id ==
+                HAZARD3_MEMORY_CORE_BUILD_ID_ULX3S &&
+            memory_adapter_build_id ==
+                HAZARD3_MEMORY_ADAPTER_BUILD_ID_ULX3S;
+    }
+
+    return 0;
+}
+
+static const char* memory_controller_name(uint32_t fpga_build_id)
+{
+    if (is_ulx4m_ld_build(fpga_build_id)) {
+        return "LiteDRAM-2024.12/ECP5DDRPHY";
+    }
+
+    if (is_ulx3s_build(fpga_build_id)) {
+        return "ULX3S-SDR-SDRAM";
+    }
+
+    return "UNKNOWN";
+}
+
+static int memory_status_marker_valid(
+    uint32_t fpga_build_id, uint32_t memory_status)
+{
+    uint32_t expected_marker;
+
+    if (is_ulx4m_ld_build(fpga_build_id)) {
+        expected_marker = HAZARD3_DDR_STATUS_MARKER_ULX4M_LD;
+    } else if (is_ulx3s_build(fpga_build_id)) {
+        expected_marker = HAZARD3_DDR_STATUS_MARKER_ULX3S;
+    } else {
+        return 0;
+    }
+
+    return (memory_status & HAZARD3_DDR_STATUS_MARKER_MASK) ==
+        expected_marker;
 }
 
 static void console_print_version(void)
@@ -327,7 +379,9 @@ static void console_print_version(void)
     uart_puts(" build_match=");
     uart_puts(build_ids_match(fpga_build_id, ddr_core_build_id,
         ddr_adapter_build_id) ? "YES" : "NO");
-    uart_puts("\r\nddr_controller=LiteDRAM-2024.12/ECP5DDRPHY\r\n> ");
+    uart_puts("\r\nmemory_controller=");
+    uart_puts(memory_controller_name(fpga_build_id));
+    uart_puts("\r\n> ");
 }
 
 static void memory_barrier(void)
@@ -1505,12 +1559,13 @@ static void console_print_status(void)
     uart_puts(" build_match=");
     uart_puts(build_ids_match(fpga_build_id, ddr_core_build_id,
         ddr_adapter_build_id) ? "YES" : "NO");
-    uart_puts("\r\nddr_controller=LiteDRAM-2024.12/ECP5DDRPHY");
-    uart_puts(" ddr_status=");
+    uart_puts("\r\nmemory_controller=");
+    uart_puts(memory_controller_name(fpga_build_id));
+    uart_puts(" memory_status=");
     uart_put_hex32(ddr_status);
     uart_puts(" marker=");
-    uart_puts((ddr_status & HAZARD3_DDR_STATUS_MARKER_MASK) ==
-        HAZARD3_DDR_STATUS_MARKER ? "VALID" : "INVALID");
+    uart_puts(memory_status_marker_valid(fpga_build_id, ddr_status) ?
+        "VALID" : "INVALID");
     uart_puts(" init_done=");
     uart_puts((ddr_status & HAZARD3_DDR_STATUS_INIT_DONE) != 0u ? "YES" : "NO");
     uart_puts(" init_error=");
@@ -1802,9 +1857,9 @@ static void console_init(void)
     uart_put_hex32(HAZARD3_FIRMWARE_BUILD_ID);
     uart_puts("\r\n");
     uart_puts("UART: board serial RX / TX, 115200 8N1\r\n");
-    uart_puts("Timer: 10 ms machine interrupt\r\n");
+    uart_puts("CPU: 50 MHz Hazard3, Timer: 10 ms machine interrupt\r\n");
     uart_puts("Internal screen: 0x00010000-0x0001F9FF (320x200 indexed)\r\n");
-    uart_puts("Board LEDs: D7 hardware heartbeat, D0-D6 timer ISR\r\n");
+    uart_puts("Board LEDs: target-specific heartbeat and timer status\r\n");
     uart_puts("SDRAM profile: ");
     uart_puts(HAZARD3_SDRAM_PROFILE_NAME);
     uart_puts(", physical base=");
@@ -1826,7 +1881,7 @@ static void console_init(void)
     uart_puts(", video reserve at ");
     uart_put_hex32(HAZARD3_VIDEO_BASE);
     uart_puts("\r\n");
-    uart_puts("HDMI: 1024x600, block-RAM double buffer, indexed/RGB332\r\n");
+    uart_puts("HDMI: 1024x600 full-panel scale, direct block-RAM double buffer\r\n");
     uart_puts("Doom: l=load image, w=load IWAD, j=launch\r\n");
 }
 
