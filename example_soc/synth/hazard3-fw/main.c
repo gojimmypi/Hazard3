@@ -246,7 +246,7 @@ static void console_print_help(void)
 
 static void console_print_version(void)
 {
-    uart_puts("\r\nHazard3 ECP5 Doom UART loader firmware\r\n");
+    uart_puts("\r\nHazard3 ECP5 Doom UART loader firmware v0.0.0\r\n");
     uart_puts("> ");
 }
 
@@ -259,6 +259,37 @@ static int external_memory_ready(void)
 {
     return (HAZARD3_VIDEO_STATUS &
         HAZARD3_VIDEO_STATUS_SDRAM_READY) != 0u;
+}
+
+static const char* ddr3_calibration_state_name(uint32_t state)
+{
+    switch (state) {
+    case 0u:  return "IDLE";
+    case 1u:  return "BITSLIP_DQS_TRAIN_1";
+    case 2u:  return "MPR_READ";
+    case 3u:  return "COLLECT_DQS";
+    case 4u:  return "ANALYZE_DQS";
+    case 5u:  return "CALIBRATE_DQS";
+    case 6u:  return "BITSLIP_DQS_TRAIN_2";
+    case 7u:  return "START_WRITE_LEVEL";
+    case 8u:  return "WAIT_FOR_FEEDBACK";
+    case 9u:  return "ISSUE_WRITE_1";
+    case 10u: return "ISSUE_WRITE_2";
+    case 11u: return "ISSUE_READ";
+    case 12u: return "READ_DATA";
+    case 13u: return "ANALYZE_DATA";
+    case 14u: return "CHECK_STARTING_DATA";
+    case 15u: return "BITSLIP_DQS_TRAIN_3";
+    case 17u: return "BURST_WRITE";
+    case 18u: return "BURST_READ";
+    case 19u: return "RANDOM_WRITE";
+    case 20u: return "RANDOM_READ";
+    case 21u: return "ALTERNATE_WRITE_READ";
+    case 22u: return "FINISH_READ";
+    case 23u: return "DONE_CALIBRATE";
+    case 24u: return "ANALYZE_DATA_LOW_FREQ";
+    default:  return "UNKNOWN";
+    }
 }
 
 static int external_memory_wait_ready(uint32_t timeout_ms)
@@ -1229,6 +1260,9 @@ static int sdram_run_heap_test(void)
 
 static void console_print_status(void)
 {
+    uint32_t ddr3_debug = HAZARD3_VIDEO_DDR_DEBUG;
+    uint32_t ddr3_state = ddr3_debug & HAZARD3_VIDEO_DDR_STATE_MASK;
+
     uart_puts("\r\nsystem_ticks=");
     uart_put_hex32(system_ticks);
     uart_puts(" timer_irq_count=");
@@ -1365,6 +1399,13 @@ static void console_print_status(void)
     uart_put_hex32(HAZARD3_VIDEO_DMA_CYCLES);
     uart_puts(" presents=");
     uart_put_hex32(HAZARD3_VIDEO_PRESENT_COUNT);
+    uart_puts("\r\nddr3_debug=");
+    uart_put_hex32(ddr3_debug);
+    uart_puts(" ddr3_calib_state=");
+    uart_put_hex32(ddr3_state);
+    uart_puts(" (");
+    uart_puts(ddr3_calibration_state_name(ddr3_state));
+    uart_puts(")");
 
     doom_image_loader_print_status();
     doom_wad_loader_print_status();

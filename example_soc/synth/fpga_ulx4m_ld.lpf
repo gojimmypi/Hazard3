@@ -1,10 +1,14 @@
 BLOCK RESETPATHS;
 BLOCK ASYNCPATHS;
 
-# ULX4M-LD v0.0.2, LFE5UM-85F-8BG381C.
+# ULX4M-LD v0.0.3, LFE5UM-85F-8BG381C.
+# The populated ULX4M-LD DDR3 and FPGA banks 2/3 use the +1V35 rail.
 
 BANK 2 VCCIO 1.35 V;
 BANK 3 VCCIO 1.35 V;
+
+# LOCATE VREF "BANK_3_VREF" SITE "P16";
+# LOCATE VREF "BANK_2_VREF" SITE "D20";
 
 LOCATE COMP "clk_osc" SITE "G2";
 IOBUF PORT "clk_osc" PULLMODE=NONE IO_TYPE=LVCMOS33;
@@ -140,7 +144,9 @@ IOBUF PORT "ddram_dq[13]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 IOBUF PORT "ddram_dq[14]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 IOBUF PORT "ddram_dq[15]" IO_TYPE=SSTL135_I SLEWRATE=FAST TERMINATION=OFF;
 
-# DDR3 strobes and differential clock.
+# DDR3 strobes and complementary clock outputs. UberDDR3 drives the positive
+# and negative pins as separate ECP5 I/O cells, so each pin uses single-ended
+# SSTL135_I rather than assigning a differential type to the B-side pin.
 LOCATE COMP "ddram_dqs_n[0]" SITE "M17";
 LOCATE COMP "ddram_dqs_n[1]" SITE "H20";
 LOCATE COMP "ddram_dqs_p[0]" SITE "N16";

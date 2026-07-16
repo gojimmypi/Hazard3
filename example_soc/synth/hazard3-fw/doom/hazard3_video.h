@@ -20,6 +20,10 @@
     (*(volatile uint32_t *)(HAZARD3_VIDEO_REG_BASE + 0x14u))
 #define HAZARD3_VIDEO_PRESENT_COUNT     \
     (*(volatile uint32_t *)(HAZARD3_VIDEO_REG_BASE + 0x18u))
+#define HAZARD3_VIDEO_DDR_DEBUG         \
+    (*(volatile uint32_t *)(HAZARD3_VIDEO_REG_BASE + 0x1cu))
+
+#define HAZARD3_VIDEO_DDR_STATE_MASK          0x1fu
 
 #define HAZARD3_VIDEO_STATUS_FRONT_BUFFER    (1u << 0)
 #define HAZARD3_VIDEO_STATUS_PRESENT_PENDING (1u << 1)

@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-// Hazard3 + Doom target for ULX4M-LD v0.0.2 with native-Verilog DDR3.
+// Hazard3 + Doom target for ULX4M-LD v0.0.3 with native-Verilog DDR3.
 module fpga_ulx4m_ld (
     input  wire        clk_osc,
     output wire [7:0]  led,
@@ -97,8 +97,19 @@ wire        video_apb_pwrite;
 wire [15:0] video_apb_paddr;
 wire [31:0] video_apb_pwdata;
 wire [31:0] video_apb_prdata;
+wire [31:0] video_apb_prdata_framebuffer;
 wire        video_apb_pready;
 wire        video_apb_pslverr;
+
+wire [7:0]  soc_gpio_out;
+wire        ddr3_calib_complete;
+wire [31:0] ddr3_debug_status;
+
+// Register 7 is unused by the shared framebuffer block. On ULX4M-LD, expose
+// UberDDR3's raw debug word there so firmware can report the exact calibration
+// state without relying on the active-low board LEDs.
+assign video_apb_prdata = video_apb_paddr[5:2] == 4'h7
+    ? ddr3_debug_status : video_apb_prdata_framebuffer;
 
 ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
     .clk_sys          (clk_sys),
@@ -120,16 +131,12 @@ ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
     .apbs_pwrite      (video_apb_pwrite),
     .apbs_paddr       (video_apb_paddr),
     .apbs_pwdata      (video_apb_pwdata),
-    .apbs_prdata      (video_apb_prdata),
+    .apbs_prdata      (video_apb_prdata_framebuffer),
     .apbs_pready      (video_apb_pready),
     .apbs_pslverr     (video_apb_pslverr),
 
     .gpdi_dp          (gpdi_dp)
 );
-
-wire [7:0] soc_gpio_out;
-wire       ddr3_calib_complete;
-wire [31:0] ddr3_debug_status;
 
 // D7 is a hardware heartbeat driven directly from the board oscillator. It
 // proves that the user bitstream is active even if either PLL or DDR3 stalls.

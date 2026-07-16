@@ -54,17 +54,17 @@ EHXPLLL #(
 
     .CLKOP_ENABLE     ("ENABLED"),
     .CLKOP_DIV        (6),
-    .CLKOP_CPHASE     (2),
+    .CLKOP_CPHASE     (3),
     .CLKOP_FPHASE     (0),
 
     .CLKOS_ENABLE     ("ENABLED"),
     .CLKOS_DIV        (6),
-    .CLKOS_CPHASE     (3),
+    .CLKOS_CPHASE     (4),
     .CLKOS_FPHASE     (4),
 
     .CLKOS2_ENABLE    ("ENABLED"),
     .CLKOS2_DIV       (24),
-    .CLKOS2_CPHASE    (2),
+    .CLKOS2_CPHASE    (3),
     .CLKOS2_FPHASE    (0)
 ) pll_i (
     .RST              (1'b0),
