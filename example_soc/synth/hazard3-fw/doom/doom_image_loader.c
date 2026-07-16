@@ -278,15 +278,22 @@ int doom_image_loader_launch(void)
     hazard3_console_puts(" IWAD=");
     hazard3_console_puts(services.wad_name);
     hazard3_console_puts("\r\n");
+    drain_uart_rx();
+    hazard3_console_input_capture_begin();
     start_ticks = hazard3_ticks_ms();
     result = entry(&services);
     last_launch_elapsed_ms = hazard3_ticks_ms() - start_ticks;
+    hazard3_console_input_capture_end();
     last_entry_return = (uint32_t)result;
     image_loaded = 0u;
     hazard3_console_puts("Doom image returned status=");
     hazard3_console_put_hex32(last_entry_return);
     hazard3_console_puts(" elapsed_ms=");
     hazard3_console_put_hex32(last_launch_elapsed_ms);
+    hazard3_console_puts("\r\nDoom UART captured=");
+    hazard3_console_put_hex32(hazard3_console_input_capture_received());
+    hazard3_console_puts(" overflows=");
+    hazard3_console_put_hex32(hazard3_console_input_capture_overflows());
     hazard3_console_puts(
         "\r\nImage state invalidated after return; IWAD remains loaded.\r\n");
     if (result != 0) {

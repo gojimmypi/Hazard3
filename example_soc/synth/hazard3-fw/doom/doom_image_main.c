@@ -16,6 +16,9 @@ static char argument_mb_value[] = "6";
 static char argument_nogui[] = "-nogui";
 static char argument_nosound[] = "-nosound";
 static char argument_nomusic[] = "-nomusic";
+static char argument_warp[] = "-warp";
+static char argument_episode[] = "1";
+static char argument_map[] = "1";
 static char* doom_arguments[] = {
     argument_program,
     argument_iwad,
@@ -24,7 +27,10 @@ static char* doom_arguments[] = {
     argument_mb_value,
     argument_nogui,
     argument_nosound,
-    argument_nomusic
+    argument_nomusic,
+    argument_warp,
+    argument_episode,
+    argument_map
 };
 
 static int services_are_valid(const hazard3_monitor_services_t* services)
@@ -70,6 +76,10 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
         return 1;
     }
     hazard3_monitor_services_bind(services);
+    hazard3_console_puts("\r\ndoom_image_build=");
+    hazard3_console_puts(HAZARD3_DOOM_IMAGE_BUILD_NAME);
+    hazard3_console_puts(" doom_image_id=");
+    hazard3_console_put_hex32(HAZARD3_DOOM_IMAGE_BUILD_ID);
     hazard3_console_puts("\r\nDoom SDRAM image startup\r\n");
     hazard3_console_puts("  monitor ABI: PASS\r\n");
     hazard3_console_puts("  image range: ");
@@ -107,11 +117,12 @@ int32_t doom_image_main(const hazard3_monitor_services_t* services)
     // Low-detail rendering draws one horizontal sample for each two display
     // pixels. Keep the normal largest status-bar view while cutting the most
     // expensive wall, sprite and span loops approximately in half.
-    screenblocks = 8;
+    screenblocks = 6;
     detailLevel = 1;
     R_SetViewSize(screenblocks, detailLevel);
     hazard3_console_puts(
-        "  performance mode: on-chip screen, 64 KiB cache, low detail, view size 8\r\n");
+        "  performance mode: on-chip screen, 64 KiB cache, low detail, view size 6\r\n");
+    hazard3_console_puts("  auto-start: E1M1\r\n");
 
     frame_count = hazard3_doom_draw_frame_count();
     if (frame_count == 0u) {

@@ -13,6 +13,7 @@
 
 #define HAZARD3_VIDEO_WORDS (HAZARD3_VIDEO_FRAMEBUFFER_BYTES / 4u)
 #define HAZARD3_VIDEO_PRESENT_TIMEOUT_MS 1000u
+#define HAZARD3_UART_KEY_HOLD_MS 120u
 
 static uint32_t draw_frame_count;
 static uint32_t back_buffer_index;
@@ -24,15 +25,16 @@ static uint32_t present_cycles_total;
 static uint32_t last_copy_cycles;
 static uint32_t last_present_cycles;
 
-// UART input is converted into one-Doom-tic key pulses. A key-down event is
-// emitted in the tick that receives a character, and the matching key-up is
-// deferred until the next call to DG_GetKey(). This is important because Doom
-// processes all events gathered during one tick before it builds the movement
-// command; emitting down and up in the same tick would cancel movement.
+// UART terminals do not provide key-up events. Each recognized character
+// holds the corresponding Doom key for a short real-time interval. This makes
+// one character visible at 25 MHz and lets terminal auto-repeat produce
+// continuous movement without overflowing the two-byte hardware FIFO.
 static int key_release_pending;
 static unsigned char key_release_code;
+static uint32_t key_release_deadline_ms;
 static int stop_input_scan;
 static int exit_requested;
+static int input_activity_reported;
 
 static uint32_t read_cycle_counter(void)
 {
@@ -264,6 +266,7 @@ static int uart_character_to_doom_key(uint8_t character, unsigned char* key)
         return 1;
 
     case '\r':
+    case '\n':
         *key = KEY_ENTER;
         return 1;
 
@@ -300,6 +303,11 @@ int DG_GetKey(int* pressed, unsigned char* key)
     }
 
     if (key_release_pending) {
+        if ((int32_t)(hazard3_ticks_ms() -
+            key_release_deadline_ms) < 0) {
+            return 0;
+        }
+
         *pressed = 0;
         *key = key_release_code;
         key_release_pending = 0;
@@ -323,8 +331,18 @@ int DG_GetKey(int* pressed, unsigned char* key)
         if (uart_character_to_doom_key(character, key)) {
             *pressed = 1;
             key_release_code = *key;
+            key_release_deadline_ms =
+                hazard3_ticks_ms() + HAZARD3_UART_KEY_HOLD_MS;
             key_release_pending = 1;
             stop_input_scan = 1;
+
+            if (!input_activity_reported) {
+                hazard3_console_puts(
+                    "Doom UART input: ACTIVE first_character=");
+                hazard3_console_put_hex32(character);
+                hazard3_console_puts("\r\n");
+                input_activity_reported = 1;
+            }
             return 1;
         }
     }
@@ -368,8 +386,10 @@ void hazard3_doom_input_reset(void)
 {
     key_release_pending = 0;
     key_release_code = 0u;
+    key_release_deadline_ms = 0u;
     stop_input_scan = 0;
     exit_requested = 0;
+    input_activity_reported = 0;
 }
 
 int hazard3_doom_exit_requested(void)

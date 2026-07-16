@@ -32,6 +32,14 @@
 #define UART_FSTAT_TX_FULL    (1u << 8)
 #define UART_FSTAT_RX_EMPTY   (1u << 25)
 
+#define DOOM_UART_CAPTURE_BYTES 64u
+#define DOOM_UART_CAPTURE_MASK  (DOOM_UART_CAPTURE_BYTES - 1u)
+
+#if (DOOM_UART_CAPTURE_BYTES == 0u) || \
+    ((DOOM_UART_CAPTURE_BYTES & (DOOM_UART_CAPTURE_BYTES - 1u)) != 0u)
+#error "DOOM_UART_CAPTURE_BYTES must be a nonzero power of two"
+#endif
+
 #define TIMER_BASE       0x40000000u
 
 #define TIMER_CTRL       (*(volatile uint32_t *)(TIMER_BASE + 0x00u))
@@ -134,6 +142,12 @@ volatile uint32_t unexpected_trap_count;
 volatile uint32_t uart_rx_count;
 volatile uint32_t uart_tx_count;
 volatile uint32_t uart_last_status;
+volatile uint32_t doom_uart_capture_received;
+volatile uint32_t doom_uart_capture_overflows;
+static volatile uint8_t doom_uart_capture_buffer[DOOM_UART_CAPTURE_BYTES];
+static volatile uint32_t doom_uart_capture_head;
+static volatile uint32_t doom_uart_capture_tail;
+static volatile uint32_t doom_uart_capture_enabled;
 
 volatile uint32_t sdram_test_runs;
 volatile uint32_t sdram_failed_runs;
@@ -202,8 +216,50 @@ static void uart_put_hex32(uint32_t value)
     }
 }
 
+static void doom_uart_capture_poll_from_timer(void)
+{
+    if (doom_uart_capture_enabled == 0u) {
+        return;
+    }
+
+    for (;;) {
+        uint32_t next_head;
+        uint8_t value;
+
+        uart_last_status = UART_FSTAT;
+        if ((uart_last_status & UART_FSTAT_RX_EMPTY) != 0u) {
+            return;
+        }
+
+        value = (uint8_t)UART_RX;
+        next_head = (doom_uart_capture_head + 1u) &
+            DOOM_UART_CAPTURE_MASK;
+
+        if (next_head == doom_uart_capture_tail) {
+            ++doom_uart_capture_overflows;
+        } else {
+            doom_uart_capture_buffer[doom_uart_capture_head] = value;
+            doom_uart_capture_head = next_head;
+            ++doom_uart_capture_received;
+        }
+    }
+}
+
 static int uart_getc_nonblocking(uint8_t* value)
 {
+    if (doom_uart_capture_enabled != 0u) {
+        uint32_t tail = doom_uart_capture_tail;
+
+        if (tail == doom_uart_capture_head) {
+            return 0;
+        }
+
+        *value = doom_uart_capture_buffer[tail];
+        doom_uart_capture_tail = (tail + 1u) & DOOM_UART_CAPTURE_MASK;
+        ++uart_rx_count;
+        return 1;
+    }
+
     uart_last_status = UART_FSTAT;
 
     if ((uart_last_status & UART_FSTAT_RX_EMPTY) != 0u) {
@@ -499,6 +555,39 @@ void hazard3_console_put_hex32(uint32_t value)
 int hazard3_console_getc_nonblocking(uint8_t* value)
 {
     return uart_getc_nonblocking(value);
+}
+
+void hazard3_console_input_capture_begin(void)
+{
+    uint8_t ignored;
+
+    doom_uart_capture_enabled = 0u;
+    doom_uart_capture_head = 0u;
+    doom_uart_capture_tail = 0u;
+    doom_uart_capture_received = 0u;
+    doom_uart_capture_overflows = 0u;
+
+    while ((UART_FSTAT & UART_FSTAT_RX_EMPTY) == 0u) {
+        ignored = (uint8_t)UART_RX;
+        (void)ignored;
+    }
+
+    doom_uart_capture_enabled = 1u;
+}
+
+void hazard3_console_input_capture_end(void)
+{
+    doom_uart_capture_enabled = 0u;
+}
+
+uint32_t hazard3_console_input_capture_received(void)
+{
+    return doom_uart_capture_received;
+}
+
+uint32_t hazard3_console_input_capture_overflows(void)
+{
+    return doom_uart_capture_overflows;
 }
 
 uint32_t hazard3_ticks_ms(void)
@@ -1279,6 +1368,12 @@ static void console_print_status(void)
     uart_put_hex32(uart_tx_count);
     uart_puts(" uart_fstat=");
     uart_put_hex32(UART_FSTAT);
+    uart_puts("\r\ndoom_uart_capture_received=");
+    uart_put_hex32(doom_uart_capture_received);
+    uart_puts(" overflows=");
+    uart_put_hex32(doom_uart_capture_overflows);
+    uart_puts(" enabled=");
+    uart_puts(doom_uart_capture_enabled != 0u ? "YES" : "NO");
     uart_puts("\r\nsdram_runs=");
     uart_put_hex32(sdram_test_runs);
     uart_puts(" failed_runs=");
@@ -1653,6 +1748,7 @@ void machine_trap_handler(uint32_t mcause, uint32_t mepc, uint32_t mtval)
         ++timer_interrupt_count;
         system_ticks += TIMER_PERIOD_US / 1000u;
         sdram_exec_test_note_timer_pc(mepc);
+        doom_uart_capture_poll_from_timer();
 
         timer_next_compare += TIMER_PERIOD_US;
         timer_set_compare(timer_next_compare);
