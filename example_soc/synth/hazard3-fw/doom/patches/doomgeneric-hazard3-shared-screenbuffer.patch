@@ -1,3 +1,33 @@
+diff --git a/doomgeneric/d_loop.c b/doomgeneric/d_loop.c
+index 1939dbd..3bf842b 100644
+--- a/doomgeneric/d_loop.c
++++ b/doomgeneric/d_loop.c
+@@ -18,6 +18,7 @@
+ 
+ #include <stdlib.h>
+ #include <string.h>
++#include <stdint.h>
+ 
+ #include "doomfeatures.h"
+ 
+@@ -130,7 +131,7 @@ static int GetAdjustedTime(void)
+         time_ms += (offsetms / FRACUNIT);
+     }
+ 
+-    return (time_ms * TICRATE) / 1000;
++    return (int)(((int64_t)time_ms * TICRATE) / 1000);
+ }
+ 
+ static boolean BuildNewTic(void)
+@@ -363,7 +364,7 @@ void D_StartNetGame(net_gamesettings_t *settings,
+         settings->new_sync = 0;
+ 
+     // TODO: New sync code is not enabled by default because it's
+-    // currently broken. 
++    // currently broken.
+     //if (M_CheckParm("-oldsync") > 0)
+     //    settings->new_sync = 0;
+     //else
 diff --git a/doomgeneric/doomgeneric.c b/doomgeneric/doomgeneric.c
 index 881d700..6d1d9ab 100644
 --- a/doomgeneric/doomgeneric.c
