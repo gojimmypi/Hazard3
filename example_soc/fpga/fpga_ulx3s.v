@@ -102,6 +102,27 @@ wire [31:0] video_apb_prdata_framebuffer;
 wire        video_apb_pready;
 wire        video_apb_pslverr;
 
+// The shared SoC exposes both the ULX3S SDR SDRAM and ULX4M-LD LiteDRAM ports.
+// This wrapper explicitly disables LiteDRAM and terminates every unused DDR3
+// port so the ULX3S build never relies on parameter defaults or open inputs.
+wire [14:0] unused_ddram_a;
+wire [2:0]  unused_ddram_ba;
+wire        unused_ddram_cas_n;
+wire        unused_ddram_cke;
+wire        unused_ddram_clk_n;
+wire        unused_ddram_clk_p;
+wire        unused_ddram_cs_n;
+wire [1:0]  unused_ddram_dm;
+wire [15:0] unused_ddram_dq;
+wire [1:0]  unused_ddram_dqs_n;
+wire [1:0]  unused_ddram_dqs_p;
+wire        unused_ddram_odt;
+wire        unused_ddram_ras_n;
+wire        unused_ddram_reset_n;
+wire        unused_ddram_we_n;
+wire        unused_ddr3_calib_complete;
+wire [31:0] unused_ddr3_debug_status;
+
 // Runtime IDs use the same APB slots as ULX4M-LD so one monitor firmware can
 // verify either board without compile-time board selection.
 localparam [31:0] FPGA_BUILD_ID          = 32'h554c5035; // ASCII "ULP5"
@@ -171,6 +192,8 @@ example_soc #(
 	.SRAM_DEPTH         (1 << 15),
 	.CLK_MHZ            (50),
 	.SDRAM_ENABLE       (1),
+	.LITEDRAM_ENABLE    (0),
+	.SDRAM_COL_WIDTH    (10),
 
 	.EXTENSION_M         (1),
 	.EXTENSION_A         (0),
@@ -216,6 +239,25 @@ example_soc #(
 	.sdram_rasn (sdram_rasn),
 	.sdram_casn (sdram_casn),
 	.sdram_wen  (sdram_wen),
+
+	.litedram_ref_clk    (1'b0),
+	.ddram_a             (unused_ddram_a),
+	.ddram_ba            (unused_ddram_ba),
+	.ddram_cas_n         (unused_ddram_cas_n),
+	.ddram_cke           (unused_ddram_cke),
+	.ddram_clk_n         (unused_ddram_clk_n),
+	.ddram_clk_p         (unused_ddram_clk_p),
+	.ddram_cs_n          (unused_ddram_cs_n),
+	.ddram_dm            (unused_ddram_dm),
+	.ddram_dq            (unused_ddram_dq),
+	.ddram_dqs_n         (unused_ddram_dqs_n),
+	.ddram_dqs_p         (unused_ddram_dqs_p),
+	.ddram_odt           (unused_ddram_odt),
+	.ddram_ras_n         (unused_ddram_ras_n),
+	.ddram_reset_n       (unused_ddram_reset_n),
+	.ddram_we_n          (unused_ddram_we_n),
+	.ddr3_calib_complete (unused_ddr3_calib_complete),
+	.ddr3_debug_status   (unused_ddr3_debug_status),
 
 	.video_sdram_req_valid (video_sdram_req_valid),
 	.video_sdram_req_ready (video_sdram_req_ready),

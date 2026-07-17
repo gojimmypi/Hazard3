@@ -1,3 +1,7 @@
+# Performance-R5 ULX3S target. The Doom design requires the 85F device;
+# the ULX3S 12K does not have enough EBR capacity for the CPU SRAM, cache,
+# double framebuffer, and palette RAM.
+
 include ../project_paths.mk
 
 CHIPNAME=fpga_ulx3s
