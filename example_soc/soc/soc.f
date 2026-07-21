@@ -1,6 +1,9 @@
 # SoC integration file
 
 file example_soc.v
+file apb_gpio.v
+file ahb_sdram.v
+file ulx3s_sdram_controller.v
 
 # CPU + debug components
 

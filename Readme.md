@@ -1,5 +1,7 @@
 # Hazard3
 
+This is the ULX3S fork of the [upstream Hazard3](https://github.com/Wren6991/Hazard3). See [additional documentation](./doc/ulx3s-ulx4m-build-and-validation.md).
+
 Hazard3 is a 3-stage RISC-V processor, implementing the `RV32I` or `RV32E` instruction set and the following optional extensions:
 
 * `M`: integer multiply/divide/modulo

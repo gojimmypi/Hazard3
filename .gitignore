@@ -1,2 +1,19 @@
 .DS_Store
 *.todo
+**/.vs
+**/.visualgdb/
+**/*.vgdbsettings.*.user
+**/*.vcxproj.user
+/example_soc/**/*.elf
+/example_soc/**/*.map
+
+# Temporary examples and backups
+/example_soc/synth/Hazard3-fw1
+/*.zip
+
+# Copyrighted Doom game data supplied by the user
+*.wad
+*.WAD
+
+# Backup files
+**/*.bak

@@ -12,6 +12,11 @@ module example_soc #(
 	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter CLK_MHZ    = 12,      // For timer timebase
+	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
+	parameter LITEDRAM_ENABLE = 0,  // Use LiteDRAM DDR3 instead of SDR SDRAM
+	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
+	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
+	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
 
 	`include "hazard3_config.vh"
 ) (
@@ -28,7 +33,59 @@ module example_soc #(
 
 	// IO
 	output wire              uart_tx,
-	input  wire              uart_rx
+	input  wire              uart_rx,
+
+	output wire [7:0]        gpio_out,
+
+	// Optional ULX3S/ULX4M 16-bit SDR SDRAM interface
+	output wire [12:0]       sdram_a,
+	output wire [1:0]        sdram_ba,
+	inout  wire [15:0]       sdram_d,
+	output wire [1:0]        sdram_dqm,
+	output wire              sdram_cke,
+	output wire              sdram_csn,
+	output wire              sdram_rasn,
+	output wire              sdram_casn,
+	output wire              sdram_wen,
+
+	// Optional ULX4M-LD LiteDRAM DDR3 interface. LITEDRAM_ENABLE selects this
+	// target while retaining the shared cached AHB and video interfaces.
+	input  wire              litedram_ref_clk,
+	output wire [14:0]       ddram_a,
+	output wire [2:0]        ddram_ba,
+	output wire              ddram_cas_n,
+	output wire              ddram_cke,
+	output wire              ddram_clk_n,
+	output wire              ddram_clk_p,
+	output wire              ddram_cs_n,
+	output wire [1:0]        ddram_dm,
+	inout  wire [15:0]       ddram_dq,
+	inout  wire [1:0]        ddram_dqs_n,
+	inout  wire [1:0]        ddram_dqs_p,
+	output wire              ddram_odt,
+	output wire              ddram_ras_n,
+	output wire              ddram_reset_n,
+	output wire              ddram_we_n,
+	output wire              ddr3_calib_complete,
+	output wire [31:0]       ddr3_debug_status,
+
+	// Optional read-only native SDRAM port for video scanout
+	input  wire              video_sdram_req_valid,
+	output wire              video_sdram_req_ready,
+	input  wire [24:0]       video_sdram_req_addr,
+	output wire              video_sdram_rsp_valid,
+	output wire [15:0]       video_sdram_rsp_rdata,
+	output wire              video_sdram_init_done,
+
+	// External APB slave implemented by the multi-clock HDMI block.
+	output wire              video_apb_psel,
+	output wire              video_apb_penable,
+	output wire              video_apb_pwrite,
+	output wire [15:0]       video_apb_paddr,
+	output wire [31:0]       video_apb_pwdata,
+	input  wire [31:0]       video_apb_prdata,
+	input  wire              video_apb_pready,
+	input  wire              video_apb_pslverr
 );
 
 // ----------------------------------------------------------------------------
@@ -377,8 +434,11 @@ hazard3_cpu_1port #(
 // Bus fabric
 
 // - 128 kB SRAM at... 0x0000_0000
+// - SDRAM at.......... 0x2000_0000 (up to 64 MB)
 // - System timer at.. 0x4000_0000
 // - UART at.......... 0x4000_4000
+// - GPIO at.......... 0x4000_8000
+// - HDMI/video at.... 0x4000_c000
 
 // AHBL layer
 
@@ -395,6 +455,33 @@ wire               sram0_hmastlock;
 wire [W_DATA-1:0]  sram0_hwdata;
 wire [W_DATA-1:0]  sram0_hrdata;
 
+wire               sdram_hready_resp;
+wire               sdram_hready;
+wire               sdram_hresp;
+wire [W_ADDR-1:0]  sdram_haddr;
+wire               sdram_hwrite;
+wire [1:0]         sdram_htrans;
+wire [2:0]         sdram_hsize;
+wire [2:0]         sdram_hburst;
+wire [3:0]         sdram_hprot;
+wire               sdram_hmastlock;
+wire [W_DATA-1:0]  sdram_hwdata;
+wire [W_DATA-1:0]  sdram_hrdata;
+
+// Downstream side of the unified SDRAM cache.
+wire               sdram_mem_hready_resp;
+wire               sdram_mem_hready;
+wire               sdram_mem_hresp;
+wire [W_ADDR-1:0]  sdram_mem_haddr;
+wire               sdram_mem_hwrite;
+wire [1:0]         sdram_mem_htrans;
+wire [2:0]         sdram_mem_hsize;
+wire [2:0]         sdram_mem_hburst;
+wire [3:0]         sdram_mem_hprot;
+wire               sdram_mem_hmastlock;
+wire [W_DATA-1:0]  sdram_mem_hwdata;
+wire [W_DATA-1:0]  sdram_mem_hrdata;
+
 wire               bridge_hready_resp;
 wire               bridge_hready;
 wire               bridge_hresp;
@@ -408,10 +495,19 @@ wire               bridge_hmastlock;
 wire [W_DATA-1:0]  bridge_hwdata;
 wire [W_DATA-1:0]  bridge_hrdata;
 
+wire               gpio_psel;
+wire               gpio_penable;
+wire               gpio_pwrite;
+wire [15:0]        gpio_paddr;
+wire [31:0]        gpio_pwdata;
+wire [31:0]        gpio_prdata;
+wire               gpio_pready;
+wire               gpio_pslverr;
+
 ahbl_splitter #(
-	.N_PORTS     (2),
-	.ADDR_MAP    (64'h40000000_00000000),
-	.ADDR_MASK   (64'he0000000_e0000000)
+	.N_PORTS     (3),
+	.ADDR_MAP    (96'h40000000_20000000_00000000),
+	.ADDR_MASK   (96'he0000000_f8000000_e0000000)
 ) splitter_u (
 	.clk             (clk),
 	.rst_n           (rst_n),
@@ -429,18 +525,18 @@ ahbl_splitter #(
 	.src_hwdata      (proc_hwdata   ),
 	.src_hrdata      (proc_hrdata   ),
 
-	.dst_hready_resp ({bridge_hready_resp , sram0_hready_resp}),
-	.dst_hready      ({bridge_hready      , sram0_hready     }),
-	.dst_hresp       ({bridge_hresp       , sram0_hresp      }),
-	.dst_haddr       ({bridge_haddr       , sram0_haddr      }),
-	.dst_hwrite      ({bridge_hwrite      , sram0_hwrite     }),
-	.dst_htrans      ({bridge_htrans      , sram0_htrans     }),
-	.dst_hsize       ({bridge_hsize       , sram0_hsize      }),
-	.dst_hburst      ({bridge_hburst      , sram0_hburst     }),
-	.dst_hprot       ({bridge_hprot       , sram0_hprot      }),
-	.dst_hmastlock   ({bridge_hmastlock   , sram0_hmastlock  }),
-	.dst_hwdata      ({bridge_hwdata      , sram0_hwdata     }),
-	.dst_hrdata      ({bridge_hrdata      , sram0_hrdata     })
+	.dst_hready_resp ({bridge_hready_resp , sdram_hready_resp , sram0_hready_resp}),
+	.dst_hready      ({bridge_hready      , sdram_hready      , sram0_hready     }),
+	.dst_hresp       ({bridge_hresp       , sdram_hresp       , sram0_hresp      }),
+	.dst_haddr       ({bridge_haddr       , sdram_haddr       , sram0_haddr      }),
+	.dst_hwrite      ({bridge_hwrite      , sdram_hwrite      , sram0_hwrite     }),
+	.dst_htrans      ({bridge_htrans      , sdram_htrans      , sram0_htrans     }),
+	.dst_hsize       ({bridge_hsize       , sdram_hsize       , sram0_hsize      }),
+	.dst_hburst      ({bridge_hburst      , sdram_hburst      , sram0_hburst     }),
+	.dst_hprot       ({bridge_hprot       , sdram_hprot       , sram0_hprot      }),
+	.dst_hmastlock   ({bridge_hmastlock   , sdram_hmastlock   , sram0_hmastlock  }),
+	.dst_hwdata      ({bridge_hwdata      , sdram_hwdata      , sram0_hwdata     }),
+	.dst_hrdata      ({bridge_hrdata      , sdram_hrdata      , sram0_hrdata     })
 );
 
 // APB layer
@@ -500,9 +596,15 @@ ahbl_to_apb apb_bridge_u (
 );
 
 apb_splitter #(
-	.N_SLAVES   (2),
-	.ADDR_MAP   (32'h4000_0000),
-	.ADDR_MASK  (32'hc000_c000)
+	.N_SLAVES   (4),
+    //                    APB offset       name     CPU Address
+    //                ------------------ --------- -------------
+    // Slave 3 = 0xC000                HDMI/video 0x4000C000
+    // Slave 2 =        0x8000         GPIO       0x40008000
+    // Slave 1 =             0x4000    UART       0x40004000
+    // Slave 0 =                  0x0000 timer     0x40000000
+	.ADDR_MAP   (64'hc000_8000_4000_0000),
+	.ADDR_MASK  (64'hc000_c000_c000_c000)
 ) inst_apb_splitter (
 	.apbs_paddr   (bridge_paddr),
 	.apbs_psel    (bridge_psel),
@@ -513,15 +615,15 @@ apb_splitter #(
 	.apbs_prdata  (bridge_prdata),
 	.apbs_pslverr (bridge_pslverr),
 
-	.apbm_paddr   ({uart_paddr   , timer_paddr  }),
-	.apbm_psel    ({uart_psel    , timer_psel   }),
-	.apbm_penable ({uart_penable , timer_penable}),
-	.apbm_pwrite  ({uart_pwrite  , timer_pwrite }),
-	.apbm_pwdata  ({uart_pwdata  , timer_pwdata }),
-	.apbm_pready  ({uart_pready  , timer_pready }),
-	.apbm_prdata  ({uart_prdata  , timer_prdata }),
-	.apbm_pslverr ({uart_pslverr , timer_pslverr})
-);
+	.apbm_paddr   ({video_apb_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
+	.apbm_psel    ({video_apb_psel    , gpio_psel    , uart_psel    , timer_psel   }),
+	.apbm_penable ({video_apb_penable , gpio_penable , uart_penable , timer_penable}),
+	.apbm_pwrite  ({video_apb_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
+	.apbm_pwdata  ({video_apb_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
+	.apbm_pready  ({video_apb_pready  , gpio_pready  , uart_pready  , timer_pready }),
+	.apbm_prdata  ({video_apb_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
+	.apbm_pslverr ({video_apb_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
+	);
 
 // ----------------------------------------------------------------------------
 // Memory and peripherals
@@ -542,13 +644,234 @@ ahb_sync_sram #(
 	.ahbls_haddr       (sram0_haddr),
 	.ahbls_hwrite      (sram0_hwrite),
 	.ahbls_htrans      (sram0_htrans),
-	.ahbls_hsize       (sram0_hsize),	
+	.ahbls_hsize       (sram0_hsize),
 	.ahbls_hburst      (sram0_hburst),
 	.ahbls_hprot       (sram0_hprot),
 	.ahbls_hmastlock   (sram0_hmastlock),
 	.ahbls_hwdata      (sram0_hwdata),
 	.ahbls_hrdata      (sram0_hrdata)
 );
+
+generate
+if (SDRAM_ENABLE) begin: sdram_enabled
+    // Cache normal Doom image, heap and IWAD accesses. Keep the physical
+    // first MiB, the diagnostic alias, and the four-MiB video aperture uncached.
+    // Board-level parameters select the 64 MiB ULX3S or 32 MiB ULX4M-LS map.
+    wire sdram_diagnostic_aperture =
+        (sdram_haddr & 32'hfff00000) == 32'h20000000;
+    wire sdram_diagnostic_alias =
+        (sdram_haddr & SDRAM_DIAGNOSTIC_ALIAS_MASK) == 32'h24000000;
+    wire sdram_video_aperture =
+        (sdram_haddr & 32'hffc00000) == SDRAM_VIDEO_APERTURE_BASE;
+    wire sdram_access_cacheable =
+        !sdram_diagnostic_aperture &&
+        !sdram_diagnostic_alias &&
+        !sdram_video_aperture;
+    wire [3:0] sdram_cache_hprot = {
+        sdram_access_cacheable,
+        sdram_access_cacheable,
+        sdram_hprot[1:0]
+    };
+
+    // 64 KiB, two-way unified cache with 32-byte lines. A single unified cache
+    // keeps freshly uploaded executable bytes coherent with instruction fetch
+    // without requiring a separate cache-maintenance mechanism.
+    ahb_cache_writeback #(
+        .N_WAYS (2),
+        .W_ADDR (W_ADDR),
+        .W_DATA (W_DATA),
+        .W_LINE        (256),
+        .DEPTH         (1024),
+        .TMEM_PRELOAD ("../soc/cache_tags_zero.hex")
+    ) sdram_cache_u (
+        .clk             (clk),
+        .rst_n           (rst_n),
+
+        .src_hready_resp (sdram_hready_resp),
+        .src_hready      (sdram_hready),
+        .src_hresp       (sdram_hresp),
+        .src_haddr       (sdram_haddr),
+        .src_hwrite      (sdram_hwrite),
+        .src_htrans      (sdram_htrans),
+        .src_hsize       (sdram_hsize),
+        .src_hburst      (sdram_hburst),
+        .src_hprot       (sdram_cache_hprot),
+        .src_hmastlock   (sdram_hmastlock),
+        .src_hwdata      (sdram_hwdata),
+        .src_hrdata      (sdram_hrdata),
+
+        .dst_hready_resp (sdram_mem_hready_resp),
+        .dst_hready      (sdram_mem_hready),
+        .dst_hresp       (sdram_mem_hresp),
+        .dst_haddr       (sdram_mem_haddr),
+        .dst_hwrite      (sdram_mem_hwrite),
+        .dst_htrans      (sdram_mem_htrans),
+        .dst_hsize       (sdram_mem_hsize),
+        .dst_hburst      (sdram_mem_hburst),
+        .dst_hprot       (sdram_mem_hprot),
+        .dst_hmastlock   (sdram_mem_hmastlock),
+        .dst_hwdata      (sdram_mem_hwdata),
+        .dst_hrdata      (sdram_mem_hrdata)
+    );
+
+    if (LITEDRAM_ENABLE) begin: litedram_target
+        ahb_litedram litedram_u (
+            .clk                  (clk),
+            .rst_n                (rst_n),
+            .litedram_ref_clk    (litedram_ref_clk),
+
+            .ahbls_hready_resp    (sdram_mem_hready_resp),
+            .ahbls_hready         (sdram_mem_hready),
+            .ahbls_hresp          (sdram_mem_hresp),
+            .ahbls_haddr          (sdram_mem_haddr),
+            .ahbls_hwrite         (sdram_mem_hwrite),
+            .ahbls_htrans         (sdram_mem_htrans),
+            .ahbls_hsize          (sdram_mem_hsize),
+            .ahbls_hburst         (sdram_mem_hburst),
+            .ahbls_hprot          (sdram_mem_hprot),
+            .ahbls_hmastlock      (sdram_mem_hmastlock),
+            .ahbls_hwdata         (sdram_mem_hwdata),
+            .ahbls_hrdata         (sdram_mem_hrdata),
+
+            .video_req_valid      (video_sdram_req_valid),
+            .video_req_ready      (video_sdram_req_ready),
+            .video_req_addr       (video_sdram_req_addr),
+            .video_rsp_valid      (video_sdram_rsp_valid),
+            .video_rsp_rdata      (video_sdram_rsp_rdata),
+            .video_init_done      (video_sdram_init_done),
+
+            .ddram_a              (ddram_a),
+            .ddram_ba             (ddram_ba),
+            .ddram_cas_n          (ddram_cas_n),
+            .ddram_cke            (ddram_cke),
+            .ddram_clk_n          (ddram_clk_n),
+            .ddram_clk_p          (ddram_clk_p),
+            .ddram_cs_n           (ddram_cs_n),
+            .ddram_dm             (ddram_dm),
+            .ddram_dq             (ddram_dq),
+            .ddram_dqs_n          (ddram_dqs_n),
+            .ddram_dqs_p          (ddram_dqs_p),
+            .ddram_odt            (ddram_odt),
+            .ddram_ras_n          (ddram_ras_n),
+            .ddram_reset_n        (ddram_reset_n),
+            .ddram_we_n           (ddram_we_n),
+
+            .calib_complete       (ddr3_calib_complete),
+            .debug_status         (ddr3_debug_status)
+        );
+
+        assign sdram_a = 13'd0;
+        assign sdram_ba = 2'b00;
+        assign sdram_d = 16'hzzzz;
+        assign sdram_dqm = 2'b11;
+        assign sdram_cke = 1'b0;
+        assign sdram_csn = 1'b1;
+        assign sdram_rasn = 1'b1;
+        assign sdram_casn = 1'b1;
+        assign sdram_wen = 1'b1;
+    end else begin: sdr_sdram_target
+        ahb_sdram #(
+            .CLK_MHZ   (CLK_MHZ),
+            .COL_WIDTH (SDRAM_COL_WIDTH)
+        ) sdram_u (
+            .clk               (clk),
+            .rst_n             (rst_n),
+
+            .ahbls_hready_resp (sdram_mem_hready_resp),
+            .ahbls_hready      (sdram_mem_hready),
+            .ahbls_hresp       (sdram_mem_hresp),
+            .ahbls_haddr       (sdram_mem_haddr),
+            .ahbls_hwrite      (sdram_mem_hwrite),
+            .ahbls_htrans      (sdram_mem_htrans),
+            .ahbls_hsize       (sdram_mem_hsize),
+            .ahbls_hburst      (sdram_mem_hburst),
+            .ahbls_hprot       (sdram_mem_hprot),
+            .ahbls_hmastlock   (sdram_mem_hmastlock),
+            .ahbls_hwdata      (sdram_mem_hwdata),
+            .ahbls_hrdata      (sdram_mem_hrdata),
+
+            .video_req_valid   (video_sdram_req_valid),
+            .video_req_ready   (video_sdram_req_ready),
+            .video_req_addr    (video_sdram_req_addr),
+            .video_rsp_valid   (video_sdram_rsp_valid),
+            .video_rsp_rdata   (video_sdram_rsp_rdata),
+            .video_init_done   (video_sdram_init_done),
+
+            .sdram_a           (sdram_a),
+            .sdram_ba          (sdram_ba),
+            .sdram_d           (sdram_d),
+            .sdram_dqm         (sdram_dqm),
+            .sdram_cke         (sdram_cke),
+            .sdram_csn         (sdram_csn),
+            .sdram_rasn        (sdram_rasn),
+            .sdram_casn        (sdram_casn),
+            .sdram_wen         (sdram_wen)
+        );
+
+        assign ddram_a = 15'd0;
+        assign ddram_ba = 3'd0;
+        assign ddram_cas_n = 1'b1;
+        assign ddram_cke = 1'b0;
+        assign ddram_clk_n = 1'b0;
+        assign ddram_clk_p = 1'b0;
+        assign ddram_cs_n = 1'b1;
+        assign ddram_dm = 2'b11;
+        assign ddram_dq = 16'hzzzz;
+        assign ddram_dqs_n = 2'bzz;
+        assign ddram_dqs_p = 2'bzz;
+        assign ddram_odt = 1'b0;
+        assign ddram_ras_n = 1'b1;
+        assign ddram_reset_n = 1'b0;
+        assign ddram_we_n = 1'b1;
+        assign ddr3_calib_complete = 1'b0;
+        assign ddr3_debug_status = 32'd0;
+
+        wire unused_litedram_ref_clk = litedram_ref_clk;
+    end
+end else begin: sdram_disabled
+    assign sdram_hready_resp = 1'b1;
+    assign sdram_hresp = 1'b0;
+    assign sdram_hrdata = {W_DATA{1'b0}};
+
+    assign sdram_a = 13'd0;
+    assign sdram_ba = 2'b00;
+    assign sdram_d = 16'hzzzz;
+    assign sdram_dqm = 2'b11;
+    assign sdram_cke = 1'b0;
+    assign sdram_csn = 1'b1;
+    assign sdram_rasn = 1'b1;
+    assign sdram_casn = 1'b1;
+    assign sdram_wen = 1'b1;
+
+    assign video_sdram_req_ready = 1'b0;
+    assign video_sdram_rsp_valid = 1'b0;
+    assign video_sdram_rsp_rdata = 16'd0;
+    assign video_sdram_init_done = 1'b0;
+
+    assign ddram_a = 15'd0;
+    assign ddram_ba = 3'd0;
+    assign ddram_cas_n = 1'b1;
+    assign ddram_cke = 1'b0;
+    assign ddram_clk_n = 1'b0;
+    assign ddram_clk_p = 1'b0;
+    assign ddram_cs_n = 1'b1;
+    assign ddram_dm = 2'b11;
+    assign ddram_dq = 16'hzzzz;
+    assign ddram_dqs_n = 2'bzz;
+    assign ddram_dqs_p = 2'bzz;
+    assign ddram_odt = 1'b0;
+    assign ddram_ras_n = 1'b1;
+    assign ddram_reset_n = 1'b0;
+    assign ddram_we_n = 1'b1;
+    assign ddr3_calib_complete = 1'b0;
+    assign ddr3_debug_status = 32'd0;
+
+    wire unused_sdram_hready = sdram_hready;
+    wire unused_video_sdram_req = &{1'b0, video_sdram_req_valid,
+        video_sdram_req_addr};
+    wire unused_litedram_ref_clk = litedram_ref_clk;
+end
+endgenerate
 
 uart_mini uart_u (
 	.clk          (clk),
@@ -569,6 +892,22 @@ uart_mini uart_u (
 	.rts          (/* unused */),
 	.irq          (uart_irq),
 	.dreq         (/* unused */)
+);
+
+apb_gpio gpio_u (
+	.clk           (clk),
+	.rst_n         (rst_n),
+
+	.apbs_psel     (gpio_psel),
+	.apbs_penable  (gpio_penable),
+	.apbs_pwrite   (gpio_pwrite),
+	.apbs_paddr    (gpio_paddr),
+	.apbs_pwdata   (gpio_pwdata),
+	.apbs_prdata   (gpio_prdata),
+	.apbs_pready   (gpio_pready),
+	.apbs_pslverr  (gpio_pslverr),
+
+	.gpio_out      (gpio_out)
 );
 
 // Microsecond timebase for timer
