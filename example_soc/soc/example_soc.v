@@ -11,10 +11,12 @@
 module example_soc #(
 	parameter DTM_TYPE   = "JTAG",  // Can be "JTAG", "ECP5" or "XILINX7"
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
+	parameter SRAM_PRELOAD_FILE = "", // Optional resident firmware EBR image
 	parameter CLK_MHZ    = 12,      // For timer timebase
 	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
 	parameter LITEDRAM_ENABLE = 0,  // Use LiteDRAM DDR3 instead of SDR SDRAM
 	parameter ESP_SAO_UART_ENABLE = 0, // ESP32 UART sideband access to SAO
+	parameter SD_SPI_ENABLE = 0,     // Enable software-driven micro-SD SPI master
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
 	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
 	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
@@ -54,6 +56,14 @@ module example_soc #(
 	input  wire              esp_sao_uart_rx,
 	output wire              esp_sao_uart_tx,
 	output wire              esp_sao_uart_tx_oe,
+
+	// Optional micro-SD SPI interface. On ULX3S these socket signals are also
+	// connected to ESP32 GPIO14/15/2/13, which must be high-impedance while
+	// the FPGA owns the card.
+	output wire              sd_clk,
+	output wire              sd_mosi,
+	input  wire              sd_miso,
+	output wire              sd_csn,
 
 	// Optional ULX3S/ULX4M 16-bit SDR SDRAM interface
 	output wire [12:0]       sdram_a,
@@ -531,6 +541,15 @@ wire [31:0]        sao_prdata;
 wire               sao_pready;
 wire               sao_pslverr;
 
+wire               sd_psel;
+wire               sd_penable;
+wire               sd_pwrite;
+wire [15:0]        sd_paddr;
+wire [31:0]        sd_pwdata;
+wire [31:0]        sd_prdata;
+wire               sd_pready;
+wire               sd_pslverr;
+
 ahbl_splitter #(
 	.N_PORTS     (3),
 	.ADDR_MAP    (96'h40000000_20000000_00000000),
@@ -623,16 +642,17 @@ ahbl_to_apb apb_bridge_u (
 );
 
 apb_splitter #(
-	.N_SLAVES   (5),
+	.N_SLAVES   (6),
     //                    APB offset       name     CPU Address
     //                ------------------ --------- -------------
-    // Slave 4 = 0xC000                HDMI/video 0x4000C000
+    // Slave 5 = 0xC000                HDMI/video 0x4000C000
+    // Slave 4 =   0xA000              micro-SD   0x4000A000
     // Slave 3 =      0x9000           SAO        0x40009000
     // Slave 2 =        0x8000         GPIO       0x40008000
     // Slave 1 =             0x4000    UART       0x40004000
     // Slave 0 =                  0x0000 timer     0x40000000
-	.ADDR_MAP   (80'hc000_9000_8000_4000_0000),
-	.ADDR_MASK  (80'hc000_f000_f000_c000_c000)
+	.ADDR_MAP   (96'hc000_a000_9000_8000_4000_0000),
+	.ADDR_MASK  (96'hc000_f000_f000_f000_c000_c000)
 ) inst_apb_splitter (
 	.apbs_paddr   (bridge_paddr),
 	.apbs_psel    (bridge_psel),
@@ -643,25 +663,25 @@ apb_splitter #(
 	.apbs_prdata  (bridge_prdata),
 	.apbs_pslverr (bridge_pslverr),
 
-	.apbm_paddr   ({video_apb_paddr   , sao_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
-	.apbm_psel    ({video_apb_psel    , sao_psel    , gpio_psel    , uart_psel    , timer_psel   }),
-	.apbm_penable ({video_apb_penable , sao_penable , gpio_penable , uart_penable , timer_penable}),
-	.apbm_pwrite  ({video_apb_pwrite  , sao_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
-	.apbm_pwdata  ({video_apb_pwdata  , sao_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
-	.apbm_pready  ({video_apb_pready  , sao_pready  , gpio_pready  , uart_pready  , timer_pready }),
-	.apbm_prdata  ({video_apb_prdata  , sao_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
-	.apbm_pslverr ({video_apb_pslverr , sao_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
+	.apbm_paddr   ({video_apb_paddr   , sd_paddr   , sao_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
+	.apbm_psel    ({video_apb_psel    , sd_psel    , sao_psel    , gpio_psel    , uart_psel    , timer_psel   }),
+	.apbm_penable ({video_apb_penable , sd_penable , sao_penable , gpio_penable , uart_penable , timer_penable}),
+	.apbm_pwrite  ({video_apb_pwrite  , sd_pwrite  , sao_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
+	.apbm_pwdata  ({video_apb_pwdata  , sd_pwdata  , sao_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
+	.apbm_pready  ({video_apb_pready  , sd_pready  , sao_pready  , gpio_pready  , uart_pready  , timer_pready }),
+	.apbm_prdata  ({video_apb_prdata  , sd_prdata  , sao_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
+	.apbm_pslverr ({video_apb_pslverr , sd_pslverr , sao_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
 	);
 
 // ----------------------------------------------------------------------------
 // Memory and peripherals
 
-// No preloaded bootloader -- just use the debugger! (the processor will
-// actually enter an infinite crash loop after reset if memory is
-// zero-initialised so don't leave the little guy hanging too long)
+// The ULX3S Doom build supplies a monitor image here so a cold power cycle
+// can boot without a debugger. Other targets retain the empty-file default.
 
 ahb_sync_sram #(
-	.DEPTH (SRAM_DEPTH)
+	.DEPTH        (SRAM_DEPTH),
+	.PRELOAD_FILE (SRAM_PRELOAD_FILE)
 ) sram0 (
 	.clk               (clk),
 	.rst_n             (rst_n),
@@ -972,6 +992,36 @@ sao_shared_controller #(
     .esp_uart_tx       (esp_sao_uart_tx),
     .esp_uart_tx_oe    (esp_sao_uart_tx_oe)
 );
+
+generate
+if (SD_SPI_ENABLE) begin: sd_spi_enabled
+    apb_sd_spi sd_spi_u (
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .apbs_psel    (sd_psel),
+        .apbs_penable (sd_penable),
+        .apbs_pwrite  (sd_pwrite),
+        .apbs_paddr   (sd_paddr),
+        .apbs_pwdata  (sd_pwdata),
+        .apbs_prdata  (sd_prdata),
+        .apbs_pready  (sd_pready),
+        .apbs_pslverr (sd_pslverr),
+        .sd_clk       (sd_clk),
+        .sd_mosi      (sd_mosi),
+        .sd_miso      (sd_miso),
+        .sd_csn       (sd_csn)
+    );
+end else begin: sd_spi_disabled
+    wire unused_sd_bus = &{1'b0, sd_psel, sd_penable, sd_pwrite,
+        sd_paddr, sd_pwdata, sd_miso};
+    assign sd_prdata  = 32'h00000000;
+    assign sd_pready  = 1'b1;
+    assign sd_pslverr = 1'b0;
+    assign sd_clk     = 1'b0;
+    assign sd_mosi    = 1'b1;
+    assign sd_csn     = 1'b1;
+end
+endgenerate
 
 // Microsecond timebase for timer
 

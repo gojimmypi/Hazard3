@@ -24,6 +24,13 @@ module fpga_ulx3s (
 	inout  wire       sao_gpio1,
 	inout  wire       sao_gpio2,
 
+	// Onboard micro-SD socket. These nets are also connected to ESP32
+	// GPIO14/15/2/13; ESP32 firmware must release them while FPGA-owned.
+	output wire       sd_clk,
+	output wire       sd_mosi,
+	input  wire       sd_miso,
+	output wire       sd_csn,
+
 	output wire [3:0]  gpdi_dp,
 
 	output wire [12:0] sdram_a,
@@ -219,13 +226,15 @@ ddr_out sdram_clock_u (
 );
 
 example_soc #(
-	.DTM_TYPE           ("ECP5"),
-	.SRAM_DEPTH         (1 << 15),
-	.CLK_MHZ            (50),
-	.SDRAM_ENABLE       (1),
-	.LITEDRAM_ENABLE    (0),
+	.DTM_TYPE            ("ECP5"),
+	.SRAM_DEPTH          (1 << 15),
+	.SRAM_PRELOAD_FILE   ("../soc/hazard3_boot.hex"),
+	.CLK_MHZ             (50),
+	.SDRAM_ENABLE        (1),
+	.LITEDRAM_ENABLE     (0),
 	.ESP_SAO_UART_ENABLE (1),
-	.SDRAM_COL_WIDTH    (10),
+	.SD_SPI_ENABLE       (1),
+	.SDRAM_COL_WIDTH     (10),
 
 	.EXTENSION_M         (1),
 	.EXTENSION_A         (0),
@@ -259,6 +268,11 @@ example_soc #(
 
 	.uart_tx (uart_tx),
 	.uart_rx (uart_rx),
+
+	.sd_clk  (sd_clk),
+	.sd_mosi (sd_mosi),
+	.sd_miso (sd_miso),
+	.sd_csn  (sd_csn),
 
     .gpio_out (led),
 

@@ -7,6 +7,7 @@ file apb_sao_bridge.v
 file sao_uart_phy.v
 file sao_esp32_uart_bridge.v
 file sao_shared_controller.v
+file apb_sd_spi.v
 file ahb_sdram.v
 file ulx3s_sdram_controller.v
 

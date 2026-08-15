@@ -18,7 +18,11 @@ PACKAGE=CABGA381
 include $(SCRIPTS)/synth_ecp5.mk
 
 # power-up initialization file for the new SDRAM cache tag RAM
-$(CHIPNAME).json: ../soc/cache_tags_zero.hex
+$(CHIPNAME).json: ../soc/cache_tags_zero.hex ../soc/hazard3_boot.hex
+
+../soc/hazard3_boot.hex:
+	@echo "Missing $@; run Hazard3-Doom/scripts/build-ulx3s-doom.sh to build the resident monitor preload." >&2
+	@false
 
 # Get ujprog from: git@github.com:emard/tools.git
 prog: bit

@@ -56,7 +56,11 @@ localparam [2:0] I2C_CMD_ABORT     = 3'd7;
 
 localparam [15:0] I2C_CLK_DIV = CLK_HZ / 200000;
 localparam [31:0] I2C_TIMEOUT = CLK_HZ / 100; // 10 ms
-localparam [31:0] GRANT_TIMEOUT = CLK_HZ / 10; // 100 ms
+localparam integer GRANT_TIMEOUT_CYCLES = CLK_HZ / 10; // 100 ms
+localparam integer GRANT_TIMER_WIDTH =
+    GRANT_TIMEOUT_CYCLES > 1 ? $clog2(GRANT_TIMEOUT_CYCLES) : 1;
+localparam [GRANT_TIMER_WIDTH-1:0] GRANT_TIMEOUT_LAST =
+    GRANT_TIMEOUT_CYCLES - 1;
 
 localparam [3:0] OP_IDLE         = 4'd0;
 localparam [3:0] OP_WAIT_GRANT   = 4'd1;
@@ -103,7 +107,7 @@ reg [6:0] op_addr;
 reg [7:0] op_reg;
 reg [7:0] op_value;
 reg [7:0] op_result;
-reg [31:0] grant_timer;
+reg [GRANT_TIMER_WIDTH-1:0] grant_timer;
 
 reg        i2c_cmd_valid;
 reg [2:0]  i2c_cmd;
@@ -233,7 +237,7 @@ always @(posedge clk or negedge rst_n) begin
         op_reg               <= 8'd0;
         op_value             <= 8'd0;
         op_result            <= ESP_STATUS_OK;
-        grant_timer          <= 32'd0;
+        grant_timer          <= {GRANT_TIMER_WIDTH{1'b0}};
         i2c_cmd_valid        <= 1'b0;
         i2c_cmd              <= 3'd0;
         i2c_tx_data          <= 8'd0;
@@ -316,7 +320,7 @@ always @(posedge clk or negedge rst_n) begin
                         op_reg      <= parser_reg;
                         op_value    <= parser_value;
                         op_result   <= ESP_STATUS_OK;
-                        grant_timer <= 32'd0;
+                        grant_timer <= {GRANT_TIMER_WIDTH{1'b0}};
                         bus_request <= 1'b1;
                         op_state    <= OP_WAIT_GRANT;
                     end else begin
@@ -337,7 +341,7 @@ always @(posedge clk or negedge rst_n) begin
 
             OP_WAIT_GRANT: begin
                 if (bus_grant) begin
-                    grant_timer <= 32'd0;
+                    grant_timer <= {GRANT_TIMER_WIDTH{1'b0}};
                     if (op_cmd == ESP_CMD_RECOVER) begin
                         i2c_cmd       <= I2C_CMD_RECOVER;
                         i2c_cmd_valid <= 1'b1;
@@ -347,7 +351,7 @@ always @(posedge clk or negedge rst_n) begin
                         i2c_cmd_valid <= 1'b1;
                         op_state      <= OP_WAIT_START1;
                     end
-                end else if (grant_timer >= GRANT_TIMEOUT - 1'b1) begin
+                end else if (grant_timer == GRANT_TIMEOUT_LAST) begin
                     bus_request          <= 1'b0;
                     response_status_next <= ESP_STATUS_BUSY;
                     response_cmd_next    <= op_cmd;
