@@ -12,6 +12,11 @@ module fpga_ulx3s (
 	output wire       uart_tx,
 	input  wire       uart_rx,
 
+	inout  wire       sao_sda,
+	inout  wire       sao_scl,
+	inout  wire       sao_gpio1,
+	inout  wire       sao_gpio2,
+
 	output wire [3:0]  gpdi_dp,
 
 	output wire [12:0] sdram_a,
@@ -123,6 +128,20 @@ wire        unused_ddram_we_n;
 wire        unused_ddr3_calib_complete;
 wire [31:0] unused_ddr3_debug_status;
 
+// The FPGA is the only electrical owner of the SAO connector. I2C outputs
+// are open drain; GPIO1/GPIO2 are individually tri-stated by the APB bridge.
+wire sao_sda_drive_low;
+wire sao_scl_drive_low;
+wire sao_gpio1_o;
+wire sao_gpio1_oe;
+wire sao_gpio2_o;
+wire sao_gpio2_oe;
+
+assign sao_sda   = sao_sda_drive_low ? 1'b0 : 1'bz;
+assign sao_scl   = sao_scl_drive_low ? 1'b0 : 1'bz;
+assign sao_gpio1 = sao_gpio1_oe ? sao_gpio1_o : 1'bz;
+assign sao_gpio2 = sao_gpio2_oe ? sao_gpio2_o : 1'bz;
+
 // Runtime IDs use the same APB slots as ULX4M-LD so one monitor firmware can
 // verify either board without compile-time board selection.
 localparam [31:0] FPGA_BUILD_ID          = 32'h554c5035; // ASCII "ULP5"
@@ -229,6 +248,17 @@ example_soc #(
 	.uart_rx (uart_rx),
 
     .gpio_out (led),
+
+    .sao_sda_i         (sao_sda),
+    .sao_scl_i         (sao_scl),
+    .sao_sda_drive_low (sao_sda_drive_low),
+    .sao_scl_drive_low (sao_scl_drive_low),
+    .sao_gpio1_i       (sao_gpio1),
+    .sao_gpio1_o       (sao_gpio1_o),
+    .sao_gpio1_oe      (sao_gpio1_oe),
+    .sao_gpio2_i       (sao_gpio2),
+    .sao_gpio2_o       (sao_gpio2_o),
+    .sao_gpio2_oe      (sao_gpio2_oe),
 
 	.sdram_a    (sdram_a),
 	.sdram_ba   (sdram_ba),

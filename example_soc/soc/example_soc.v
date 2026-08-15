@@ -37,6 +37,18 @@ module example_soc #(
 
 	output wire [7:0]        gpio_out,
 
+	// SAO v1.69bis bridge. The board wrapper owns the bidirectional pads.
+	input  wire              sao_sda_i,
+	input  wire              sao_scl_i,
+	output wire              sao_sda_drive_low,
+	output wire              sao_scl_drive_low,
+	input  wire              sao_gpio1_i,
+	output wire              sao_gpio1_o,
+	output wire              sao_gpio1_oe,
+	input  wire              sao_gpio2_i,
+	output wire              sao_gpio2_o,
+	output wire              sao_gpio2_oe,
+
 	// Optional ULX3S/ULX4M 16-bit SDR SDRAM interface
 	output wire [12:0]       sdram_a,
 	output wire [1:0]        sdram_ba,
@@ -504,6 +516,15 @@ wire [31:0]        gpio_prdata;
 wire               gpio_pready;
 wire               gpio_pslverr;
 
+wire               sao_psel;
+wire               sao_penable;
+wire               sao_pwrite;
+wire [15:0]        sao_paddr;
+wire [31:0]        sao_pwdata;
+wire [31:0]        sao_prdata;
+wire               sao_pready;
+wire               sao_pslverr;
+
 ahbl_splitter #(
 	.N_PORTS     (3),
 	.ADDR_MAP    (96'h40000000_20000000_00000000),
@@ -596,15 +617,16 @@ ahbl_to_apb apb_bridge_u (
 );
 
 apb_splitter #(
-	.N_SLAVES   (4),
-    //                    APB offset       name     CPU Address
-    //                ------------------ --------- -------------
-    // Slave 3 = 0xC000                HDMI/video 0x4000C000
-    // Slave 2 =        0x8000         GPIO       0x40008000
-    // Slave 1 =             0x4000    UART       0x40004000
-    // Slave 0 =                  0x0000 timer     0x40000000
-	.ADDR_MAP   (64'hc000_8000_4000_0000),
-	.ADDR_MASK  (64'hc000_c000_c000_c000)
+	.N_SLAVES   (5),
+    //                    APB offset          name         CPU Address
+    //                ---------------------- ----------- -------------
+    // Slave 4 =   0xC000                     HDMI/video 0x4000C000
+    // Slave 3 =        0x9000                SAO        0x40009000
+    // Slave 2 =             0x8000           GPIO       0x40008000
+    // Slave 1 =                  0x4000      UART       0x40004000
+    // Slave 0 =                       0x0000 timer      0x40000000
+	.ADDR_MAP   (80'hc000_9000_8000_4000_0000),
+	.ADDR_MASK  (80'hc000_f000_f000_c000_c000)
 ) inst_apb_splitter (
 	.apbs_paddr   (bridge_paddr),
 	.apbs_psel    (bridge_psel),
@@ -615,14 +637,14 @@ apb_splitter #(
 	.apbs_prdata  (bridge_prdata),
 	.apbs_pslverr (bridge_pslverr),
 
-	.apbm_paddr   ({video_apb_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
-	.apbm_psel    ({video_apb_psel    , gpio_psel    , uart_psel    , timer_psel   }),
-	.apbm_penable ({video_apb_penable , gpio_penable , uart_penable , timer_penable}),
-	.apbm_pwrite  ({video_apb_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
-	.apbm_pwdata  ({video_apb_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
-	.apbm_pready  ({video_apb_pready  , gpio_pready  , uart_pready  , timer_pready }),
-	.apbm_prdata  ({video_apb_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
-	.apbm_pslverr ({video_apb_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
+	.apbm_paddr   ({video_apb_paddr   , sao_paddr   , gpio_paddr   , uart_paddr   , timer_paddr  }),
+	.apbm_psel    ({video_apb_psel    , sao_psel    , gpio_psel    , uart_psel    , timer_psel   }),
+	.apbm_penable ({video_apb_penable , sao_penable , gpio_penable , uart_penable , timer_penable}),
+	.apbm_pwrite  ({video_apb_pwrite  , sao_pwrite  , gpio_pwrite  , uart_pwrite  , timer_pwrite }),
+	.apbm_pwdata  ({video_apb_pwdata  , sao_pwdata  , gpio_pwdata  , uart_pwdata  , timer_pwdata }),
+	.apbm_pready  ({video_apb_pready  , sao_pready  , gpio_pready  , uart_pready  , timer_pready }),
+	.apbm_prdata  ({video_apb_prdata  , sao_prdata  , gpio_prdata  , uart_prdata  , timer_prdata }),
+	.apbm_pslverr ({video_apb_pslverr , sao_pslverr , gpio_pslverr , uart_pslverr , timer_pslverr})
 	);
 
 // ----------------------------------------------------------------------------
@@ -908,6 +930,34 @@ apb_gpio gpio_u (
 	.apbs_pslverr  (gpio_pslverr),
 
 	.gpio_out      (gpio_out)
+);
+
+apb_sao_bridge #(
+    .CLK_DIV_RESET (CLK_MHZ * 5), // 100 kHz at 50 MHz
+    .TIMEOUT_RESET (CLK_MHZ * 10000) // 10 ms
+) sao_u (
+    .clk               (clk),
+    .rst_n             (rst_n),
+
+    .apbs_psel         (sao_psel),
+    .apbs_penable      (sao_penable),
+    .apbs_pwrite       (sao_pwrite),
+    .apbs_paddr        (sao_paddr),
+    .apbs_pwdata       (sao_pwdata),
+    .apbs_prdata       (sao_prdata),
+    .apbs_pready       (sao_pready),
+    .apbs_pslverr      (sao_pslverr),
+
+    .sao_sda_i         (sao_sda_i),
+    .sao_scl_i         (sao_scl_i),
+    .sao_sda_drive_low (sao_sda_drive_low),
+    .sao_scl_drive_low (sao_scl_drive_low),
+    .sao_gpio1_i       (sao_gpio1_i),
+    .sao_gpio1_o       (sao_gpio1_o),
+    .sao_gpio1_oe      (sao_gpio1_oe),
+    .sao_gpio2_i       (sao_gpio2_i),
+    .sao_gpio2_o       (sao_gpio2_o),
+    .sao_gpio2_oe      (sao_gpio2_oe)
 );
 
 // Microsecond timebase for timer

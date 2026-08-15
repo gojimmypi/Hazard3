@@ -13,6 +13,20 @@ LOCATE COMP "uart_tx" SITE "A10"; # gp1, J1_7+
 IOBUF PORT "uart_rx" PULLMODE=UP IO_TYPE=LVCMOS33;
 IOBUF PORT "uart_tx" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
 
+# SAO v1.69bis signal pins. 3.3 V and GND are wired directly to the
+# six-pin SAO connector; these four signals are managed by the FPGA bridge.
+# gp[2], gn[2], gp[3], gn[3] are otherwise unused by this ULX3S design.
+
+LOCATE COMP "sao_sda" SITE "A9";   # gp[2]
+LOCATE COMP "sao_scl" SITE "B10";  # gn[2]
+LOCATE COMP "sao_gpio1" SITE "B9"; # gp[3]
+LOCATE COMP "sao_gpio2" SITE "C10"; # gn[3]
+
+IOBUF PORT "sao_sda" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "sao_scl" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "sao_gpio1" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "sao_gpio2" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
+
 # Eight onboard ULX3S LEDs
 
 LOCATE COMP "led[7]" SITE "H3";

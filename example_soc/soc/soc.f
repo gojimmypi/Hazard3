@@ -2,6 +2,8 @@
 
 file example_soc.v
 file apb_gpio.v
+file sao_i2c_engine.v
+file apb_sao_bridge.v
 file ahb_sdram.v
 file ulx3s_sdram_controller.v
 
