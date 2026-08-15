@@ -13,6 +13,15 @@ LOCATE COMP "uart_tx" SITE "A10"; # gp1, J1_7+
 IOBUF PORT "uart_rx" PULLMODE=UP IO_TYPE=LVCMOS33;
 IOBUF PORT "uart_tx" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
 
+# ESP32 Serial1 sideband used for logical shared ownership of the SAO I2C bus.
+# These are dedicated FPGA/ESP32 routes on ULX3S v2.0.x/v3.0.x boards and do
+# not overlap the SD-card signals. Signal names follow the ESP32 GPIO names.
+
+LOCATE COMP "wifi_gpio16" SITE "L1"; # ESP32 GPIO16 / Serial1 RX, FPGA response output
+LOCATE COMP "wifi_gpio17" SITE "N3"; # ESP32 GPIO17 / Serial1 TX, FPGA input
+IOBUF PORT "wifi_gpio16" PULLMODE=UP IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "wifi_gpio17" PULLMODE=UP IO_TYPE=LVCMOS33;
+
 # SAO v1.69bis signal pins. 3.3 V and GND are wired directly to the
 # six-pin SAO connector; these four signals are managed by the FPGA bridge.
 # gp[2], gn[2], gp[3], gn[3] are otherwise unused by this ULX3S design.

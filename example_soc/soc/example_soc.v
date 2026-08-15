@@ -14,6 +14,7 @@ module example_soc #(
 	parameter CLK_MHZ    = 12,      // For timer timebase
 	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
 	parameter LITEDRAM_ENABLE = 0,  // Use LiteDRAM DDR3 instead of SDR SDRAM
+	parameter ESP_SAO_UART_ENABLE = 0, // ESP32 UART sideband access to SAO
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: ULX4M-LS 32 MiB
 	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
 	parameter [31:0] SDRAM_VIDEO_APERTURE_BASE = 32'h23c00000,
@@ -48,6 +49,11 @@ module example_soc #(
 	input  wire              sao_gpio2_i,
 	output wire              sao_gpio2_o,
 	output wire              sao_gpio2_oe,
+
+	// Optional ESP32 sideband UART for shared SAO access.
+	input  wire              esp_sao_uart_rx,
+	output wire              esp_sao_uart_tx,
+	output wire              esp_sao_uart_tx_oe,
 
 	// Optional ULX3S/ULX4M 16-bit SDR SDRAM interface
 	output wire [12:0]       sdram_a,
@@ -618,13 +624,13 @@ ahbl_to_apb apb_bridge_u (
 
 apb_splitter #(
 	.N_SLAVES   (5),
-    //                    APB offset          name         CPU Address
-    //                ---------------------- ----------- -------------
-    // Slave 4 =   0xC000                     HDMI/video 0x4000C000
-    // Slave 3 =        0x9000                SAO        0x40009000
-    // Slave 2 =             0x8000           GPIO       0x40008000
-    // Slave 1 =                  0x4000      UART       0x40004000
-    // Slave 0 =                       0x0000 timer      0x40000000
+    //                    APB offset       name     CPU Address
+    //                ------------------ --------- -------------
+    // Slave 4 = 0xC000                HDMI/video 0x4000C000
+    // Slave 3 =      0x9000           SAO        0x40009000
+    // Slave 2 =        0x8000         GPIO       0x40008000
+    // Slave 1 =             0x4000    UART       0x40004000
+    // Slave 0 =                  0x0000 timer     0x40000000
 	.ADDR_MAP   (80'hc000_9000_8000_4000_0000),
 	.ADDR_MASK  (80'hc000_f000_f000_c000_c000)
 ) inst_apb_splitter (
@@ -932,9 +938,12 @@ apb_gpio gpio_u (
 	.gpio_out      (gpio_out)
 );
 
-apb_sao_bridge #(
-    .CLK_DIV_RESET (CLK_MHZ * 5), // 100 kHz at 50 MHz
-    .TIMEOUT_RESET (CLK_MHZ * 10000) // 10 ms
+sao_shared_controller #(
+    .CLK_DIV_RESET  (CLK_MHZ * 5), // 100 kHz at 50 MHz
+    .TIMEOUT_RESET  (CLK_MHZ * 10000), // 10 ms
+    .CLK_HZ         (CLK_MHZ * 1000000),
+    .ESP_UART_BAUD  (115200),
+    .ESP_UART_ENABLE(ESP_SAO_UART_ENABLE)
 ) sao_u (
     .clk               (clk),
     .rst_n             (rst_n),
@@ -957,7 +966,11 @@ apb_sao_bridge #(
     .sao_gpio1_oe      (sao_gpio1_oe),
     .sao_gpio2_i       (sao_gpio2_i),
     .sao_gpio2_o       (sao_gpio2_o),
-    .sao_gpio2_oe      (sao_gpio2_oe)
+    .sao_gpio2_oe      (sao_gpio2_oe),
+
+    .esp_uart_rx       (esp_sao_uart_rx),
+    .esp_uart_tx       (esp_sao_uart_tx),
+    .esp_uart_tx_oe    (esp_sao_uart_tx_oe)
 );
 
 // Microsecond timebase for timer

@@ -1,6 +1,8 @@
 /*****************************************************************************\
 |                        Copyright (C) 2021 Luke Wren                         |
 |                     SPDX-License-Identifier: Apache-2.0                     |
+|                                                                             |
+|                          ulx-doom updates: gojimmypi                        |
 \*****************************************************************************/
 
 `default_nettype none
@@ -11,6 +13,11 @@ module fpga_ulx3s (
 
 	output wire       uart_tx,
 	input  wire       uart_rx,
+
+	// Dedicated FPGA <-> ESP32 Serial1 sideband for shared SAO access.
+	// Names are from the ESP32 perspective: GPIO16 is RX, GPIO17 is TX.
+	inout  wire       wifi_gpio16,
+	input  wire       wifi_gpio17,
 
 	inout  wire       sao_sda,
 	inout  wire       sao_scl,
@@ -128,15 +135,20 @@ wire        unused_ddram_we_n;
 wire        unused_ddr3_calib_complete;
 wire [31:0] unused_ddr3_debug_status;
 
-// The FPGA is the only electrical owner of the SAO connector. I2C outputs
-// are open drain; GPIO1/GPIO2 are individually tri-stated by the APB bridge.
+// The FPGA remains the only electrical I2C driver connected to the SAO
+// connector. Hazard3 and the ESP32 share logical ownership inside the FPGA;
+// the selected I2C engine drives these open-drain controls. GPIO1/GPIO2
+// remain under Hazard3/APB control and are independently tri-stated.
 wire sao_sda_drive_low;
 wire sao_scl_drive_low;
 wire sao_gpio1_o;
 wire sao_gpio1_oe;
 wire sao_gpio2_o;
 wire sao_gpio2_oe;
+wire esp_sao_uart_tx;
+wire esp_sao_uart_tx_oe;
 
+assign wifi_gpio16 = esp_sao_uart_tx_oe ? esp_sao_uart_tx : 1'bz;
 assign sao_sda   = sao_sda_drive_low ? 1'b0 : 1'bz;
 assign sao_scl   = sao_scl_drive_low ? 1'b0 : 1'bz;
 assign sao_gpio1 = sao_gpio1_oe ? sao_gpio1_o : 1'bz;
@@ -212,6 +224,7 @@ example_soc #(
 	.CLK_MHZ            (50),
 	.SDRAM_ENABLE       (1),
 	.LITEDRAM_ENABLE    (0),
+	.ESP_SAO_UART_ENABLE (1),
 	.SDRAM_COL_WIDTH    (10),
 
 	.EXTENSION_M         (1),
@@ -259,6 +272,10 @@ example_soc #(
     .sao_gpio2_i       (sao_gpio2),
     .sao_gpio2_o       (sao_gpio2_o),
     .sao_gpio2_oe      (sao_gpio2_oe),
+
+    .esp_sao_uart_rx   (wifi_gpio17),
+    .esp_sao_uart_tx   (esp_sao_uart_tx),
+    .esp_sao_uart_tx_oe(esp_sao_uart_tx_oe),
 
 	.sdram_a    (sdram_a),
 	.sdram_ba   (sdram_ba),

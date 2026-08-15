@@ -33,7 +33,13 @@ module apb_sao_bridge #(
     output wire        sao_gpio1_oe,
     input  wire        sao_gpio2_i,
     output wire        sao_gpio2_o,
-    output wire        sao_gpio2_oe
+    output wire        sao_gpio2_oe,
+
+    input  wire        i2c_enable,
+    output wire        i2c_busy,
+    output wire        i2c_bus_active,
+    input  wire        esp_owner,
+    input  wire        esp_request
 );
 
 localparam [2:0] CMD_WRITE   = 3'd3;
@@ -50,6 +56,7 @@ localparam [5:0] REG_GPIO    = 6'h06;
 localparam [5:0] REG_LINES   = 6'h07;
 localparam [5:0] REG_ID      = 6'h08;
 localparam [5:0] REG_VERSION = 6'h09;
+localparam [5:0] REG_OWNER   = 6'h0a;
 
 wire apb_write = apbs_psel && apbs_penable && apbs_pwrite;
 wire [5:0] reg_addr = apbs_paddr[7:2];
@@ -86,6 +93,8 @@ wire [7:0] engine_rx_data;
 
 assign apbs_pready  = 1'b1;
 assign apbs_pslverr = 1'b0;
+assign i2c_busy       = engine_busy;
+assign i2c_bus_active = engine_bus_active;
 
 assign sao_gpio1_o  = gpio_ctrl[0];
 assign sao_gpio1_oe = gpio_ctrl[1];
@@ -166,7 +175,8 @@ always @(posedge clk or negedge rst_n) begin
         if (apb_write) begin
             case (reg_addr)
                 REG_COMMAND: begin
-                    if (!engine_busy || apbs_pwdata[2:0] == CMD_ABORT) begin
+                    if ((i2c_enable && !engine_busy) ||
+                        (apbs_pwdata[2:0] == CMD_ABORT)) begin
                         cmd              <= apbs_pwdata[2:0];
                         cmd_valid        <= 1'b1;
                         done_sticky      <= 1'b0;
@@ -209,7 +219,9 @@ always @(*) begin
     case (reg_addr)
         REG_COMMAND: apbs_prdata = 32'd0;
         REG_STATUS:  apbs_prdata = {
-            20'd0,
+            18'd0,
+            esp_request,
+            esp_owner,
             recovered_sticky,
             gpio2_sync,
             gpio1_sync,
@@ -234,7 +246,8 @@ always @(*) begin
             28'd0, gpio2_sync, gpio1_sync, scl_sync, sda_sync
         };
         REG_ID:      apbs_prdata = 32'h53414f31; // ASCII "SAO1"
-        REG_VERSION: apbs_prdata = 32'h00020000; // 2.0.0
+        REG_VERSION: apbs_prdata = 32'h00020100; // 2.1.0
+        REG_OWNER:   apbs_prdata = {30'd0, esp_request, esp_owner};
         default:     apbs_prdata = 32'd0;
     endcase
 end
