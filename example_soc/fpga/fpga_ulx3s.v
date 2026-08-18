@@ -228,7 +228,7 @@ ddr_out sdram_clock_u (
 example_soc #(
 	.DTM_TYPE            ("ECP5"),
 	.SRAM_DEPTH          (1 << 15),
-	.SRAM_PRELOAD_FILE   ("../soc/hazard3_boot.hex"),
+	.SRAM_PRELOAD_FILE   ("../soc/hazard3-boot-monitor.hex"),
 	.CLK_MHZ             (50),
 	.SDRAM_ENABLE        (1),
 	.LITEDRAM_ENABLE     (0),

@@ -90,7 +90,7 @@ Expected outputs:
 ```text
 build/ulx3s/fpga_ulx3s.bit
 build/ulx4m-ld/fpga_ulx4m_ld.bit
-build/hazard3-test.elf
+build/hazard3-boot-monitor.elf
 build/doom-image/hazard3-doom.h3d
 ```
 
