@@ -81,7 +81,7 @@ cd /mnt/c/workspace/Hazard3/example_soc/synth/hazard3-fw
 ./doom/build-doom-image.sh
 ```
 
-Program `fpga_ulx3s.bit` and reload `hazard3-test.elf`. Reprogramming clears the
+Program `fpga_ulx3s.bit` and reload `hazard3-boot-monitor.elf`. Reprogramming clears the
 Doom image and IWAD from SDRAM.
 
 ## Static acceptance test

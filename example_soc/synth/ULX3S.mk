@@ -18,9 +18,9 @@ PACKAGE=CABGA381
 include $(SCRIPTS)/synth_ecp5.mk
 
 # power-up initialization file for the new SDRAM cache tag RAM
-$(CHIPNAME).json: ../soc/cache_tags_zero.hex ../soc/hazard3_boot.hex
+$(CHIPNAME).json: ../soc/cache_tags_zero.hex ../soc/hazard3-boot-monitor.hex
 
-../soc/hazard3_boot.hex:
+../soc/hazard3-boot-monitor.hex:
 	@echo "Missing $@; run Hazard3-Doom/scripts/build-ulx3s-doom.sh to build the resident monitor preload." >&2
 	@false
 

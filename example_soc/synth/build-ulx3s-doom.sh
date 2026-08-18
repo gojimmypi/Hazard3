@@ -51,12 +51,12 @@ printf '\nBuilding the shared Performance-R5 Doom image...\n'
 )
 
 require_file "${SCRIPT_DIR}/fpga_ulx3s.bit"
-require_file "${FIRMWARE_DIR}/hazard3-test.elf"
+require_file "${FIRMWARE_DIR}/hazard3-boot-monitor.elf"
 require_file \
     "${FIRMWARE_DIR}/doom/build-doom-image/hazard3-doom.h3d"
 
 printf '\nULX3S 85F Performance-R5 build complete.\n'
 printf '  FPGA:    %s\n' "${SCRIPT_DIR}/fpga_ulx3s.bit"
-printf '  Monitor: %s\n' "${FIRMWARE_DIR}/hazard3-test.elf"
+printf '  Monitor: %s\n' "${FIRMWARE_DIR}/hazard3-boot-monitor.elf"
 printf '  Doom:    %s\n' \
     "${FIRMWARE_DIR}/doom/build-doom-image/hazard3-doom.h3d"
