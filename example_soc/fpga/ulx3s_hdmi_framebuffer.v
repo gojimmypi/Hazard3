@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-// Double-buffered 320x200 framebuffer output shared by ULX3S and ULX4M.
+// Double-buffered 320x200 / experimental 400x240 framebuffer output shared by ULX3S and ULX4M.
 //
 // The fast path writes a completed Doom frame directly into the inactive ECP5
 // block-RAM bank through two APB registers, then swaps banks during vertical
@@ -13,17 +13,17 @@
 // SDRAM-to-block-RAM DMA from every Doom frame. The original SDRAM DMA path is
 // retained for monitor diagnostics and backward compatibility.
 //
-// The Elecrow panel is driven at 1024x600. A 5/16 horizontal phase accumulator
-// maps all 320 source pixels across all 1024 output pixels, while each source
-// line is repeated three times vertically. The panel is therefore fully filled
-// without the former 32-pixel side borders.
+// The Elecrow panel is driven at 1024x600. The standard source remains 320x200.
+// CONTROL_HIGH_RES optionally selects a 400x240 source; phase accumulators map
+// either source size across the complete panel without changing HDMI timing.
 //
 // Frame data may be either RGB332 or native Doom palette indices. Indexed mode
 // uses one independently stored 256-entry RGB332 palette for each SDRAM staging
 // buffer, so palette changes become visible atomically with the matching frame.
 module ulx3s_hdmi_framebuffer #(
     parameter [24:0] FRAMEBUFFER0_HALFWORD_BASE = 25'h1e00000,
-    parameter [24:0] FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000
+    parameter [24:0] FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000,
+    parameter [24:0] FRAMEBUFFER1_HIGH_HALFWORD_BASE = 25'h1e0c000
 ) (
     input  wire        clk_sys,
     input  wire        rst_n_sys,
@@ -63,11 +63,16 @@ localparam V_SYNC   = 10;
 localparam V_BACK   = 11;
 localparam V_TOTAL  = V_ACTIVE + V_FRONT + V_SYNC + V_BACK;
 
-localparam SOURCE_WIDTH = 320;
-localparam SOURCE_HEIGHT = 200;
-localparam SOURCE_WORDS_PER_FRAME = SOURCE_WIDTH * SOURCE_HEIGHT / 2;
-localparam H_SCALE_NUMERATOR = SOURCE_WIDTH / 64;
-localparam H_SCALE_DENOMINATOR = H_ACTIVE / 64;
+localparam STANDARD_SOURCE_WIDTH = 320;
+localparam STANDARD_SOURCE_HEIGHT = 200;
+localparam HIGH_SOURCE_WIDTH = 400;
+localparam HIGH_SOURCE_HEIGHT = 240;
+localparam STANDARD_SOURCE_WORDS_PER_FRAME =
+    STANDARD_SOURCE_WIDTH * STANDARD_SOURCE_HEIGHT / 2;
+localparam HIGH_SOURCE_WORDS_PER_FRAME =
+    HIGH_SOURCE_WIDTH * HIGH_SOURCE_HEIGHT / 2;
+localparam [16:0] STANDARD_BUFFER1_WORD_BASE = 17'd32768;
+localparam [16:0] HIGH_BUFFER1_WORD_BASE = 17'h0c000;
 
 // Native SDRAM requests use halfword addresses. The board wrapper selects
 // staging-buffer offsets for its 64 MiB or 32 MiB external-memory profile.
@@ -83,10 +88,11 @@ localparam [3:0]
     REG_DIRECT_ADDRESS = 4'hb,
     REG_DIRECT_DATA    = 4'hc;
 
-localparam CONTROL_INDEXED = 0;
-localparam CONTROL_BUFFER  = 1;
-localparam CONTROL_PRESENT = 2;
-localparam CONTROL_DIRECT  = 3;
+localparam CONTROL_INDEXED  = 0;
+localparam CONTROL_BUFFER   = 1;
+localparam CONTROL_PRESENT  = 2;
+localparam CONTROL_DIRECT   = 3;
+localparam CONTROL_HIGH_RES = 4;
 
 wire [3:0] apb_word_address = apbs_paddr[5:2];
 wire direct_data_access = apbs_psel && apbs_penable && apbs_pwrite
@@ -100,12 +106,13 @@ wire apb_write = apbs_psel && apbs_penable && apbs_pwrite && apbs_pready;
 // Full-frame ECP5 block RAM and palette RAM
 
 wire        frame_write_enable;
-wire [15:0] frame_write_address;
+wire [16:0] frame_write_address;
 wire [15:0] frame_write_data;
-wire [15:0] frame_read_address;
+wire [16:0] frame_read_address;
 wire [15:0] frame_read_data;
 
-reg [15:0] direct_write_address;
+reg [16:0] direct_write_address;
+reg direct_write_high_res;
 reg [31:0] direct_write_data;
 wire direct_low_write = direct_data_access && !direct_write_high_half;
 wire direct_high_write = direct_data_access && direct_write_high_half;
@@ -147,20 +154,23 @@ localparam [2:0]
     DMA_WAIT_SWAP = 3'd4;
 
 reg [2:0] dma_state;
-reg [14:0] dma_word;
+reg [15:0] dma_word;
 reg dma_source_buffer;
 reg dma_target_buffer;
 reg dma_indexed;
+reg dma_high_res;
 reg [31:0] dma_cycle_counter;
 reg [31:0] last_dma_cycles;
 reg [31:0] present_count_sys;
 reg control_indexed_sys;
 reg control_buffer_sys;
+reg control_high_res_sys;
 
 reg swap_toggle_sys;
 reg swap_buffer_sys;
 reg swap_source_sys;
 reg swap_indexed_sys;
+reg swap_high_res_sys;
 
 (* async_reg = "true" *) reg swap_ack_sync0;
 (* async_reg = "true" *) reg swap_ack_sync1;
@@ -170,6 +180,8 @@ reg swap_indexed_sys;
 (* async_reg = "true" *) reg current_source_sync1;
 (* async_reg = "true" *) reg current_indexed_sync0;
 (* async_reg = "true" *) reg current_indexed_sync1;
+(* async_reg = "true" *) reg current_high_res_sync0;
+(* async_reg = "true" *) reg current_high_res_sync1;
 (* async_reg = "true" *) reg frame_valid_sync0;
 (* async_reg = "true" *) reg frame_valid_sync1;
 (* async_reg = "true" *) reg vblank_sync0;
@@ -181,6 +193,7 @@ reg swap_ack_pix;
 reg active_internal_buffer_pix;
 reg current_source_buffer_pix;
 reg current_indexed_pix;
+reg current_high_res_pix;
 reg frame_valid_pix;
 wire vblank_pix;
 reg [31:0] frame_count_pix;
@@ -193,16 +206,29 @@ wire present_command = apb_write && apb_word_address == REG_CONTROL
 wire present_can_start = dma_state == DMA_IDLE && sdram_init_done;
 
 wire [24:0] selected_framebuffer_base = dma_source_buffer
-    ? FRAMEBUFFER1_HALFWORD_BASE : FRAMEBUFFER0_HALFWORD_BASE;
+    ? (dma_high_res ? FRAMEBUFFER1_HIGH_HALFWORD_BASE
+        : FRAMEBUFFER1_HALFWORD_BASE)
+    : FRAMEBUFFER0_HALFWORD_BASE;
+wire [15:0] dma_words_per_frame = dma_high_res
+    ? HIGH_SOURCE_WORDS_PER_FRAME : STANDARD_SOURCE_WORDS_PER_FRAME;
+wire [16:0] dma_target_base = dma_target_buffer
+    ? HIGH_BUFFER1_WORD_BASE : 17'd0;
 assign sdram_req_valid = dma_state == DMA_REQUEST;
-assign sdram_req_addr = selected_framebuffer_base + dma_word;
+assign sdram_req_addr = selected_framebuffer_base + {9'd0, dma_word};
+
+wire [16:0] direct_write_physical_address = direct_write_high_res
+    ? direct_write_address
+    : (direct_write_address >= STANDARD_BUFFER1_WORD_BASE
+        ? HIGH_BUFFER1_WORD_BASE +
+            (direct_write_address - STANDARD_BUFFER1_WORD_BASE)
+        : direct_write_address);
 
 wire dma_frame_write = dma_state == DMA_RESPONSE && sdram_rsp_valid;
 assign frame_write_enable = direct_frame_write || dma_frame_write;
 assign frame_write_address = direct_frame_write
-    ? (direct_high_write ? direct_write_address + 1'b1
-        : direct_write_address)
-    : {dma_target_buffer, dma_word};
+    ? (direct_high_write ? direct_write_physical_address + 17'd1
+        : direct_write_physical_address)
+    : dma_target_base + {1'b0, dma_word};
 assign frame_write_data = direct_frame_write
     ? (direct_high_write ? direct_write_data[31:16] : apbs_pwdata[15:0])
     : sdram_rsp_rdata;
@@ -217,6 +243,8 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
         current_source_sync1 <= 1'b0;
         current_indexed_sync0 <= 1'b0;
         current_indexed_sync1 <= 1'b0;
+        current_high_res_sync0 <= 1'b0;
+        current_high_res_sync1 <= 1'b0;
         frame_valid_sync0 <= 1'b0;
         frame_valid_sync1 <= 1'b0;
         vblank_sync0 <= 1'b0;
@@ -232,6 +260,8 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
         current_source_sync1 <= current_source_sync0;
         current_indexed_sync0 <= current_indexed_pix;
         current_indexed_sync1 <= current_indexed_sync0;
+        current_high_res_sync0 <= current_high_res_pix;
+        current_high_res_sync1 <= current_high_res_sync0;
         frame_valid_sync0 <= frame_valid_pix;
         frame_valid_sync1 <= frame_valid_sync0;
         vblank_sync0 <= vblank_pix;
@@ -244,16 +274,19 @@ end
 always @ (posedge clk_sys or negedge rst_n_sys) begin
     if (!rst_n_sys) begin
         palette_address_sys <= 9'd0;
-        direct_write_address <= 16'd0;
+        direct_write_address <= 17'd0;
+        direct_write_high_res <= 1'b0;
         direct_write_data <= 32'd0;
         direct_write_high_half <= 1'b0;
         control_indexed_sys <= 1'b0;
         control_buffer_sys <= 1'b0;
+        control_high_res_sys <= 1'b0;
         dma_state <= DMA_WAIT_INIT;
-        dma_word <= 15'd0;
+        dma_word <= 16'd0;
         dma_source_buffer <= 1'b0;
         dma_target_buffer <= 1'b1;
         dma_indexed <= 1'b0;
+        dma_high_res <= 1'b0;
         dma_cycle_counter <= 32'd0;
         last_dma_cycles <= 32'd0;
         present_count_sys <= 32'd0;
@@ -261,17 +294,20 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
         swap_buffer_sys <= 1'b0;
         swap_source_sys <= 1'b0;
         swap_indexed_sys <= 1'b0;
+        swap_high_res_sys <= 1'b0;
     end else begin
         if (direct_low_write) begin
             direct_write_data <= apbs_pwdata;
             direct_write_high_half <= 1'b1;
         end else if (direct_high_write) begin
-            direct_write_address <= direct_write_address + 2'd2;
+            direct_write_address <= direct_write_address + 17'd2;
             direct_write_high_half <= 1'b0;
         end
 
-        if (apb_write && apb_word_address == REG_DIRECT_ADDRESS)
-            direct_write_address <= apbs_pwdata[15:0];
+        if (apb_write && apb_word_address == REG_DIRECT_ADDRESS) begin
+            direct_write_address <= apbs_pwdata[16:0];
+            direct_write_high_res <= apbs_pwdata[31];
+        end
 
         if (apb_write && apb_word_address == REG_PALETTE_INDEX)
             palette_address_sys <= apbs_pwdata[8:0];
@@ -281,6 +317,7 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
         if (apb_write && apb_word_address == REG_CONTROL) begin
             control_indexed_sys <= apbs_pwdata[CONTROL_INDEXED];
             control_buffer_sys <= apbs_pwdata[CONTROL_BUFFER];
+            control_high_res_sys <= apbs_pwdata[CONTROL_HIGH_RES];
         end
 
         if (dma_state != DMA_IDLE && dma_state != DMA_WAIT_INIT)
@@ -296,6 +333,7 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
             if (present_command && present_can_start) begin
                 dma_source_buffer <= apbs_pwdata[CONTROL_BUFFER];
                 dma_indexed <= apbs_pwdata[CONTROL_INDEXED];
+                dma_high_res <= apbs_pwdata[CONTROL_HIGH_RES];
                 dma_cycle_counter <= 32'd0;
                 present_count_sys <= present_count_sys + 1'b1;
 
@@ -305,10 +343,11 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
                     swap_buffer_sys <= apbs_pwdata[CONTROL_BUFFER];
                     swap_source_sys <= apbs_pwdata[CONTROL_BUFFER];
                     swap_indexed_sys <= apbs_pwdata[CONTROL_INDEXED];
+                    swap_high_res_sys <= apbs_pwdata[CONTROL_HIGH_RES];
                     swap_toggle_sys <= !swap_toggle_sys;
                     dma_state <= DMA_WAIT_SWAP;
                 end else begin
-                    dma_word <= 15'd0;
+                    dma_word <= 16'd0;
                     dma_target_buffer <= !active_internal_sync1;
                     dma_state <= DMA_REQUEST;
                 end
@@ -322,11 +361,12 @@ always @ (posedge clk_sys or negedge rst_n_sys) begin
 
         DMA_RESPONSE: begin
             if (sdram_rsp_valid) begin
-                if (dma_word == SOURCE_WORDS_PER_FRAME - 1) begin
+                if (dma_word == dma_words_per_frame - 1'b1) begin
                     last_dma_cycles <= dma_cycle_counter + 1'b1;
                     swap_buffer_sys <= dma_target_buffer;
                     swap_source_sys <= dma_source_buffer;
                     swap_indexed_sys <= dma_indexed;
+                    swap_high_res_sys <= dma_high_res;
                     swap_toggle_sys <= !swap_toggle_sys;
                     dma_state <= DMA_WAIT_SWAP;
                 end else begin
@@ -361,16 +401,22 @@ always @ (*) begin
         apbs_prdata[8] = swap_pending;
         apbs_prdata[9] = 1'b1; // Direct block-RAM write path supported.
         apbs_prdata[10] = direct_write_high_half;
+        apbs_prdata[11] = 1'b1; // Experimental 400x240 source supported.
+        apbs_prdata[12] = current_high_res_sync1;
     end
     REG_CONTROL: begin
         apbs_prdata[CONTROL_INDEXED] = control_indexed_sys;
         apbs_prdata[CONTROL_BUFFER] = control_buffer_sys;
+        apbs_prdata[CONTROL_HIGH_RES] = control_high_res_sys;
     end
     REG_PALETTE_INDEX: apbs_prdata[8:0] = palette_address_sys;
     REG_FRAME_COUNT: apbs_prdata = frame_count_sync1;
     REG_DMA_CYCLES: apbs_prdata = last_dma_cycles;
     REG_PRESENT_COUNT: apbs_prdata = present_count_sys;
-    REG_DIRECT_ADDRESS: apbs_prdata[15:0] = direct_write_address;
+    REG_DIRECT_ADDRESS: begin
+        apbs_prdata[16:0] = direct_write_address;
+        apbs_prdata[31] = direct_write_high_res;
+    end
     default: apbs_prdata = 32'd0;
     endcase
 end
@@ -382,8 +428,8 @@ reg [10:0] pixel_x;
 reg [9:0] pixel_y;
 reg [8:0] source_x;
 reg [7:0] source_y;
-reg [4:0] horizontal_phase;
-reg [1:0] vertical_repeat;
+reg [10:0] horizontal_phase;
+reg [9:0] vertical_phase;
 reg pixel_toggle;
 
 (* async_reg = "true" *) reg swap_toggle_sync0;
@@ -395,6 +441,8 @@ reg swap_source_sync0;
 reg swap_source_sync1;
 reg swap_indexed_sync0;
 reg swap_indexed_sync1;
+reg swap_high_res_sync0;
+reg swap_high_res_sync1;
 
 wire active_video_now = pixel_x < H_ACTIVE && pixel_y < V_ACTIVE;
 wire hsync_now = pixel_x >= H_ACTIVE + H_FRONT
@@ -405,11 +453,22 @@ wire image_region_now = active_video_now;
 wire vblank_start = pixel_x == 0 && pixel_y == V_ACTIVE;
 assign vblank_pix = pixel_y >= V_ACTIVE;
 
-wire [14:0] source_line_word_base = ({7'd0, source_y} << 7)
-    + ({7'd0, source_y} << 5);
-wire [14:0] source_word_address = source_line_word_base
-    + {6'd0, source_x[8:1]};
-assign frame_read_address = {active_internal_buffer_pix, source_word_address};
+wire [15:0] standard_source_line_word_base = ({8'd0, source_y} << 7)
+    + ({8'd0, source_y} << 5);
+wire [15:0] high_source_line_word_base = ({8'd0, source_y} << 7)
+    + ({8'd0, source_y} << 6) + ({8'd0, source_y} << 3);
+wire [15:0] source_line_word_base = current_high_res_pix
+    ? high_source_line_word_base : standard_source_line_word_base;
+wire [15:0] source_word_address = source_line_word_base
+    + {7'd0, source_x[8:1]};
+wire [16:0] frame_read_base = active_internal_buffer_pix
+    ? HIGH_BUFFER1_WORD_BASE : 17'd0;
+assign frame_read_address = frame_read_base + {1'b0, source_word_address};
+
+wire [10:0] active_source_width = current_high_res_pix
+    ? HIGH_SOURCE_WIDTH : STANDARD_SOURCE_WIDTH;
+wire [9:0] active_source_height = current_high_res_pix
+    ? HIGH_SOURCE_HEIGHT : STANDARD_SOURCE_HEIGHT;
 
 always @ (posedge clk_pix or negedge rst_n_pix) begin
     if (!rst_n_pix) begin
@@ -421,6 +480,8 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         swap_source_sync1 <= 1'b0;
         swap_indexed_sync0 <= 1'b0;
         swap_indexed_sync1 <= 1'b0;
+        swap_high_res_sync0 <= 1'b0;
+        swap_high_res_sync1 <= 1'b0;
     end else begin
         swap_toggle_sync0 <= swap_toggle_sys;
         swap_toggle_sync1 <= swap_toggle_sync0;
@@ -430,6 +491,8 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         swap_source_sync1 <= swap_source_sync0;
         swap_indexed_sync0 <= swap_indexed_sys;
         swap_indexed_sync1 <= swap_indexed_sync0;
+        swap_high_res_sync0 <= swap_high_res_sys;
+        swap_high_res_sync1 <= swap_high_res_sync0;
     end
 end
 
@@ -439,14 +502,15 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         pixel_y <= 10'd0;
         source_x <= 9'd0;
         source_y <= 8'd0;
-        horizontal_phase <= 5'd0;
-        vertical_repeat <= 2'd0;
+        horizontal_phase <= 11'd0;
+        vertical_phase <= 10'd0;
         pixel_toggle <= 1'b0;
         swap_toggle_seen_pix <= 1'b0;
         swap_ack_pix <= 1'b0;
         active_internal_buffer_pix <= 1'b0;
         current_source_buffer_pix <= 1'b0;
         current_indexed_pix <= 1'b0;
+        current_high_res_pix <= 1'b0;
         frame_valid_pix <= 1'b0;
         frame_count_pix <= 32'd0;
     end else begin
@@ -456,6 +520,7 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
             active_internal_buffer_pix <= swap_buffer_sync1;
             current_source_buffer_pix <= swap_source_sync1;
             current_indexed_pix <= swap_indexed_sync1;
+            current_high_res_pix <= swap_high_res_sync1;
             frame_valid_pix <= 1'b1;
             swap_toggle_seen_pix <= swap_toggle_sync1;
             swap_ack_pix <= swap_toggle_sync1;
@@ -464,36 +529,34 @@ always @ (posedge clk_pix or negedge rst_n_pix) begin
         if (pixel_x == H_TOTAL - 1) begin
             pixel_x <= 11'd0;
             source_x <= 9'd0;
-            horizontal_phase <= 5'd0;
+            horizontal_phase <= 11'd0;
 
             if (pixel_y == V_TOTAL - 1) begin
                 pixel_y <= 10'd0;
                 source_y <= 8'd0;
-                vertical_repeat <= 2'd0;
+                vertical_phase <= 10'd0;
                 frame_count_pix <= frame_count_pix + 1'b1;
             end else begin
                 pixel_y <= pixel_y + 1'b1;
                 if (pixel_y < V_ACTIVE - 1) begin
-                    if (vertical_repeat == 2) begin
-                        vertical_repeat <= 2'd0;
-                        source_y <= source_y == SOURCE_HEIGHT - 1
-                            ? 8'd0 : source_y + 1'b1;
+                    if (vertical_phase + active_source_height >= V_ACTIVE) begin
+                        vertical_phase <= vertical_phase +
+                            active_source_height - V_ACTIVE;
+                        source_y <= source_y + 1'b1;
                     end else begin
-                        vertical_repeat <= vertical_repeat + 1'b1;
+                        vertical_phase <= vertical_phase + active_source_height;
                     end
                 end
             end
         end else begin
             pixel_x <= pixel_x + 1'b1;
             if (pixel_x < H_ACTIVE - 1) begin
-                if (horizontal_phase + H_SCALE_NUMERATOR >=
-                    H_SCALE_DENOMINATOR) begin
+                if (horizontal_phase + active_source_width >= H_ACTIVE) begin
                     horizontal_phase <= horizontal_phase +
-                        H_SCALE_NUMERATOR - H_SCALE_DENOMINATOR;
+                        active_source_width - H_ACTIVE;
                     source_x <= source_x + 1'b1;
                 end else begin
-                    horizontal_phase <= horizontal_phase +
-                        H_SCALE_NUMERATOR;
+                    horizontal_phase <= horizontal_phase + active_source_width;
                 end
             end
         end
@@ -670,28 +733,31 @@ ulx3s_tmds_ddr_serialiser serialise_clock_u (
 
 endmodule
 
-// Two 320x200x8 displayed frames are stored as 64,000 16-bit words. Each
-// DP16KD is configured as 1024x18; 64 banks therefore provide 65,536 words.
+// The high-resolution mode needs two 400x240x8 displayed frames. The second
+// physical bank is aligned at word 0xc000, matching the high-resolution SDRAM
+// staging layout. Each DP16KD is 1024x18; 95 banks cover both 48,000-word
+// frames plus the alignment gap. Legacy logical bank-1 writes at 0x8000 are
+// translated to the physical 0xc000 bank.
 module ulx3s_frame_ram (
     input  wire        write_clk,
     input  wire        write_enable,
-    input  wire [15:0] write_address,
+    input  wire [16:0] write_address,
     input  wire [15:0] write_data,
     input  wire        read_clk,
-    input  wire [15:0] read_address,
+    input  wire [16:0] read_address,
     output reg  [15:0] read_data
 );
 
-wire [16*64-1:0] bank_read_data;
-reg [5:0] read_bank_q;
+wire [16*95-1:0] bank_read_data;
+reg [6:0] read_bank_q;
 integer mux_index;
 
 always @ (posedge read_clk)
-    read_bank_q <= read_address[15:10];
+    read_bank_q <= read_address[16:10];
 
 always @ (*) begin
     read_data = 16'd0;
-    for (mux_index = 0; mux_index < 64; mux_index = mux_index + 1) begin
+    for (mux_index = 0; mux_index < 95; mux_index = mux_index + 1) begin
         if (read_bank_q == mux_index)
             read_data = bank_read_data[mux_index*16 +: 16];
     end
@@ -699,10 +765,10 @@ end
 
 generate
 genvar frame_bank;
-for (frame_bank = 0; frame_bank < 64; frame_bank = frame_bank + 1) begin: frame_ram_bank
-    localparam [5:0] BANK_NUMBER = frame_bank;
+for (frame_bank = 0; frame_bank < 95; frame_bank = frame_bank + 1) begin: frame_ram_bank
+    localparam [6:0] BANK_NUMBER = frame_bank;
     wire bank_write_enable = write_enable
-        && write_address[15:10] == BANK_NUMBER;
+        && write_address[16:10] == BANK_NUMBER;
 
     ulx3s_dp16kd_1024x16 bank_u (
         .write_clk     (write_clk),

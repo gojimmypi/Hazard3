@@ -107,8 +107,9 @@ wire        video_apb_pready;
 wire        video_apb_pslverr;
 
 ulx3s_hdmi_framebuffer #(
-    .FRAMEBUFFER0_HALFWORD_BASE (25'h0e00000),
-    .FRAMEBUFFER1_HALFWORD_BASE (25'h0e08000)
+    .FRAMEBUFFER0_HALFWORD_BASE      (25'h0e00000),
+    .FRAMEBUFFER1_HALFWORD_BASE      (25'h0e08000),
+    .FRAMEBUFFER1_HIGH_HALFWORD_BASE (25'h0e0c000)
 ) hdmi_framebuffer_u (
 	.clk_sys          (clk_sys),
 	.rst_n_sys        (rst_n_sys),
