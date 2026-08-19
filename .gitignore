@@ -9,7 +9,9 @@
 
 # Temporary examples and backups
 /example_soc/synth/Hazard3-fw1
-/*.zip
+/example_soc/soc/hazard3-boot-monitor.hex
+/example_soc/synth/placement-sweep/
+**/*.zip
 
 # Copyrighted Doom game data supplied by the user
 *.wad
