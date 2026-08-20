@@ -166,6 +166,11 @@ assign sao_gpio2 = sao_gpio2_oe ? sao_gpio2_o : 1'bz;
 localparam [31:0] FPGA_BUILD_ID          = 32'h554c5035; // ASCII "ULP5"
 localparam [31:0] MEMORY_CORE_BUILD_ID   = 32'h53445235; // ASCII "SDR5"
 localparam [31:0] MEMORY_ADAPTER_BUILD_ID = 32'h41485335; // ASCII "AHS5"
+`ifdef HAZARD3_HDMI_EXTENDED_MODES
+localparam HDMI_EXTENDED_VIDEO_MODES = 1'b1;
+`else
+localparam HDMI_EXTENDED_VIDEO_MODES = 1'b0;
+`endif
 wire [31:0] memory_status = {
     16'h5344,                 // ASCII "SD"
     11'd0,
@@ -186,7 +191,9 @@ always @(*) begin
     endcase
 end
 
-ulx3s_hdmi_framebuffer hdmi_framebuffer_u (
+ulx3s_hdmi_framebuffer #(
+    .EXTENDED_VIDEO_MODES (HDMI_EXTENDED_VIDEO_MODES)
+) hdmi_framebuffer_u (
 	.clk_sys          (clk_sys),
 	.rst_n_sys        (rst_n_sys),
 	.clk_pix          (clk_video_pix),
