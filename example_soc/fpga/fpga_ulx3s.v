@@ -49,11 +49,38 @@ wire clk_sys;
 wire pll_sys_locked;
 wire rst_n_sys;
 
+`ifdef HAZARD3_ULX3S_12F
+/*
+ * The ULX3S 12F is a compact board with a 40 MHz system clock. The 12F
+ * has a smaller EBR profile than the 85F, so the video framebuffer must
+ * be implemented in SDRAM. The 12F has a smaller SDRAM chip than the 85F,
+ * so the framebuffer is limited to 32 MiB and the SDRAM cache is limited
+ * to 32 KiB.
+ *
+ * With limited resources, when HAS_REGISTERED_READ_HITS is not defined,
+ * the timing closure will not likely succeed even at the lower 40MHz.
+ */
+`define HAS_REGISTERED_READ_HITS
+pll_25_40 pll_sys (
+	.clkin   (clk_osc),
+	.clkout0 (clk_sys),
+	.locked  (pll_sys_locked)
+);
+`else
+/* The ULX3S 85F has a 50 MHz system clock. The 85F has a larger EBR profile than
+ * the 12F, so the video framebuffer can be implemented in EBR. The 85F has
+ * a larger SDRAM chip than the 12F, so the framebuffer is limited to 64 MiB
+ * and the SDRAM cache is limited to 64 KiB.
+ *
+ * The HAS_REGISTERED_READ_HITS is optional here. The timing closure will likely
+ * succeed at 50MHz with or without it.
+ */
 pll_25_50 pll_sys (
 	.clkin   (clk_osc),
 	.clkout0 (clk_sys),
 	.locked  (pll_sys_locked)
 );
+`endif
 
 fpga_reset #(
 	.SHIFT (3)
@@ -169,6 +196,7 @@ localparam [31:0] MEMORY_CORE_BUILD_ID    = 32'h53445235; // ASCII "SDR5"
 localparam [31:0] MEMORY_ADAPTER_BUILD_ID = 32'h41485335; // ASCII "AHS5"
 
 `ifdef HAZARD3_ULX3S_12F
+localparam integer SOC_CLK_MHZ = 40;
 localparam [31:0] FPGA_BUILD_ID = 32'h554c3132; // ASCII "UL12"
 localparam ULX3S_SDRAM_SCANOUT = 1'b1;
 localparam HDMI_EXTENDED_VIDEO_MODES = 1'b0;
@@ -176,6 +204,11 @@ localparam integer SOC_SRAM_DEPTH = 1 << 8;
 localparam SOC_SRAM_PRELOAD_FILE = "../soc/hazard3-12f-bootstrap.hex";
 localparam integer SOC_SDRAM_CACHE_DEPTH = 512; // 32 KiB, two-way unified
 localparam SOC_SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero_12f.hex";
+
+`ifdef HAS_REGISTERED_READ_HITS
+    localparam SOC_SDRAM_CACHE_REGISTERED_READ_HITS = 1'b1;
+`endif
+
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_MASK = 32'hfffc0000;
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_BASE = 32'h20000000;
 `ifdef HAZARD3_SDRAM_32MB
@@ -188,8 +221,10 @@ localparam [24:0] VIDEO_FRAMEBUFFER0_HALFWORD_BASE = 25'h1e00000;
 localparam [24:0] VIDEO_FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000;
 localparam [31:0] SOC_VIDEO_APERTURE_BASE = 32'h23c00000;
 localparam integer SOC_SDRAM_COLUMN_WIDTH = 10;
-`endif
-`else
+`endif /* HAZARD3_SDRAM_32MB */
+
+`else /* ! HAZARD3_ULX3S_12F */
+localparam integer SOC_CLK_MHZ = 50;
 localparam [31:0] FPGA_BUILD_ID = 32'h554c5035; // ASCII "ULP5"
 localparam ULX3S_SDRAM_SCANOUT = 1'b0;
 `ifdef HAZARD3_HDMI_EXTENDED_MODES
@@ -201,13 +236,17 @@ localparam integer SOC_SRAM_DEPTH = 1 << 15;
 localparam SOC_SRAM_PRELOAD_FILE = "../soc/hazard3-boot-monitor.hex";
 localparam integer SOC_SDRAM_CACHE_DEPTH = 1024; // established 64 KiB cache
 localparam SOC_SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero.hex";
+`ifdef HAS_REGISTERED_READ_HITS
+    localparam SOC_SDRAM_CACHE_REGISTERED_READ_HITS = 1'b0;
+`endif
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_MASK = 32'hfff00000;
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_BASE = 32'h20000000;
 localparam [31:0] SOC_VIDEO_APERTURE_BASE = 32'h23c00000;
 localparam integer SOC_SDRAM_COLUMN_WIDTH = 10;
 localparam [24:0] VIDEO_FRAMEBUFFER0_HALFWORD_BASE = 25'h1e00000;
 localparam [24:0] VIDEO_FRAMEBUFFER1_HALFWORD_BASE = 25'h1e08000;
-`endif
+`endif /* 12F or 85F */
+
 wire [31:0] memory_status = {
     16'h5344,                 // ASCII "SD"
     11'd0,
@@ -308,7 +347,7 @@ example_soc #(
 	.SRAM_DEPTH                  (SOC_SRAM_DEPTH),
 	.SRAM_PRELOAD_FILE           (SOC_SRAM_PRELOAD_FILE),
 	.SRAM_HAS_WRITE_BUFFER       (1),
-	.CLK_MHZ                     (50),
+	.CLK_MHZ                     (SOC_CLK_MHZ),
 	.SDRAM_ENABLE                (1),
 	.LITEDRAM_ENABLE             (0),
 	.ESP_SAO_UART_ENABLE         (1),
@@ -316,6 +355,9 @@ example_soc #(
 	.SDRAM_COL_WIDTH             (SOC_SDRAM_COLUMN_WIDTH),
 	.SDRAM_CACHE_DEPTH           (SOC_SDRAM_CACHE_DEPTH),
 	.SDRAM_CACHE_TAG_PRELOAD     (SOC_SDRAM_CACHE_TAG_PRELOAD),
+`ifdef HAS_REGISTERED_READ_HITS
+	.SDRAM_CACHE_REGISTERED_READ_HITS (SOC_SDRAM_CACHE_REGISTERED_READ_HITS),
+`endif
 	.SDRAM_UNCACHED_LOW_MASK     (SOC_SDRAM_UNCACHED_LOW_MASK),
 	.SDRAM_UNCACHED_LOW_BASE     (SOC_SDRAM_UNCACHED_LOW_BASE),
 	.SDRAM_VIDEO_APERTURE_BASE   (SOC_VIDEO_APERTURE_BASE),

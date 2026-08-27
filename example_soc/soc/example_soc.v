@@ -21,6 +21,9 @@ module example_soc #(
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: 32 MiB profile
 	parameter SDRAM_CACHE_DEPTH = 1024,
 	parameter SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero.hex",
+`ifdef HAS_REGISTERED_READ_HITS
+	parameter SDRAM_CACHE_REGISTERED_READ_HITS = 0,
+`endif
 	parameter [31:0] SDRAM_UNCACHED_LOW_MASK = 32'hfff00000,
 	parameter [31:0] SDRAM_UNCACHED_LOW_BASE = 32'h20000000,
 	parameter [31:0] SDRAM_DIAGNOSTIC_ALIAS_MASK = 32'hfc000000,
@@ -736,7 +739,10 @@ if (SDRAM_ENABLE) begin: sdram_enabled
         .W_DATA (W_DATA),
         .W_LINE        (256),
         .DEPTH         (SDRAM_CACHE_DEPTH),
-        .TMEM_PRELOAD (SDRAM_CACHE_TAG_PRELOAD)
+        .TMEM_PRELOAD (SDRAM_CACHE_TAG_PRELOAD),
+`ifdef HAS_REGISTERED_READ_HITS
+        .REGISTERED_READ_HITS (SDRAM_CACHE_REGISTERED_READ_HITS)
+`endif
     ) sdram_cache_u (
         .clk             (clk),
         .rst_n           (rst_n),

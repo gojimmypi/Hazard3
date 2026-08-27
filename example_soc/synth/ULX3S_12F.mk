@@ -26,7 +26,7 @@ endif
 SYNTH_OPT=-abc9
 # ULX3S 12F is a speed-grade-6 LFE5U device. Keep the native nextpnr 12k
 # selector; modern nextpnr maps it through the shared 12F/25F chip database.
-PNR_OPT=--timing-allow-fail --speed 6
+PNR_OPT=--speed 6
 
 DEVICE=12k
 PACKAGE=CABGA381
