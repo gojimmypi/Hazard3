@@ -24,17 +24,22 @@
 #   git -C example_soc/libfpga branch --show-current
 #   git -C example_soc/libfpga log -1 --oneline
 
-#[submodule "example_soc/libfpga"]
-#	path = example_soc/libfpga
-#	url = https://github.com/ulx3s/Hazard3-libfpga/
-#	branch = ulx-doom
-#	update = checkout
-
+# ulx3s release on ulx-doom branch
+# ------------------------------------------------------
 [submodule "example_soc/libfpga"]
 	path = example_soc/libfpga
-	url = https://github.com/gojimmypi/Hazard3-libfpga/
-	branch = ulx-doom-dev
+	url = https://github.com/ulx3s/Hazard3-libfpga/
+	branch = ulx-doom
 	update = checkout
+
+# dev:
+# ------------------------------------------------------
+# [submodule "example_soc/libfpga"]
+#	path = example_soc/libfpga
+#	url = https://github.com/gojimmypi/Hazard3-libfpga/
+#	branch = ulx-doom-dev
+#	update = checkout
+
 [submodule "test/sim/riscv-tests/riscv-tests"]
 	path = test/sim/riscv-tests/riscv-tests
 	url = https://github.com/Wren6991/riscv-tests.git
