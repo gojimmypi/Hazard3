@@ -267,6 +267,7 @@ always @(*) begin
     endcase
 end
 
+`ifdef HAZARD3_ULX3S_12F
 generate
 if (ULX3S_SDRAM_SCANOUT) begin: compact_video
     ulx3s_hdmi_sdram_scanout #(
@@ -329,6 +330,36 @@ end else begin: full_ebr_video
     );
 end
 endgenerate
+`else
+ulx3s_hdmi_framebuffer #(
+    .EXTENDED_VIDEO_MODES (HDMI_EXTENDED_VIDEO_MODES)
+) hdmi_framebuffer_u (
+	.clk_sys          (clk_sys),
+	.rst_n_sys        (rst_n_sys),
+	.clk_pix          (clk_video_pix),
+	.rst_n_pix        (rst_n_video_pix),
+	.clk_tmds_x5      (clk_tmds_x5),
+	.rst_n_tmds_x5    (rst_n_tmds_x5),
+
+	.sdram_req_valid  (video_sdram_req_valid),
+	.sdram_req_ready  (video_sdram_req_ready),
+	.sdram_req_addr   (video_sdram_req_addr),
+	.sdram_rsp_valid  (video_sdram_rsp_valid),
+	.sdram_rsp_rdata  (video_sdram_rsp_rdata),
+	.sdram_init_done  (video_sdram_init_done),
+
+	.apbs_psel        (video_apb_psel),
+	.apbs_penable     (video_apb_penable),
+	.apbs_pwrite      (video_apb_pwrite),
+	.apbs_paddr       (video_apb_paddr),
+	.apbs_pwdata      (video_apb_pwdata),
+	.apbs_prdata      (video_apb_prdata_framebuffer),
+	.apbs_pready      (video_apb_pready),
+	.apbs_pslverr     (video_apb_pslverr),
+
+	.gpdi_dp          (gpdi_dp)
+);
+`endif
 
 // Forward an inverted copy of the 50 MHz system clock. Commands and data are
 // launched on clk_sys rising edges and reach the SDRAM half a cycle before
