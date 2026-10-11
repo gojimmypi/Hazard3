@@ -10,6 +10,9 @@
 module fpga_ulx3s (
 	input  wire       clk_osc,
 	output wire [7:0] led,
+	input  wire [3:0] sw,
+	input  wire btn_pwr_n, // B0 power/reset button; active low
+	input  wire [6:1] btn, // F1, F2, UP, DOWN, LEFT, RIGHT; active high
 
 	output wire       uart_tx,
 	input  wire       uart_rx,
@@ -49,6 +52,20 @@ wire clk_sys;
 wire pll_sys_locked;
 wire rst_n_sys;
 
+// Synchronize asynchronous board inputs before exposing them to the CPU.
+// Bits 0..3: SW1..SW4; bits 4..9: F1, F2, UP, DOWN, LEFT, RIGHT.
+reg [9:0] gpio_input_meta;
+reg [9:0] gpio_input_sync;
+always @(posedge clk_sys or negedge rst_n_sys) begin
+    if (!rst_n_sys) begin
+        gpio_input_meta <= 10'h000;
+        gpio_input_sync <= 10'h000;
+    end else begin
+        gpio_input_meta <= {btn, sw};
+        gpio_input_sync <= gpio_input_meta;
+    end
+end
+
 `ifdef HAZARD3_ULX3S_12F
 /*
  * The ULX3S 12F is a compact board with a 40 MHz system clock. The 12F
@@ -86,7 +103,7 @@ fpga_reset #(
 	.SHIFT (3)
 ) rstgen (
 	.clk         (clk_sys),
-	.force_rst_n (pll_sys_locked),
+	.force_rst_n (pll_sys_locked & btn_pwr_n),
 	.rst_n       (rst_n_sys)
 );
 
@@ -109,7 +126,7 @@ fpga_reset #(
 	.SHIFT (3)
 ) rstgen_video_pix (
 	.clk         (clk_video_pix),
-	.force_rst_n (pll_video_locked),
+	.force_rst_n (pll_video_locked & btn_pwr_n),
 	.rst_n       (rst_n_video_pix)
 );
 
@@ -117,7 +134,7 @@ fpga_reset #(
 	.SHIFT (3)
 ) rstgen_tmds (
 	.clk         (clk_tmds_x5),
-	.force_rst_n (pll_video_locked),
+	.force_rst_n (pll_video_locked & btn_pwr_n),
 	.rst_n       (rst_n_tmds_x5)
 );
 
@@ -378,6 +395,7 @@ example_soc #(
 	.SRAM_DEPTH                  (SOC_SRAM_DEPTH),
 	.SRAM_PRELOAD_FILE           (SOC_SRAM_PRELOAD_FILE),
 	.SRAM_HAS_WRITE_BUFFER       (1),
+	.GPIO_IN_WIDTH               (10),
 	.CLK_MHZ                     (SOC_CLK_MHZ),
 	.SDRAM_ENABLE                (1),
 	.LITEDRAM_ENABLE             (0),
@@ -431,6 +449,7 @@ example_soc #(
 	.sd_miso (sd_miso),
 	.sd_csn  (sd_csn),
 
+    .gpio_in  (gpio_input_sync),
     .gpio_out (led),
 
     .sao_sda_i         (sao_sda),
