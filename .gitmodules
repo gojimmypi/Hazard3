@@ -26,11 +26,18 @@
 
 # ulx3s release on ulx-doom branch
 # ------------------------------------------------------
+# [submodule "example_soc/libfpga"]
+#	path = example_soc/libfpga
+#	url = https://github.com/ulx3s/Hazard3-libfpga/
+#	branch = ulx-doom
+#	update = checkout
+
+# ulx3s release on experimental ulx3s-85f-dualport-baseline branch
 [submodule "example_soc/libfpga"]
-	path = example_soc/libfpga
-	url = https://github.com/ulx3s/Hazard3-libfpga/
-	branch = ulx-doom
-	update = checkout
+    path = example_soc/libfpga
+    url = https://github.com/gojimmypi/Hazard3-libfpga.git
+    branch = ulx3s-85f-dualport-baseline
+    update = checkout
 
 # dev:
 # ------------------------------------------------------

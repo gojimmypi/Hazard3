@@ -13,6 +13,7 @@ module example_soc #(
 	parameter SRAM_DEPTH = 1 << 15, // Default 32 kwords -> 128 kB
 	parameter SRAM_PRELOAD_FILE = "", // Optional resident firmware EBR image
 	parameter SRAM_HAS_WRITE_BUFFER = 1, // Zero-wait write/read forwarding
+	parameter SRAM_DUAL_PORT_RW = 0, // Optional independent EBR read/write ports
 	parameter GPIO_IN_WIDTH = 8,    // Default input width; board tops may override.
 	parameter CLK_MHZ    = 12,      // For timer timebase
 	parameter SDRAM_ENABLE = 0,     // Enable the external SDR SDRAM target
@@ -21,7 +22,11 @@ module example_soc #(
 	parameter SD_SPI_ENABLE = 0,     // Enable software-driven micro-SD SPI master
 	parameter SDRAM_COL_WIDTH = 10, // 10: ULX3S 64 MiB, 9: 32 MiB profile
 	parameter SDRAM_CACHE_DEPTH = 1024,
+	parameter SDRAM_CACHE_TAG_RAM_MODE = 0,
+	parameter SDRAM_CACHE_ADDR_PIPELINE = 0,
+	parameter SDRAM_CACHE_PIPELINE_MISS_LAUNCH = 0,
 	parameter SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero.hex",
+    parameter SDRAM_CACHE_PIPELINE_TAG_CHECK = 0,
 `ifdef HAS_REGISTERED_READ_HITS
 	parameter SDRAM_CACHE_REGISTERED_READ_HITS = 0,
 `endif
@@ -693,6 +698,7 @@ apb_splitter #(
 ahb_sync_sram #(
 	.DEPTH            (SRAM_DEPTH),
 	.HAS_WRITE_BUFFER (SRAM_HAS_WRITE_BUFFER),
+	.DUAL_PORT_RW     (SRAM_DUAL_PORT_RW),
 	.PRELOAD_FILE     (SRAM_PRELOAD_FILE)
 ) sram0 (
 	.clk               (clk),
@@ -736,12 +742,24 @@ if (SDRAM_ENABLE) begin: sdram_enabled
     // Two-way unified cache with 32-byte lines. A single unified cache keeps
     // freshly uploaded executable bytes coherent with instruction fetch. The
     // default remains 64 KiB; compact targets may select a smaller depth.
+    // The pinned libfpga cache supports registered read hits, but not the
+    // earlier tag-pipeline, tag-RAM-mode, or AHB-address-pipeline experiments.
+    // Retain the SoC parameters for board compatibility, but reject nonzero
+    // selections instead of silently building a different cache.
+    initial if (SDRAM_CACHE_PIPELINE_TAG_CHECK != 0 ||
+                SDRAM_CACHE_TAG_RAM_MODE != 0 ||
+                SDRAM_CACHE_ADDR_PIPELINE != 0) begin
+        $display("ERROR: unsupported SDRAM cache timing experiment with pinned libfpga; use tag pipeline=0, tag RAM mode=0, address pipeline=0");
+        $stop;
+    end
+
     ahb_cache_writeback #(
         .N_WAYS (2),
         .W_ADDR (W_ADDR),
         .W_DATA (W_DATA),
         .W_LINE        (256),
         .DEPTH         (SDRAM_CACHE_DEPTH),
+        .PIPELINE_MISS_LAUNCH (SDRAM_CACHE_PIPELINE_MISS_LAUNCH),
         .TMEM_PRELOAD (SDRAM_CACHE_TAG_PRELOAD),
 `ifdef HAS_REGISTERED_READ_HITS
         .REGISTERED_READ_HITS (SDRAM_CACHE_REGISTERED_READ_HITS)

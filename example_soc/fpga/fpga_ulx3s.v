@@ -84,12 +84,41 @@ pll_25_40 pll_sys (
 	.locked  (pll_sys_locked)
 );
 `else
-/* The ULX3S 85F runs the CPU and SDRAM at the board oscillator's 25 MHz.
- * The EBR framebuffer and the 64 KiB SDRAM cache remain unchanged.
- * The 12F continues to use its separate 40 MHz system PLL.
- */
-assign clk_sys = clk_osc;
-assign pll_sys_locked = 1'b1;
+// At higher system clocks, register cache-hit responses to interrupt the
+// cache-tag -> CPU stall/bus-response combinational timing path. This uses
+// the same existing cache feature as the ULX3S 12F implementation.
+`ifdef HAZARD3_ULX3S_85F_REGISTERED_READ_HITS
+`define HAS_REGISTERED_READ_HITS
+`endif
+// The 85F system clock is selectable without changing the 12F clock tree.
+// At 25 MHz use the oscillator directly; at 40/50 MHz use an existing PLL.
+// The build Makefile validates the value and passes the matching define.
+`ifndef HAZARD3_ULX3S_85F_SYS_CLK_MHZ
+`define HAZARD3_ULX3S_85F_SYS_CLK_MHZ 25
+`endif
+localparam integer ULX3S_85F_SYS_CLK_MHZ = `HAZARD3_ULX3S_85F_SYS_CLK_MHZ;
+
+generate
+    if (ULX3S_85F_SYS_CLK_MHZ == 25) begin: gen_clk_sys_25
+        assign clk_sys = clk_osc;
+        assign pll_sys_locked = 1'b1;
+    end else if (ULX3S_85F_SYS_CLK_MHZ == 40) begin: gen_clk_sys_40
+        pll_25_40 pll_sys (
+            .clkin   (clk_osc),
+            .clkout0 (clk_sys),
+            .locked  (pll_sys_locked)
+        );
+    end else if (ULX3S_85F_SYS_CLK_MHZ == 50) begin: gen_clk_sys_50
+        pll_25_50 pll_sys (
+            .clkin   (clk_osc),
+            .clkout0 (clk_sys),
+            .locked  (pll_sys_locked)
+        );
+    end else begin: gen_invalid_clk_sys
+        // Fail synthesis if the RTL is invoked without the validated Makefile.
+        invalid_ulx3s_85f_sys_clock_mhz invalid_clock_profile();
+    end
+endgenerate
 `endif
 
 fpga_reset #(
@@ -100,8 +129,8 @@ fpga_reset #(
 	.rst_n       (rst_n_sys)
 );
 
-// HDMI uses an independent PLL. The 85F outputs 640x480 using 25/125 MHz;
-// the 12F retains its existing 1024x600 output at 50/250 MHz.
+// HDMI uses an independent PLL. All 85F system-clock profiles retain
+// 640x480 video at 25/125 MHz; the 12F retains 1024x600 at 50/250 MHz.
 wire clk_video_pix;
 wire clk_tmds_x5;
 wire pll_video_locked;
@@ -215,6 +244,12 @@ localparam [31:0] FPGA_BUILD_ID = 32'h554c3132; // ASCII "UL12"
 localparam ULX3S_SDRAM_SCANOUT = 1'b1;
 localparam HDMI_EXTENDED_VIDEO_MODES = 1'b0;
 localparam integer SOC_SRAM_DEPTH = 1 << 8;
+localparam integer SOC_SRAM_HAS_WRITE_BUFFER = 1; // Keep the 12F unchanged.
+localparam integer SOC_SRAM_DUAL_PORT_RW = 0; // Experimental mode is 85F only.
+localparam integer SOC_SDRAM_CACHE_PIPELINE_TAG_CHECK = 0; // 12F unchanged.
+localparam integer SOC_SDRAM_CACHE_TAG_RAM_MODE = 0; // 12F unchanged.
+localparam integer SOC_SDRAM_CACHE_ADDR_PIPELINE = 0; // 12F unchanged.
+localparam integer SOC_SDRAM_CACHE_PIPELINE_MISS_LAUNCH = 0; // 12F unchanged.
 localparam SOC_SRAM_PRELOAD_FILE = "../soc/hazard3-12f-bootstrap.hex";
 localparam integer SOC_SDRAM_CACHE_DEPTH = 512; // 32 KiB, two-way unified
 localparam SOC_SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero_12f.hex";
@@ -238,7 +273,7 @@ localparam integer SOC_SDRAM_COLUMN_WIDTH = 10;
 `endif /* HAZARD3_SDRAM_32MB */
 
 `else /* ! HAZARD3_ULX3S_12F */
-localparam integer SOC_CLK_MHZ = 25;
+localparam integer SOC_CLK_MHZ = ULX3S_85F_SYS_CLK_MHZ;
 localparam [31:0] FPGA_BUILD_ID = 32'h554c5035; // ASCII "ULP5"
 localparam ULX3S_SDRAM_SCANOUT = 1'b0;
 `ifdef HAZARD3_HDMI_EXTENDED_MODES
@@ -247,11 +282,36 @@ localparam HDMI_EXTENDED_VIDEO_MODES = 1'b1;
 localparam HDMI_EXTENDED_VIDEO_MODES = 1'b0;
 `endif
 localparam integer SOC_SRAM_DEPTH = 1 << 15;
+// Experimental SRAM AHB adapter tuning: disabling write buffering removes
+// the CPU read-phase dependency from the EBR write-enable path, but inserts
+// a wait state on write-to-read collisions. Default remains the original 1.
+`ifndef HAZARD3_ULX3S_85F_SRAM_WRITE_BUFFER
+`define HAZARD3_ULX3S_85F_SRAM_WRITE_BUFFER 1
+`endif
+localparam integer SOC_SRAM_HAS_WRITE_BUFFER = `HAZARD3_ULX3S_85F_SRAM_WRITE_BUFFER;
+// Optional independent read/write EBR ports, with read-after-write bypass.
+`ifndef HAZARD3_ULX3S_85F_SRAM_DUAL_PORT_RW
+`define HAZARD3_ULX3S_85F_SRAM_DUAL_PORT_RW 0
+`endif
+localparam integer SOC_SRAM_DUAL_PORT_RW = `HAZARD3_ULX3S_85F_SRAM_DUAL_PORT_RW;
+`ifndef HAZARD3_ULX3S_85F_CACHE_TAG_PIPELINE
+`define HAZARD3_ULX3S_85F_CACHE_TAG_PIPELINE 0
+`endif
+localparam integer SOC_SDRAM_CACHE_PIPELINE_TAG_CHECK = `HAZARD3_ULX3S_85F_CACHE_TAG_PIPELINE;
+`ifndef HAZARD3_ULX3S_85F_TAG_RAM_MODE
+`define HAZARD3_ULX3S_85F_TAG_RAM_MODE 0
+`endif
+localparam integer SOC_SDRAM_CACHE_TAG_RAM_MODE = `HAZARD3_ULX3S_85F_TAG_RAM_MODE;
+`ifndef HAZARD3_ULX3S_85F_CACHE_ADDR_PIPELINE
+`define HAZARD3_ULX3S_85F_CACHE_ADDR_PIPELINE 0
+`endif
+localparam integer SOC_SDRAM_CACHE_ADDR_PIPELINE = `HAZARD3_ULX3S_85F_CACHE_ADDR_PIPELINE;
+localparam integer SOC_SDRAM_CACHE_PIPELINE_MISS_LAUNCH = SOC_CLK_MHZ == 50; // 85F 50 MHz timing experiment only.
 localparam SOC_SRAM_PRELOAD_FILE = "../soc/hazard3-boot-monitor.hex";
 localparam integer SOC_SDRAM_CACHE_DEPTH = 1024; // established 64 KiB cache
 localparam SOC_SDRAM_CACHE_TAG_PRELOAD = "../soc/cache_tags_zero.hex";
 `ifdef HAS_REGISTERED_READ_HITS
-    localparam SOC_SDRAM_CACHE_REGISTERED_READ_HITS = 1'b0;
+    localparam SOC_SDRAM_CACHE_REGISTERED_READ_HITS = 1'b1;
 `endif
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_MASK = 32'hfff00000;
 localparam [31:0] SOC_SDRAM_UNCACHED_LOW_BASE = 32'h20000000;
@@ -392,7 +452,8 @@ example_soc #(
 	.DTM_TYPE                    ("ECP5"),
 	.SRAM_DEPTH                  (SOC_SRAM_DEPTH),
 	.SRAM_PRELOAD_FILE           (SOC_SRAM_PRELOAD_FILE),
-	.SRAM_HAS_WRITE_BUFFER       (1),
+	.SRAM_HAS_WRITE_BUFFER       (SOC_SRAM_HAS_WRITE_BUFFER),
+	.SRAM_DUAL_PORT_RW           (SOC_SRAM_DUAL_PORT_RW),
 	.GPIO_IN_WIDTH               (10),
 	.CLK_MHZ                     (SOC_CLK_MHZ),
 	.SDRAM_ENABLE                (1),
@@ -401,6 +462,10 @@ example_soc #(
 	.SD_SPI_ENABLE               (1),
 	.SDRAM_COL_WIDTH             (SOC_SDRAM_COLUMN_WIDTH),
 	.SDRAM_CACHE_DEPTH           (SOC_SDRAM_CACHE_DEPTH),
+	.SDRAM_CACHE_PIPELINE_TAG_CHECK (SOC_SDRAM_CACHE_PIPELINE_TAG_CHECK),
+	.SDRAM_CACHE_TAG_RAM_MODE (SOC_SDRAM_CACHE_TAG_RAM_MODE),
+	.SDRAM_CACHE_ADDR_PIPELINE (SOC_SDRAM_CACHE_ADDR_PIPELINE),
+	.SDRAM_CACHE_PIPELINE_MISS_LAUNCH (SOC_SDRAM_CACHE_PIPELINE_MISS_LAUNCH),
 	.SDRAM_CACHE_TAG_PRELOAD     (SOC_SDRAM_CACHE_TAG_PRELOAD),
 `ifdef HAS_REGISTERED_READ_HITS
 	.SDRAM_CACHE_REGISTERED_READ_HITS (SOC_SDRAM_CACHE_REGISTERED_READ_HITS),
