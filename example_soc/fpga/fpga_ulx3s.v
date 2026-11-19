@@ -84,12 +84,30 @@ pll_25_40 pll_sys (
 	.locked  (pll_sys_locked)
 );
 `else
-/* The ULX3S 85F runs the CPU and SDRAM at the board oscillator's 25 MHz.
- * The EBR framebuffer and the 64 KiB SDRAM cache remain unchanged.
- * The 12F continues to use its separate 40 MHz system PLL.
- */
-assign clk_sys = clk_osc;
-assign pll_sys_locked = 1'b1;
+// Default to the established 25 MHz oscillator path. The 40/50 MHz
+// options use a separate system PLL; video timing stays independent.
+`ifndef HAZARD3_ULX3S_85F_SYS_CLK_MHZ
+`define HAZARD3_ULX3S_85F_SYS_CLK_MHZ 25
+`endif
+
+generate
+if (`HAZARD3_ULX3S_85F_SYS_CLK_MHZ == 50) begin : gen_clk_sys_50
+    pll_25_50 pll_sys (
+        .clkin   (clk_osc),
+        .clkout0 (clk_sys),
+        .locked  (pll_sys_locked)
+    );
+end else if (`HAZARD3_ULX3S_85F_SYS_CLK_MHZ == 40) begin : gen_clk_sys_40
+    pll_25_40 pll_sys (
+        .clkin   (clk_osc),
+        .clkout0 (clk_sys),
+        .locked  (pll_sys_locked)
+    );
+end else begin : gen_clk_sys_25
+    assign clk_sys = clk_osc;
+    assign pll_sys_locked = 1'b1;
+end
+endgenerate
 `endif
 
 fpga_reset #(
@@ -238,7 +256,7 @@ localparam integer SOC_SDRAM_COLUMN_WIDTH = 10;
 `endif /* HAZARD3_SDRAM_32MB */
 
 `else /* ! HAZARD3_ULX3S_12F */
-localparam integer SOC_CLK_MHZ = 25;
+localparam integer SOC_CLK_MHZ = `HAZARD3_ULX3S_85F_SYS_CLK_MHZ;
 localparam [31:0] FPGA_BUILD_ID = 32'h554c5035; // ASCII "ULP5"
 localparam ULX3S_SDRAM_SCANOUT = 1'b0;
 `ifdef HAZARD3_HDMI_EXTENDED_MODES
